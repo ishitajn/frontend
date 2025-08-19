@@ -44,6 +44,8 @@ export function setupEventListeners(callbacks) {
     document.getElementById('test-api-btn')?.addEventListener('click', callbacks.handleTestApiConnection);
     document.getElementById('test-nlp-btn')?.addEventListener('click', callbacks.handleTestNlpConnection);
 
+    document.getElementById('ai-provider-select')?.addEventListener('change', callbacks.updateModelDropdown);
+
     document.querySelector('.tab-buttons')?.addEventListener('click', (event) => {
         const target = event.target.closest('.tab-button');
         if (!target) return;

@@ -22,6 +22,29 @@ const state = {
 
 const getMatchSettingsKey = (uuid) => `matchSettings_${uuid}`;
 
+const MODELS = {
+    local_llama: ['llama3:latest', 'codellama:latest'],
+    openai: ['gpt-4', 'gpt-3.5-turbo'],
+    anthropic: ['claude-2', 'claude-instant-1'],
+};
+
+function updateModelDropdown() {
+    const provider = document.getElementById('ai-provider-select').value;
+    const modelSelect = document.getElementById('ai-model-select');
+    const currentModel = modelSelect.value;
+    modelSelect.innerHTML = '';
+    const models = MODELS[provider] || [];
+    models.forEach(model => {
+        const option = document.createElement('option');
+        option.value = model;
+        option.textContent = model;
+        if (model === currentModel) {
+            option.selected = true;
+        }
+        modelSelect.appendChild(option);
+    });
+}
+
 document.addEventListener('DOMContentLoaded', initializePopup);
 
 async function initializePopup() {
@@ -39,6 +62,7 @@ async function initializePopup() {
         handleRefinementClick,
         handleTestApiConnection,
         handleTestNlpConnection,
+        updateModelDropdown,
     };
     setupEventListeners(callbacks);
     initializePort({
@@ -54,6 +78,7 @@ async function initializePopup() {
         'testConnectionResponse': handleTestConnectionResponse,
     });
     await loadAndApplySettings();
+    updateModelDropdown();
     await refreshDataAndUI();
 }
 

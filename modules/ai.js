@@ -18,7 +18,17 @@ async function handleAITask(uuid, generationId, payload, port, options = {}) {
         const storedSettings = await chrome.storage.local.get(Object.keys(DEFAULTS));
         const settings = { ...DEFAULTS, ...storedSettings };
 
-        const responseText = await fetchLocalLlamaResponse(settings.local_llama_api_key, payload, settings, controller.signal);
+        let responseText;
+        switch (settings.ai_provider) {
+            case 'openai':
+                responseText = await fetchOpenAIResponse(settings.local_llama_api_key, payload, settings, controller.signal);
+                break;
+            case 'anthropic':
+                responseText = await fetchAnthropicResponse(settings.local_llama_api_key, payload, settings, controller.signal);
+                break;
+            default:
+                responseText = await fetchLocalLlamaResponse(settings.local_llama_api_key, payload, settings, controller.signal);
+        }
 
         const currentState = await getGenerationState(uuid);
         if (currentState.generationId !== generationId) {
@@ -53,6 +63,16 @@ async function handleAITask(uuid, generationId, payload, port, options = {}) {
             abortControllers.delete(uuid);
         }
     }
+}
+
+async function fetchOpenAIResponse(apiKey, payload, settings, signal) {
+    // TODO: Implement OpenAI API call
+    return "OpenAI response";
+}
+
+async function fetchAnthropicResponse(apiKey, payload, settings, signal) {
+    // TODO: Implement Anthropic API call
+    return "Anthropic response";
 }
 
 function buildFinalPayload(data) {

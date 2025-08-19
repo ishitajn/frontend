@@ -19,6 +19,8 @@ export const DEFAULTS = {
     local_llama_api_key: '',
     conversation_analysis_url: '',
     nlp_mode: 'offline',
+    ai_provider: 'local_llama',
+    ai_model: 'llama3:latest',
 };
 
 export const MATCH_SPECIFIC_SETTINGS_KEYS = [
