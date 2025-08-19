@@ -156,14 +156,17 @@ function handleFinalPayloadResponse(message) {
 async function handleLocationChange() {
     const select = document.getElementById(SELECTORS.userLocationSelect);
     const choice = select.value;
+    const loadingIndicator = document.getElementById('location-loading-indicator');
     let messageData = {
         uuid: state.currentMatchUUID
     };
     if (choice === 'autodetect') {
+        loadingIndicator.classList.remove('hidden');
         try {
             const position = await new Promise((resolve, reject) => {
                 navigator.geolocation.getCurrentPosition(resolve, reject, {
-                    timeout: 5000
+                    timeout: 5000,
+                    enableHighAccuracy: true
                 });
             });
             messageData.userCoords = {
@@ -171,9 +174,19 @@ async function handleLocationChange() {
                 longitude: position.coords.longitude
             };
         } catch (error) {
-            showErrorInResponseArea(`Geolocation failed: ${error.message}`);
+            let errorMessage = 'Geolocation failed. Please select a location manually.';
+            if (error.code === error.PERMISSION_DENIED) {
+                errorMessage = 'Geolocation permission denied. Please enable it in your browser settings.';
+            } else if (error.code === error.POSITION_UNAVAILABLE) {
+                errorMessage = 'Location information is unavailable.';
+            } else if (error.code === error.TIMEOUT) {
+                errorMessage = 'Geolocation request timed out.';
+            }
+            showErrorInResponseArea(errorMessage);
             updateGeoContextDisplay(null, state.sessionMatchProfile, state.sessionScrapedData);
             return;
+        } finally {
+            loadingIndicator.classList.add('hidden');
         }
     } else {
         messageData.userLocation = USER_LOCATIONS[choice];
