@@ -10,11 +10,6 @@
 // TINDER SCRAPER & PASTER
 // ===================================================================================
 
-/**
- * Scrapes the active Tinder chat page for all relevant context.
- * This function is injected and executed directly on the page.
- * @returns {object} An object containing all scraped data or an error.
- */
 const TINDER_SELECTORS = {
     myName: 'a[title="My Profile"] h2 span',
     theirName: '.chatProfile h1 span:first-child',
