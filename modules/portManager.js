@@ -3,25 +3,6 @@ import { DEBUG } from './debug.js';
 let port = null;
 let heartbeatInterval = null;
 
-function setupPort(messageHandlers) {
-    port = chrome.runtime.connect({
-        name: "wingman-popup"
-    });
-
-    port.onMessage.addListener((message) => {
-        DEBUG.log('PORT', 'Message received from background', message);
-        const handler = messageHandlers[message.action];
-        if (handler) {
-            handler(message);
-        }
-    });
-
-    port.onDisconnect.addListener(() => {
-        DEBUG.log('PORT', 'Port disconnected from popup side.');
-        stopHeartbeat();
-        port = null;
-    });
-}
 
 export function initializePort(messageHandlers, onDisconnect) {
     if (!port) {
