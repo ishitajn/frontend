@@ -41,6 +41,19 @@ export function setupEventListeners(callbacks) {
     document.getElementById(SELECTORS.dateIdeaBtn)?.addEventListener('click', callbacks.handleDateIdeaClick);
     document.getElementById(SELECTORS.refinementActions)?.addEventListener('click', callbacks.handleRefinementClick);
 
+    document.querySelector('.tab-buttons')?.addEventListener('click', (event) => {
+        const target = event.target.closest('.tab-button');
+        if (!target) return;
+
+        const tabId = target.dataset.tab;
+
+        document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+        target.classList.add('active');
+        document.getElementById(tabId)?.classList.add('active');
+    });
+
     populateSelect(SELECTORS.linguisticStyleSelect, LINGUISTIC_STYLES.map(s => ({
                 value: s,
                 text: s.charAt(0).toUpperCase() + s.slice(1)
