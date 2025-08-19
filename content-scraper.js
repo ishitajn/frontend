@@ -259,210 +259,210 @@ export function pasteTextIntoTinderInput(textToPaste) {
 // BUMBLE SCRAPER & PASTER
 // ===================================================================================
 
-const BUMBLE_SELECTORS = {
-    detailedProfilePage: 'section[data-qa-role="settings-section-about"]',
-    myName: '[data-qa-role="sidebar-profile-name"]',
-    theirProfilePane: 'aside.page__profile.is-expanded .profile',
-    theirName: '[data-qa-role="profile-name"]',
-    theirAge: '[data-qa-role="profile-age"]',
-    verified: '.profile__verify span[data-qa-icon-name="badge-feature-verification"]',
-    bio: '[data-qa-role="profile-bio"]',
-    location: '.location-widget__town',
-    distance: '.location-widget__distance',
-    origin: '.location-widget__pill .pill__title',
-    prompts: '.profile__section--answer',
-    promptQuestion: '.profile-answer__title',
-    promptAnswer: '.profile-answer__text',
-    pills: '.profile__badges .pill[data-qa-role="pill"]',
-    pillTitle: '.pill__title',
-    pillImage: 'img',
-    messageList: '[data-qa-role="message-list"]',
-    messageGroupDate: '.message-group-date',
-    message: '.message',
-    messageIn: '.message--in',
-    messageBubble: '.message-bubble__text',
-    lastMessageGroup: '.message-group:last-of-type',
-    lastMessageTimestamp: '.message-group__timestamp',
-    headerName: '.messages-header__name-link',
-};
+export function scrapeBumblePage() {
+    const BUMBLE_SELECTORS = {
+        detailedProfilePage: 'section[data-qa-role="settings-section-about"]',
+        myName: '[data-qa-role="sidebar-profile-name"]',
+        theirProfilePane: 'aside.page__profile.is-expanded .profile',
+        theirName: '[data-qa-role="profile-name"]',
+        theirAge: '[data-qa-role="profile-age"]',
+        verified: '.profile__verify span[data-qa-icon-name="badge-feature-verification"]',
+        bio: '[data-qa-role="profile-bio"]',
+        location: '.location-widget__town',
+        distance: '.location-widget__distance',
+        origin: '.location-widget__pill .pill__title',
+        prompts: '.profile__section--answer',
+        promptQuestion: '.profile-answer__title',
+        promptAnswer: '.profile-answer__text',
+        pills: '.profile__badges .pill[data-qa-role="pill"]',
+        pillTitle: '.pill__title',
+        pillImage: 'img',
+        messageList: '[data-qa-role="message-list"]',
+        messageGroupDate: '.message-group-date',
+        message: '.message',
+        messageIn: '.message--in',
+        messageBubble: '.message-bubble__text',
+        lastMessageGroup: '.message-group:last-of-type',
+        lastMessageTimestamp: '.message-group__timestamp',
+        headerName: '.messages-header__name-link',
+    };
 
-function parseBumblePill(pillElement) {
-    const value = pillElement.querySelector(BUMBLE_SELECTORS.pillTitle)?.textContent.trim() || '';
-    const img = pillElement.querySelector(BUMBLE_SELECTORS.pillImage);
-    let key = 'interest';
-    if (img) {
-        const src = img.getAttribute('src') || '';
-        const match = src.match(/ic_badge_profileChips_dating_([a-zA-Z]+)v2\.png/);
-        if (match && match[1]) {
-            key = match[1].toLowerCase().replace(/v$/, '');
+    function parseBumblePill(pillElement) {
+        const value = pillElement.querySelector(BUMBLE_SELECTORS.pillTitle)?.textContent.trim() || '';
+        const img = pillElement.querySelector(BUMBLE_SELECTORS.pillImage);
+        let key = 'interest';
+        if (img) {
+            const src = img.getAttribute('src') || '';
+            const match = src.match(/ic_badge_profileChips_dating_([a-zA-Z]+)v2\.png/);
+            if (match && match[1]) {
+                key = match[1].toLowerCase().replace(/v$/, '');
+            }
         }
+        return { key, value };
     }
-    return { key, value };
-}
 
-function parseBumbleDateDivider(dateText, today, yesterday) {
-    const text = dateText.toLowerCase();
-    const formatDate = (d) => d.toISOString().split('T')[0];
+    function parseBumbleDateDivider(dateText, today, yesterday) {
+        const text = dateText.toLowerCase();
+        const formatDate = (d) => d.toISOString().split('T')[0];
 
-    if (text.includes('ago') || text.includes('now') || text.includes(' min') || text.includes(' hr')) {
+        if (text.includes('ago') || text.includes('now') || text.includes(' min') || text.includes(' hr')) {
+            return null;
+        }
+
+        if (text === 'today') return formatDate(today);
+        if (text === 'yesterday') return formatDate(yesterday);
+
+        try {
+            const parsed = new Date(dateText);
+            if (!isNaN(parsed.getTime())) {
+                if (parsed.getFullYear() < 2000) {
+                    parsed.setFullYear(today.getFullYear());
+                }
+                return formatDate(parsed);
+            }
+        } catch (e) { /* Continue */ }
+
+        const parts = dateText.replace(/,/g, '').split(' ');
+        if (parts.length >= 2) {
+            const monthNames = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+            const monthIndex = monthNames.indexOf(parts[0].toLowerCase());
+            const day = parseInt(parts[1], 10);
+            let year = today.getFullYear();
+
+            if (parts.length === 3 && !isNaN(parseInt(parts[2], 10))) {
+                year = parseInt(parts[2], 10);
+            }
+
+            if (monthIndex > -1 && !isNaN(day)) {
+                try {
+                    const manualDate = new Date(year, monthIndex, day);
+                    return formatDate(manualDate);
+                } catch (e) {
+                    console.warn('[Bumble Scraper] Manual date construction failed for:', dateText);
+                }
+            }
+        }
+
+        console.warn('[Bumble Scraper] Could not parse date divider:', dateText);
         return null;
     }
 
-    if (text === 'today') return formatDate(today);
-    if (text === 'yesterday') return formatDate(yesterday);
+    function scrapeBumbleProfile() {
+        let theirProfile = "Match profile not visible.", theirName = "Match", isVerified = false,
+            matchLocation = "Not specified", matchDistance = "Not specified", matchOrigin = "Not specified",
+            matchBasics = {};
 
-    try {
-        const parsed = new Date(dateText);
-        if (!isNaN(parsed.getTime())) {
-            if (parsed.getFullYear() < 2000) {
-                parsed.setFullYear(today.getFullYear());
+        try {
+            const theirProfilePane = document.querySelector(BUMBLE_SELECTORS.theirProfilePane);
+            if (theirProfilePane) {
+                const profileParts = [];
+                const nameEl = theirProfilePane.querySelector(BUMBLE_SELECTORS.theirName);
+                const ageEl = theirProfilePane.querySelector(BUMBLE_SELECTORS.theirAge);
+                theirName = nameEl?.textContent.trim() || "Match";
+                const age = ageEl?.textContent.replace(',', '').trim();
+                isVerified = !!theirProfilePane.querySelector(BUMBLE_SELECTORS.verified);
+                profileParts.push(`\nName: ${theirName}, Age: ${age}`);
+
+                const about = theirProfilePane.querySelector(BUMBLE_SELECTORS.bio)?.textContent.trim();
+                if (about) profileParts.push(`About Them:${about}`);
+                matchLocation = theirProfilePane.querySelector(BUMBLE_SELECTORS.location)?.textContent.trim() || "Not specified";
+                matchDistance = theirProfilePane.querySelector(BUMBLE_SELECTORS.distance)?.textContent.trim() || "Not specified";
+                matchOrigin = theirProfilePane.querySelector(BUMBLE_SELECTORS.origin)?.textContent.trim() || "Not specified";
+                const promptNodes = theirProfilePane.querySelectorAll(BUMBLE_SELECTORS.prompts);
+                const prompts = Array.from(promptNodes).map(s => {
+                    const q = s.querySelector(BUMBLE_SELECTORS.promptQuestion)?.textContent.trim();
+                    const a = s.querySelector(BUMBLE_SELECTORS.promptAnswer)?.textContent.trim();
+                    return (q && a) ? `- ${q}: ${a}` : null;
+                }).filter(Boolean);
+
+                if(prompts.length > 0) profileParts.push(`Their Profile Prompts:\n${prompts.join('; ')}`);
+                const pillNodes = theirProfilePane.querySelectorAll(BUMBLE_SELECTORS.pills);
+                const basicsList = [];
+                pillNodes.forEach(pill => {
+                    const { key, value } = parseBumblePill(pill);
+                    matchBasics[key] = value;
+                    basicsList.push(`${key}: ${value}`);
+                });
+
+                if (basicsList.length > 0) profileParts.push(`Their Basics & Interests:\n${basicsList.join('; ')}`);
+                theirProfile = profileParts.join('\n');
             }
-            return formatDate(parsed);
-        }
-    } catch (e) { /* Continue */ }
-
-    const parts = dateText.replace(/,/g, '').split(' ');
-    if (parts.length >= 2) {
-        const monthNames = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
-        const monthIndex = monthNames.indexOf(parts[0].toLowerCase());
-        const day = parseInt(parts[1], 10);
-        let year = today.getFullYear();
-
-        if (parts.length === 3 && !isNaN(parseInt(parts[2], 10))) {
-            year = parseInt(parts[2], 10);
+        } catch (e) {
+            console.error('[Bumble Scraper] Error scraping match profile:', e);
+            theirProfile = `Could not fully parse match profile. Error: ${e.message}`;
         }
 
-        if (monthIndex > -1 && !isNaN(day)) {
-            try {
-                const manualDate = new Date(year, monthIndex, day);
-                return formatDate(manualDate);
-            } catch (e) {
-                console.warn('[Bumble Scraper] Manual date construction failed for:', dateText);
-            }
+        if (theirName === "Match") {
+            const nameInHeader = document.querySelector(BUMBLE_SELECTORS.headerName)?.textContent.trim();
+            if (nameInHeader) theirName = nameInHeader;
         }
+
+        return { theirProfile, theirName, isVerified, matchLocation, matchDistance, matchOrigin, matchBasics };
     }
 
-    console.warn('[Bumble Scraper] Could not parse date divider:', dateText);
-    return null;
-}
+    function scrapeBumbleConversationHistory() {
+        let conversationHistory = [], lastMessageRelativeTime = null;
+        try {
+            const messageListEl = document.querySelector(BUMBLE_SELECTORS.messageList);
+            if (messageListEl) {
+                const today = new Date();
+                const yesterday = new Date();
+                yesterday.setDate(today.getDate() - 1);
 
-function scrapeBumbleProfile() {
-    let theirProfile = "Match profile not visible.", theirName = "Match", isVerified = false,
-        matchLocation = "Not specified", matchDistance = "Not specified", matchOrigin = "Not specified",
-        matchBasics = {};
+                let currentDateString = today.toISOString().split('T')[0];
+                const tempHistory = [];
 
-    try {
-        const theirProfilePane = document.querySelector(BUMBLE_SELECTORS.theirProfilePane);
-        if (theirProfilePane) {
-            const profileParts = [];
-            const nameEl = theirProfilePane.querySelector(BUMBLE_SELECTORS.theirName);
-            const ageEl = theirProfilePane.querySelector(BUMBLE_SELECTORS.theirAge);
-            theirName = nameEl?.textContent.trim() || "Match";
-            const age = ageEl?.textContent.replace(',', '').trim();
-            isVerified = !!theirProfilePane.querySelector(BUMBLE_SELECTORS.verified);
-            profileParts.push(`\nName: ${theirName}, Age: ${age}`);
+                const allNodes = messageListEl.querySelectorAll(`${BUMBLE_SELECTORS.messageGroupDate}, ${BUMBLE_SELECTORS.message}`);
 
-            const about = theirProfilePane.querySelector(BUMBLE_SELECTORS.bio)?.textContent.trim();
-            if (about) profileParts.push(`About Them:${about}`);
-            matchLocation = theirProfilePane.querySelector(BUMBLE_SELECTORS.location)?.textContent.trim() || "Not specified";
-            matchDistance = theirProfilePane.querySelector(BUMBLE_SELECTORS.distance)?.textContent.trim() || "Not specified";
-            matchOrigin = theirProfilePane.querySelector(BUMBLE_SELECTORS.origin)?.textContent.trim() || "Not specified";
-            const promptNodes = theirProfilePane.querySelectorAll(BUMBLE_SELECTORS.prompts);
-            const prompts = Array.from(promptNodes).map(s => {
-                const q = s.querySelector(BUMBLE_SELECTORS.promptQuestion)?.textContent.trim();
-                const a = s.querySelector(BUMBLE_SELECTORS.promptAnswer)?.textContent.trim();
-                return (q && a) ? `- ${q}: ${a}` : null;
-            }).filter(Boolean);
-
-            if(prompts.length > 0) profileParts.push(`Their Profile Prompts:\n${prompts.join('; ')}`);
-            const pillNodes = theirProfilePane.querySelectorAll(BUMBLE_SELECTORS.pills);
-            const basicsList = [];
-            pillNodes.forEach(pill => {
-                const { key, value } = parseBumblePill(pill);
-                matchBasics[key] = value;
-                basicsList.push(`${key}: ${value}`);
-            });
-
-            if (basicsList.length > 0) profileParts.push(`Their Basics & Interests:\n${basicsList.join('; ')}`);
-            theirProfile = profileParts.join('\n');
-        }
-    } catch (e) {
-        console.error('[Bumble Scraper] Error scraping match profile:', e);
-        theirProfile = `Could not fully parse match profile. Error: ${e.message}`;
-    }
-
-    if (theirName === "Match") {
-        const nameInHeader = document.querySelector(BUMBLE_SELECTORS.headerName)?.textContent.trim();
-        if (nameInHeader) theirName = nameInHeader;
-    }
-
-    return { theirProfile, theirName, isVerified, matchLocation, matchDistance, matchOrigin, matchBasics };
-}
-
-function scrapeBumbleConversationHistory() {
-    let conversationHistory = [], lastMessageRelativeTime = null;
-    try {
-        const messageListEl = document.querySelector(BUMBLE_SELECTORS.messageList);
-        if (messageListEl) {
-            const today = new Date();
-            const yesterday = new Date();
-            yesterday.setDate(today.getDate() - 1);
-            
-            let currentDateString = today.toISOString().split('T')[0];
-            const tempHistory = [];
-
-            const allNodes = messageListEl.querySelectorAll(`${BUMBLE_SELECTORS.messageGroupDate}, ${BUMBLE_SELECTORS.message}`);
-
-            allNodes.forEach(node => {
-                if (node.classList.contains('message-group-date')) {
-                    const dateText = node.textContent.trim();
-                    const newDateFound = parseBumbleDateDivider(dateText, today, yesterday);
-                    if (newDateFound) {
-                        currentDateString = newDateFound;
+                allNodes.forEach(node => {
+                    if (node.classList.contains('message-group-date')) {
+                        const dateText = node.textContent.trim();
+                        const newDateFound = parseBumbleDateDivider(dateText, today, yesterday);
+                        if (newDateFound) {
+                            currentDateString = newDateFound;
+                        }
+                        return;
                     }
-                    return;
-                }
 
-                if (node.classList.contains('message')) {
-                    const role = node.matches(BUMBLE_SELECTORS.messageIn) ? 'assistant' : 'user';
-                    const content = node.querySelector(BUMBLE_SELECTORS.messageBubble)?.textContent.trim();
-                    if (content) {
-                        tempHistory.push({ role, content, date: currentDateString });
+                    if (node.classList.contains('message')) {
+                        const role = node.matches(BUMBLE_SELECTORS.messageIn) ? 'assistant' : 'user';
+                        const content = node.querySelector(BUMBLE_SELECTORS.messageBubble)?.textContent.trim();
+                        if (content) {
+                            tempHistory.push({ role, content, date: currentDateString });
+                        }
+                    }
+                });
+
+                conversationHistory = tempHistory.reduce((acc, msg) => {
+                    const lastMessage = acc.length > 0 ? acc[acc.length - 1] : null;
+                    if (lastMessage?.role === msg.role && lastMessage?.date === msg.date) {
+                        lastMessage.content += `. ${msg.content}`;
+                    } else {
+                        acc.push(msg);
+                    }
+                    return acc;
+                }, []).slice(-20);
+
+                const lastMessageGroup = messageListEl.querySelector(BUMBLE_SELECTORS.lastMessageGroup);
+                if (lastMessageGroup) {
+                    const timeStampNode = lastMessageGroup.querySelector(BUMBLE_SELECTORS.lastMessageTimestamp);
+                    if (timeStampNode && timeStampNode.textContent.includes('ago')) {
+                        lastMessageRelativeTime = timeStampNode.textContent.trim();
                     }
                 }
-            });
-
-            conversationHistory = tempHistory.reduce((acc, msg) => {
-                const lastMessage = acc.length > 0 ? acc[acc.length - 1] : null;
-                if (lastMessage?.role === msg.role && lastMessage?.date === msg.date) {
-                    lastMessage.content += `. ${msg.content}`;
-                } else {
-                    acc.push(msg);
-                }
-                return acc;
-            }, []).slice(-20);
-
-            const lastMessageGroup = messageListEl.querySelector(BUMBLE_SELECTORS.lastMessageGroup);
-            if (lastMessageGroup) {
-                const timeStampNode = lastMessageGroup.querySelector(BUMBLE_SELECTORS.lastMessageTimestamp);
-                if (timeStampNode && timeStampNode.textContent.includes('ago')) {
-                    lastMessageRelativeTime = timeStampNode.textContent.trim();
-                }
             }
+        } catch (e) {
+            console.error('[Bumble Scraper] Error scraping conversation history:', e);
+            conversationHistory = [];
         }
-    } catch (e) {
-        console.error('[Bumble Scraper] Error scraping conversation history:', e);
-        conversationHistory = [];
+        return { conversationHistory, lastMessageRelativeTime };
     }
-    return { conversationHistory, lastMessageRelativeTime };
-}
 
-export function scrapeBumblePage() {
     console.log('[Bumble Scraper] Starting scrapeBumblePage function.');
     try {
         const isDetailedProfilePage = !!document.querySelector(BUMBLE_SELECTORS.detailedProfilePage);
         const myName = document.querySelector(BUMBLE_SELECTORS.myName)?.textContent.trim() || "Me";
-        
+
         let myProfile = null, theirProfile, theirName, isVerified, matchLocation, matchDistance, matchOrigin, matchBasics, conversationHistory, lastMessageRelativeTime;
 
         if (isDetailedProfilePage) {
