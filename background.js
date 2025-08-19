@@ -26,6 +26,10 @@ chrome.runtime.onConnect.addListener((port) => {
                 if (!scrapedData)
                     throw new Error("getNlpAnalysis received no scrapedData.");
 
+                const settings = await chrome.storage.local.get(['nlp_mode', 'conversation_analysis_url']);
+                const nlpMode = settings.nlp_mode || 'offline';
+                const conversationAnalysisUrl = settings.conversation_analysis_url;
+
                 const uuid = await memoryManager._getMatchUUID(scrapedData.theirName, scrapedData.theirProfile);
                 let matchProfile = await memoryManager.getMatchProfile(uuid);
 
@@ -35,40 +39,48 @@ chrome.runtime.onConnect.addListener((port) => {
                     matchProfile.uuid = uuid;
                 }
 
-                const newCacheHash = await generateCacheHash(scrapedData.conversationHistory, scrapedData.theirProfile);
-                if (matchProfile.memory?.lastCacheHash === newCacheHash && matchProfile.analysis) {
-                    DEBUG.log('NLP-CACHE', 'Cache HIT.', {
+                if (nlpMode === 'offline') {
+                    const newCacheHash = await generateCacheHash(scrapedData.conversationHistory, scrapedData.theirProfile);
+                    if (matchProfile.memory?.lastCacheHash === newCacheHash && matchProfile.analysis) {
+                        DEBUG.log('NLP-CACHE', 'Cache HIT.', {
+                            uuid
+                        });
+                        port.postMessage({
+                            action: 'nlpAnalysisResponse',
+                            matchProfile
+                        });
+                        return;
+                    }
+                    DEBUG.log('NLP-CACHE', 'Cache MISS. Running full analysis.', {
                         uuid
                     });
-                    port.postMessage({
-                        action: 'nlpAnalysisResponse',
-                        matchProfile
-                    });
-                    return;
+
+                    matchProfile.conversationHistory = scrapedData.conversationHistory;
+                    matchProfile.metadata.theirProfile = scrapedData.theirProfile;
+                    matchProfile.metadata.matchLocation = scrapedData.matchLocation;
+
+                    const { updatedMemory, lastMessageAnalysis } = runFullConversationAnalysis(matchProfile.conversationHistory, matchProfile.memory);
+                    matchProfile.memory = updatedMemory;
+                    matchProfile.memory.lastCacheHash = newCacheHash;
+
+                    const state = determineConversationState(scrapedData.conversationHistory);
+                    const suppressGreeting = hasRecentGreeting(scrapedData.conversationHistory) && !state.startsWith('REENGAGING');
+
+                    const fullAnalysis = {
+                        conversationState: state,
+                        suppressGreeting: suppressGreeting,
+                        lastMessageAnalysis: lastMessageAnalysis,
+                        memory: matchProfile.memory,
+                    };
+
+                    matchProfile.analysis = fullAnalysis;
+                } else {
+                    if (!conversationAnalysisUrl) {
+                        throw new Error("Conversation Analysis URL is not configured.");
+                    }
+                    matchProfile = await fetchConversationAnalysis(conversationAnalysisUrl, scrapedData, nlpMode);
                 }
-                DEBUG.log('NLP-CACHE', 'Cache MISS. Running full analysis.', {
-                    uuid
-                });
 
-                matchProfile.conversationHistory = scrapedData.conversationHistory;
-                matchProfile.metadata.theirProfile = scrapedData.theirProfile;
-                matchProfile.metadata.matchLocation = scrapedData.matchLocation;
-
-                const { updatedMemory, lastMessageAnalysis } = runFullConversationAnalysis(matchProfile.conversationHistory, matchProfile.memory);
-                matchProfile.memory = updatedMemory;
-                matchProfile.memory.lastCacheHash = newCacheHash;
-
-                const state = determineConversationState(scrapedData.conversationHistory);
-                const suppressGreeting = hasRecentGreeting(scrapedData.conversationHistory) && !state.startsWith('REENGAGING');
-
-                const fullAnalysis = {
-                    conversationState: state,
-                    suppressGreeting: suppressGreeting,
-                    lastMessageAnalysis: lastMessageAnalysis,
-                    memory: matchProfile.memory,
-                };
-
-                matchProfile.analysis = fullAnalysis;
                 matchProfile.metadata.lastUpdated = new Date().toISOString();
                 await memoryManager.saveMatchProfile(uuid, matchProfile);
                 DEBUG.log('NLP', 'Analysis complete. Sending response.', {
@@ -343,6 +355,25 @@ Generate one date idea in the specified JSON format.`;
             }
         }
     };
+
+    async function fetchConversationAnalysis(url, scrapedData, nlpMode) {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                scrapedData,
+                nlpMode
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Conversation Analysis service responded with status: ${response.status}`);
+        }
+
+        return response.json();
+    }
 
     port.onMessage.addListener((request) => {
         DEBUG.log('PORT', 'Message received from popup', request);
