@@ -37,6 +37,8 @@ async function initializePopup() {
         handleLocationChange,
         handleDateIdeaClick,
         handleRefinementClick,
+        handleTestApiConnection,
+        handleTestNlpConnection,
     };
     setupEventListeners(callbacks);
     initializePort({
@@ -49,9 +51,38 @@ async function initializePopup() {
             }
         },
         'generationStateResponse': syncUIWithState,
+        'testConnectionResponse': handleTestConnectionResponse,
     });
     await loadAndApplySettings();
     await refreshDataAndUI();
+}
+
+function handleTestApiConnection() {
+    const url = document.getElementById(SELECTORS.localLlamaUrl).value;
+    const resultEl = document.getElementById('api-test-result');
+    resultEl.textContent = 'Testing...';
+    resultEl.className = 'test-result';
+    sendMessage({ action: 'testApiConnection', data: { url } });
+}
+
+function handleTestNlpConnection() {
+    const url = document.getElementById('nlpEndpointUrl').value;
+    const resultEl = document.getElementById('nlp-test-result');
+    resultEl.textContent = 'Testing...';
+    resultEl.className = 'test-result';
+    sendMessage({ action: 'testNlpConnection', data: { url } });
+}
+
+function handleTestConnectionResponse(message) {
+    const { success, type, error } = message;
+    const resultEl = document.getElementById(`${type}-test-result`);
+    if (success) {
+        resultEl.textContent = 'Success!';
+        resultEl.classList.add('success');
+    } else {
+        resultEl.textContent = `Failed: ${error}`;
+        resultEl.classList.add('error');
+    }
 }
 
 async function refreshDataAndUI() {

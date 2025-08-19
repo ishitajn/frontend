@@ -313,6 +313,34 @@ Generate one date idea in the specified JSON format.`;
             };
 
             await handleAITask(uuid, generationId, payload, port);
+        },
+
+        "testApiConnection": async(request) => {
+            const { url } = request.data;
+            try {
+                const response = await fetch(url, { method: 'HEAD' });
+                if (response.ok) {
+                    port.postMessage({ action: 'testConnectionResponse', success: true, type: 'api' });
+                } else {
+                    port.postMessage({ action: 'testConnectionResponse', success: false, type: 'api', error: `Server responded with status: ${response.status}` });
+                }
+            } catch (error) {
+                port.postMessage({ action: 'testConnectionResponse', success: false, type: 'api', error: error.message });
+            }
+        },
+
+        "testNlpConnection": async(request) => {
+            const { url } = request.data;
+            try {
+                const response = await fetch(url, { method: 'HEAD' });
+                if (response.ok) {
+                    port.postMessage({ action: 'testConnectionResponse', success: true, type: 'nlp' });
+                } else {
+                    port.postMessage({ action: 'testConnectionResponse', success: false, type: 'nlp', error: `Server responded with status: ${response.status}` });
+                }
+            } catch (error) {
+                port.postMessage({ action: 'testConnectionResponse', success: false, type: 'nlp', error: error.message });
+            }
         }
     };
 

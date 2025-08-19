@@ -17,6 +17,7 @@ export const DEFAULTS = {
     local_llama_url: 'http://localhost:8080/v1/chat/completions',
     local_model_name: 'llama3:latest',
     local_llama_api_key: '',
+    nlp_endpoint_url: '',
 };
 
 export const MATCH_SPECIFIC_SETTINGS_KEYS = [

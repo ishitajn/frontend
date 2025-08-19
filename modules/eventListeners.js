@@ -41,6 +41,9 @@ export function setupEventListeners(callbacks) {
     document.getElementById(SELECTORS.dateIdeaBtn)?.addEventListener('click', callbacks.handleDateIdeaClick);
     document.getElementById(SELECTORS.refinementActions)?.addEventListener('click', callbacks.handleRefinementClick);
 
+    document.getElementById('test-api-btn')?.addEventListener('click', callbacks.handleTestApiConnection);
+    document.getElementById('test-nlp-btn')?.addEventListener('click', callbacks.handleTestNlpConnection);
+
     document.querySelector('.tab-buttons')?.addEventListener('click', (event) => {
         const target = event.target.closest('.tab-button');
         if (!target) return;
