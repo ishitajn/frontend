@@ -330,7 +330,14 @@ Generate one date idea in the specified JSON format.`;
         "testApiConnection": async(request) => {
             const { url } = request.data;
             try {
-                const response = await fetch(url, { method: 'HEAD' });
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: "test",
+                        messages: [{ role: "user", content: "hello" }]
+                    })
+                });
                 if (response.ok) {
                     port.postMessage({ action: 'testConnectionResponse', success: true, type: 'api' });
                 } else {
@@ -344,7 +351,14 @@ Generate one date idea in the specified JSON format.`;
         "testNlpConnection": async(request) => {
             const { url } = request.data;
             try {
-                const response = await fetch(url, { method: 'HEAD' });
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        scrapedData: { conversationHistory: [] },
+                        nlpMode: 'fast'
+                    })
+                });
                 if (response.ok) {
                     port.postMessage({ action: 'testConnectionResponse', success: true, type: 'nlp' });
                 } else {

@@ -193,46 +193,57 @@
                 <span>Global Configuration</span>
             </div>
             <div class="card">
-                <div class="card-header">Connection Details</div>
-                <div class="card-content">
-                    <div class="control-group stacked">
-                        <label for="ai-provider-select">AI Provider</label>
-                        <select id="ai-provider-select" data-storage-key="ai_provider">
-                            <option value="local_llama">Local Llama</option>
-                            <option value="openai">OpenAI</option>
-                            <option value="anthropic">Anthropic</option>
-                        </select>
+                <div class="tab-container">
+                    <div class="tab-buttons">
+                        <button class="tab-button active" data-tab="ai-endpoint-tab">AI Endpoint</button>
+                        <button class="tab-button" data-tab="analysis-endpoint-tab">Analysis Endpoint</button>
                     </div>
-                    <div class="control-group stacked">
-                        <label for="ai-model-select">AI Model</label>
-                        <select id="ai-model-select" data-storage-key="ai_model"></select>
-                    </div>
-                    <div class="control-group stacked">
-                        <label for="localLlamaUrl">API URL</label>
-                        <div class="input-with-button">
-                            <input type="text" id="localLlamaUrl" data-storage-key="local_llama_url">
-                            <button id="test-api-btn" class="btn btn-secondary">Test</button>
+                    <div id="ai-endpoint-tab" class="tab-content active">
+                        <div class="card-content">
+                            <div class="control-group stacked">
+                                <label for="ai-provider-select">AI Provider</label>
+                                <select id="ai-provider-select" data-storage-key="ai_provider">
+                                    <option value="local_llama">Local Llama</option>
+                                    <option value="openai">OpenAI</option>
+                                    <option value="anthropic">Anthropic</option>
+                                </select>
+                            </div>
+                            <div class="control-group stacked">
+                                <label for="ai-model-select">AI Model</label>
+                                <select id="ai-model-select" data-storage-key="ai_model"></select>
+                            </div>
+                            <div class="control-group stacked">
+                                <label for="localLlamaUrl">API URL</label>
+                                <div class="input-with-button">
+                                    <input type="text" id="localLlamaUrl" data-storage-key="local_llama_url">
+                                    <button id="test-api-btn" class="btn btn-secondary">Test</button>
+                                </div>
+                                <span id="api-test-result" class="test-result"></span>
+                            </div>
+                            <div class="control-group stacked"><label for="localModelName">Model Name</label><input type="text" id="localModelName" data-storage-key="local_model_name"></div>
+                            <div class="control-group stacked"><label for="localLlamaApiKey">API Key (Optional)</label><input type="text" id="localLlamaApiKey" data-storage-key="local_llama_api_key"></div>
                         </div>
-                        <span id="api-test-result" class="test-result"></span>
                     </div>
-                    <div class="control-group stacked">
-                        <label for="conversationAnalysisUrl">Conversation Analysis URL</label>
-                        <div class="input-with-button">
-                            <input type="text" id="conversationAnalysisUrl" data-storage-key="conversation_analysis_url">
-                            <button id="test-nlp-btn" class="btn btn-secondary">Test</button>
+                    <div id="analysis-endpoint-tab" class="tab-content">
+                        <div class="card-content">
+                            <div class="control-group stacked">
+                                <label for="conversationAnalysisUrl">Conversation Analysis URL</label>
+                                <div class="input-with-button">
+                                    <input type="text" id="conversationAnalysisUrl" data-storage-key="conversation_analysis_url">
+                                    <button id="test-nlp-btn" class="btn btn-secondary">Test</button>
+                                </div>
+                                <span id="nlp-test-result" class="test-result"></span>
+                            </div>
+                            <div class="control-group stacked">
+                                <label for="nlp-mode-select">NLP Mode</label>
+                                <select id="nlp-mode-select" data-storage-key="nlp_mode">
+                                    <option value="offline">Offline</option>
+                                    <option value="fast">Fast</option>
+                                    <option value="enhanced">Enhanced</option>
+                                </select>
+                            </div>
                         </div>
-                        <span id="nlp-test-result" class="test-result"></span>
                     </div>
-                    <div class="control-group stacked">
-                        <label for="nlp-mode-select">NLP Mode</label>
-                        <select id="nlp-mode-select" data-storage-key="nlp_mode">
-                            <option value="offline">Offline</option>
-                            <option value="fast">Fast</option>
-                            <option value="enhanced">Enhanced</option>
-                        </select>
-                    </div>
-                    <div class="control-group stacked"><label for="localModelName">Model Name</label><input type="text" id="localModelName" data-storage-key="local_model_name"></div>
-                    <div class="control-group stacked"><label for="localLlamaApiKey">API Key (Optional)</label><input type="text" id="localLlamaApiKey" data-storage-key="local_llama_api_key"></div>
                 </div>
             </div>
             <div class="card">

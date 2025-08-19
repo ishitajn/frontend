@@ -52,8 +52,24 @@ export function setupEventListeners(callbacks) {
 
         const tabId = target.dataset.tab;
 
-        document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+        // Handle main tabs
+        if (target.parentElement.parentElement.id !== 'settings-view') {
+            document.querySelectorAll('#main-view .tab-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('#main-view .tab-content').forEach(content => content.classList.remove('active'));
+        }
+
+        target.classList.add('active');
+        document.getElementById(tabId)?.classList.add('active');
+    });
+
+    document.querySelector('#settings-view .tab-buttons')?.addEventListener('click', (event) => {
+        const target = event.target.closest('.tab-button');
+        if (!target) return;
+
+        const tabId = target.dataset.tab;
+
+        document.querySelectorAll('#settings-view .tab-button').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('#settings-view .tab-content').forEach(content => content.classList.remove('active'));
 
         target.classList.add('active');
         document.getElementById(tabId)?.classList.add('active');
