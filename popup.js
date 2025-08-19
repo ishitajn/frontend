@@ -1,4 +1,4 @@
-import { scrapeBumblePage, pasteTextIntoBumbleInput, scrapeTinderPage, pasteTextIntoTinderInput } from './content-scraper-new.js';
+import { scrapeBumblePage, pasteTextIntoBumbleInput, scrapeTinderPage, pasteTextIntoTinderInput } from './content-scraper.js';
 import { determineConversationState, LINGUISTIC_STYLES } from './conversationHelpers.js';
 import { showNlpModal, hideDebugModal } from './debug-modal.js';
 import { initializePort, sendMessage, startHeartbeat, stopHeartbeat, getGenerationState } from './modules/portManager.js';
