@@ -23,10 +23,33 @@ function setupPort(messageHandlers) {
     });
 }
 
-export function initializePort(messageHandlers) {
+export function initializePort(messageHandlers, onDisconnect) {
     if (!port) {
-        setupPort(messageHandlers);
+        setupPort(messageHandlers, onDisconnect);
     }
+}
+
+function setupPort(messageHandlers, onDisconnect) {
+    port = chrome.runtime.connect({
+        name: "wingman-popup"
+    });
+
+    port.onMessage.addListener((message) => {
+        DEBUG.log('PORT', 'Message received from background', message);
+        const handler = messageHandlers[message.action];
+        if (handler) {
+            handler(message);
+        }
+    });
+
+    port.onDisconnect.addListener(() => {
+        DEBUG.log('PORT', 'Port disconnected from popup side.');
+        stopHeartbeat();
+        port = null;
+        if (onDisconnect) {
+            onDisconnect();
+        }
+    });
 }
 
 export function sendMessage(message) {
@@ -44,6 +67,35 @@ export function sendMessage(message) {
         port = null;
         // The caller should handle the reconnection.
     }
+}
+
+export function getGenerationState(uuid) {
+    return new Promise(resolve => {
+        const listener = (msg) => {
+            if (msg.action === 'generationStateResponse') {
+                if (port)
+                    port.onMessage.removeListener(listener);
+                resolve(msg.state);
+            }
+        };
+        if (port) {
+            sendMessage({
+                action: "getGenerationState",
+                data: {
+                    uuid: uuid
+                }
+            });
+            port.onMessage.addListener(listener);
+        } else {
+            resolve({
+                isGenerating: false,
+                response: null,
+                error: null,
+                generationId: null,
+                generationStartTime: null
+            });
+        }
+    });
 }
 
 export function startHeartbeat() {

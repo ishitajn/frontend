@@ -1,7 +1,7 @@
 import { scrapeBumblePage, pasteTextIntoBumbleInput, scrapeTinderPage, pasteTextIntoTinderInput } from './content-scraper.js';
 import { determineConversationState, LINGUISTIC_STYLES } from './conversationHelpers.js';
 import { showNlpModal, hideDebugModal } from './debug-modal.js';
-import { initializePort, sendMessage, startHeartbeat, stopHeartbeat } from './modules/portManager.js';
+import { initializePort, sendMessage, startHeartbeat, stopHeartbeat, getGenerationState } from './modules/portManager.js';
 import { DEFAULTS, MATCH_SPECIFIC_SETTINGS_KEYS, EMOJI_STRATEGIES, USER_LOCATIONS } from './modules/config.js';
 import { SELECTORS, showView, showError, showErrorInResponseArea, setUIRefreshingState, setUIGeneratingState, updateUIAfterGeneration, updateSliderLabels, updateSliderValueLabel, updateGeoContextDisplay, startTimer, stopTimer, resetTimerDisplay, populateSelect, updateClearButtonVisibility } from './modules/ui.js';
 import { setupEventListeners } from './modules/eventListeners.js';
@@ -58,12 +58,59 @@ async function refreshDataAndUI() {
     if (state.isRefreshing)
         return;
 
-    sendMessage({
-        action: "getGenerationState",
-        data: {
-            uuid: state.currentMatchUUID
+    const generationState = await getGenerationState(state.currentMatchUUID);
+
+    if (generationState.isGenerating) {
+        syncUIWithState(generationState);
+        return;
+    }
+
+    state.isRefreshing = true;
+    setUIRefreshingState(true);
+
+    try {
+        const [tab] = await chrome.tabs.query({
+            active: true,
+            currentWindow: true
+        });
+        let scraperFn;
+
+        if (tab.url?.startsWith("https://tinder.com/")) {
+            scraperFn = scrapeTinderPage;
+            state.pasterFn = pasteTextIntoTinderInput;
+        } else if (tab.url?.startsWith("https://bumble.com/")) {
+            scraperFn = scrapeBumblePage;
+            state.pasterFn = pasteTextIntoBumbleInput;
+        } else {
+            throw new Error('Unsupported Site: Please navigate to a conversation on Tinder.com or Bumble.com.');
         }
+
+        const results = await chrome.scripting.executeScript({
+            target: {
+                tabId: tab.id
+            },
+            function : scraperFn
     });
+const pageData = results[0]?.result;
+if (!pageData || pageData.error) {
+    throw new Error(`Could not read page. ${pageData?.error || 'Please make sure a conversation is selected.'}`);
+}
+
+state.sessionScrapedData = pageData;
+sendMessage({
+    action: "getNlpAnalysis",
+    data: {
+        scrapedData: pageData
+    }
+});
+
+} catch (e) {
+    showError('Initialization Failed', e.message);
+    DEBUG.error('INIT', 'Refresh failed', e);
+} finally {
+    state.isRefreshing = false;
+    setUIRefreshingState(false);
+}
 }
 
 async function handleNlpAnalysisResponse(message) {
