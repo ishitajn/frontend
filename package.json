@@ -1,0 +1,8 @@
+{
+  "name": "ai-assistant",
+  "version": "10.4.0",
+  "description": "On-demand AI assistant",
+  "scripts": {
+    "test": "node --test"
+  }
+}
