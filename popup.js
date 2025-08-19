@@ -91,7 +91,7 @@ function handleTestApiConnection() {
 }
 
 function handleTestNlpConnection() {
-    const url = document.getElementById('nlpEndpointUrl').value;
+    const url = document.getElementById('conversationAnalysisUrl').value;
     const resultEl = document.getElementById('nlp-test-result');
     resultEl.textContent = 'Testing...';
     resultEl.className = 'test-result';
