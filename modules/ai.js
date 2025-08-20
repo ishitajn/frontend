@@ -66,13 +66,41 @@ async function handleAITask(uuid, generationId, payload, port, options = {}) {
 }
 
 async function fetchOpenAIResponse(apiKey, payload, settings, signal) {
-    // TODO: Implement OpenAI API call
-    return "OpenAI response";
+    const { ai_model } = settings;
+    const responseData = await apiClient('https://api.openai.com/v1/chat/completions', 'POST', {
+        model: ai_model,
+        messages: payload.messages,
+        temperature: payload.temperature,
+        top_p: payload.top_p,
+    }, {
+        'Authorization': `Bearer ${apiKey}`
+    });
+
+    if (!responseData.choices?.[0]?.message?.content) {
+        throw new Error('OpenAI API returned an unexpected response format.');
+    }
+
+    return responseData.choices[0].message.content.trim();
 }
 
 async function fetchAnthropicResponse(apiKey, payload, settings, signal) {
-    // TODO: Implement Anthropic API call
-    return "Anthropic response";
+    const { ai_model } = settings;
+    const responseData = await apiClient('https://api.anthropic.com/v1/messages', 'POST', {
+        model: ai_model,
+        messages: payload.messages,
+        temperature: payload.temperature,
+        top_p: payload.top_p,
+        max_tokens: 1024,
+    }, {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+    });
+
+    if (!responseData.content?.[0]?.text) {
+        throw new Error('Anthropic API returned an unexpected response format.');
+    }
+
+    return responseData.content[0].text.trim();
 }
 
 function buildFinalPayload(data) {
@@ -106,40 +134,17 @@ function cleanAIResponse(rawResponse) {
     return (earliestStopIndex !== -1 ? rawResponse.substring(0, earliestStopIndex) : rawResponse).trim();
 }
 
+import { apiClient } from './apiClient.js';
+
 async function fetchLocalLlamaResponse(apiKey, payload, settings, signal) {
     const { local_llama_url } = settings;
-    const headers = {
-        "Content-Type": "application/json"
-    };
-    if (apiKey)
+    const headers = {};
+    if (apiKey) {
         headers["Authorization"] = `Bearer ${apiKey}`;
-
-    let response;
-    try {
-        response = await fetch(local_llama_url, {
-            method: "POST",
-            headers,
-            body: JSON.stringify(payload),
-            signal
-        });
-    } catch (error) {
-        if (error.name === 'AbortError')
-            throw error;
-        throw new Error(`Network Error: Could not connect to the AI server at ${local_llama_url}.`);
     }
 
-    if (!response.ok) {
-        let errorBody = await response.text();
-        let errorMessage = errorBody;
-        try {
-            const errorJson = JSON.parse(errorBody);
-            errorMessage = errorJson.error?.message || errorJson.error || JSON.stringify(errorJson);
-        } catch (e) { /* Not JSON */
-        }
-        throw new Error(`Local server error: ${response.status} - ${errorMessage}`);
-    }
+    const responseData = await apiClient(local_llama_url, 'POST', payload, headers);
 
-    const responseData = await response.json();
     if (payload.response_format?.type === "json_object") {
         return responseData.choices[0].message.content;
     }

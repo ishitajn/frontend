@@ -8,6 +8,7 @@ import { fetchTimezoneFromCoords, geocodeLocation } from './modules/geolocation.
 import { getGenerationState, setGenerationState, DEFAULTS } from './modules/state.js';
 import { handleAITask, buildFinalPayload } from './modules/ai.js';
 import { USER_LOCATIONS } from './modules/config.js';
+import { apiClient } from './modules/apiClient.js';
 
 spacetime.extend(informal);
 
@@ -331,19 +332,11 @@ Generate one date idea in the specified JSON format.`;
         "testApiConnection": async(request) => {
             const { url } = request.data;
             try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model: "test",
-                        messages: [{ role: "user", content: "hello" }]
-                    })
+                await apiClient(url, 'POST', {
+                    model: "test",
+                    messages: [{ role: "user", content: "hello" }]
                 });
-                if (response.ok) {
-                    port.postMessage({ action: 'testConnectionResponse', success: true, type: 'api' });
-                } else {
-                    port.postMessage({ action: 'testConnectionResponse', success: false, type: 'api', error: `Server responded with status: ${response.status}` });
-                }
+                port.postMessage({ action: 'testConnectionResponse', success: true, type: 'api' });
             } catch (error) {
                 port.postMessage({ action: 'testConnectionResponse', success: false, type: 'api', error: error.message });
             }
@@ -352,32 +345,23 @@ Generate one date idea in the specified JSON format.`;
         "testNlpConnection": async(request) => {
             const { url } = request.data;
             try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain' },
-                    body: JSON.stringify({
-                        matchId: "test",
-                        scraped_data: {
-                            myName: "test",
-                            theirName: "test",
-                            theirProfile: "test",
-                            theirLocationString: "test",
-                            conversationHistory: []
-                        },
-                        ui_settings: {
-                            useEnhancedNlp: false,
-                            myLocation: "test",
-                            myProfile: "test",
-                            local_model_name: "test"
-                        }
-                    })
-                });
-                if (response.ok) {
-                    port.postMessage({ action: 'testConnectionResponse', success: true, type: 'nlp' });
-                } else {
-                    const errorText = await response.text();
-                    port.postMessage({ action: 'testConnectionResponse', success: false, type: 'nlp', error: `Server responded with status: ${response.status} - ${errorText}` });
-                }
+                await apiClient(url, 'POST', {
+                    matchId: "test",
+                    scraped_data: {
+                        myName: "test",
+                        theirName: "test",
+                        theirProfile: "test",
+                        theirLocationString: "test",
+                        conversationHistory: []
+                    },
+                    ui_settings: {
+                        useEnhancedNlp: false,
+                        myLocation: "test",
+                        myProfile: "test",
+                        local_model_name: "test"
+                    }
+                }, { 'Content-Type': 'text/plain' });
+                port.postMessage({ action: 'testConnectionResponse', success: true, type: 'nlp' });
             } catch (error) {
                 port.postMessage({ action: 'testConnectionResponse', success: false, type: 'nlp', error: error.message });
             }

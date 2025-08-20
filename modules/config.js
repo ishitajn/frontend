@@ -21,6 +21,8 @@ export const DEFAULTS = {
     nlp_mode: 'offline',
     ai_provider: 'local_llama',
     ai_model: 'llama3:latest',
+    time_api_url: 'https://timeapi.io/api/time/current/coordinate',
+    nominatim_api_url: 'https://nominatim.openstreetmap.org/search',
 };
 
 export const MATCH_SPECIFIC_SETTINGS_KEYS = [
