@@ -10,7 +10,6 @@
 // TINDER SCRAPER & PASTER
 // ===================================================================================
 
-
 export function scrapeTinderPage() {
     const TINDER_SELECTORS = {
         myName: 'a[title="My Profile"] h2 span',

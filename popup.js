@@ -192,7 +192,14 @@ async function handleNlpAnalysisResponse(message) {
     state.currentMatchUUID = message.matchProfile.uuid;
 
     await loadAndApplySettings();
-    await handleLocationChange();
+
+    // The new NLP analysis response contains the geoContext, so we can update the UI directly
+    if (state.sessionMatchProfile.analysis?.geoContext) {
+        updateGeoContextDisplay(state.sessionMatchProfile.analysis.geoContext, state.sessionMatchProfile, state.sessionScrapedData);
+    } else {
+        // If it's not there, fall back to the old method for now.
+        await handleLocationChange();
+    }
 
     displayConversationState();
     showView(SELECTORS.mainView);
@@ -521,24 +528,28 @@ function displayConversationState() {
     if (!state.sessionMatchProfile?.analysis)
         return;
     const analysis = state.sessionMatchProfile.analysis;
-    const convoState = analysis.conversationState;
-    const dateArcPhase = analysis.memory.dateArcPhase;
+    const convoState = analysis.conversation_dynamics?.stage;
+    const dateArcPhase = analysis.recommended_actions?.dateArcPhase;
 
     const stateDisplayMap = {
-        'OPENER': 'Status: New Conversation (Opener)',
-        'EARLY_CONVO': 'Status: Early Conversation',
-        'ACTIVE_CONVO': 'Status: Active Conversation',
-        'REENGAGING_DAY': 'Status: Re-engaging (1-7 day pause)',
-        'REENGAGING_WEEK': 'Status: Re-engaging (1-4 week pause)',
-        'REENGAGING_MONTH': 'Status: Re-engaging (1+ month pause)'
+        'opener': 'Status: New Conversation (Opener)',
+        'rapport_building': 'Status: Rapport Building',
+        'escalation': 'Status: Escalating',
+        'planning_meetup': 'Status: Planning Meetup',
+        'break_over_day': 'Status: Re-engaging (1-7 day pause)',
+        'break_over_week': 'Status: Re-engaging (1-4 week pause)',
+        'break_over_month': 'Status: Re-engaging (1+ month pause)'
     };
     const statusEl = document.getElementById(SELECTORS.conversationStatusDisplay);
-    if (statusEl)
-        statusEl.textContent = stateDisplayMap[convoState] || 'Status: Unknown';
+    if (statusEl && convoState && typeof convoState === 'string') {
+        statusEl.textContent = stateDisplayMap[convoState.toLowerCase()] || `Status: ${convoState}`;
+    } else if (statusEl) {
+        statusEl.textContent = 'Status: Unknown';
+    }
 
     const dateIdeaBtn = document.getElementById(SELECTORS.dateIdeaBtn);
     if (dateIdeaBtn) {
-        const showButton = dateArcPhase === 'escalation' || dateArcPhase === 'planning';
+        const showButton = dateArcPhase === 'escalation' || dateArcPhase === 'planning_meetup';
         dateIdeaBtn.classList.toggle('hidden', !showButton);
     }
 }

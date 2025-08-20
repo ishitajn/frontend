@@ -278,40 +278,37 @@ function getTooltipContent(tooltipId) {
     }
 }
 
-export async function updateGeoContextDisplay(geoContextData, sessionMatchProfile, sessionScrapedData) {
-    if (!sessionMatchProfile || !sessionScrapedData)
-        return;
+export function updateGeoContextDisplay(geoContext, sessionMatchProfile, sessionScrapedData) {
+    if (!sessionMatchProfile || !sessionScrapedData) return;
 
     const { myName } = sessionScrapedData;
-    const { theirName, matchLocation } = sessionMatchProfile.metadata;
-    const settings = await chrome.storage.local.get('userLocationChoice');
-    const userLocationData = USER_LOCATIONS[settings.userLocationChoice || 'autodetect'];
+    const { theirName } = sessionMatchProfile.metadata;
     const card = document.getElementById(SELECTORS.geoContextCard);
 
-    if (card)
-        card.hidden = !geoContextData;
-    if (!geoContextData)
-        return;
+    if (card) card.hidden = !geoContext;
+    if (!geoContext) return;
+
+    const { userLocation, matchLocation, distance_miles, timeZoneDifference, countryDifference } = geoContext;
 
     const dataMap = {
         geoUserName: myName || 'User',
         geoMatchName: theirName || 'Match',
-        userLocation: userLocationData.name.split(',')[0],
-        matchLocation: matchLocation,
-        userTimeOfDay: geoContextData.userTimeOfDay,
-        matchTimeOfDay: geoContextData.matchTimeOfDay,
-        userTimezone: geoContextData.userTimeZoneName || userLocationData.timeZone,
-        matchCountry: geoContextData.matchCountry,
-        userCountry: geoContextData.userCountry || userLocationData.country,
-        timeDifference: geoContextData.timeZoneDifference !== null ? `${geoContextData.timeZoneDifference} hour(s)` : 'N/A',
-        distanceInfo: `${geoContextData.distance.miles} miles / ${geoContextData.distance.km} km`,
-        countryDifference: `${geoContextData.countryDifference}`
+        userLocation: userLocation?.city || 'Your Location',
+        matchLocation: matchLocation?.city || 'Their Location',
+        userTimeOfDay: userLocation?.timeOfDay || 'N/A',
+        matchTimeOfDay: matchLocation?.timeOfDay || 'N/A',
+        userTimezone: userLocation?.timeZone || 'N/A',
+        matchTimezone: matchLocation?.timeZone || 'N/A',
+        userCountry: userLocation?.country || 'N/A',
+        matchCountry: matchLocation?.country || 'N/A',
+        timeDifference: timeZoneDifference !== null ? `${timeZoneDifference} hour(s)` : 'N/A',
+        distanceInfo: distance_miles !== null ? `${Math.round(distance_miles)} miles` : 'N/A',
+        countryDifference: countryDifference ? 'Yes' : 'No'
     };
 
     Object.entries(dataMap).forEach(([id, text]) => {
         const el = document.getElementById(SELECTORS[id]);
-        if (el)
-            el.textContent = text || 'N/A';
+        if (el) el.textContent = text ?? 'N/A';
     });
 }
 
