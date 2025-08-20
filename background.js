@@ -392,7 +392,7 @@ Generate one date idea in the specified JSON format.`;
         const response = await fetch(url, {
             method: 'POST',
             headers: {
-                'Content-Type': 'text/plain'
+                'Content-Type': 'application/json'
             },
             body: JSON.stringify(requestBody)
         });
