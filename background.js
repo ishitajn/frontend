@@ -80,7 +80,7 @@ chrome.runtime.onConnect.addListener((port) => {
                     if (!conversationAnalysisUrl) {
                         throw new Error("Conversation Analysis URL is not configured.");
                     }
-                    matchProfile = await fetchConversationAnalysis(conversationAnalysisUrl, scrapedData, nlpMode, uuid);
+                    matchProfile.analysis = await fetchConversationAnalysis(conversationAnalysisUrl, scrapedData, nlpMode, uuid);
                 }
 
                 matchProfile.metadata.lastUpdated = new Date().toISOString();

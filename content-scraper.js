@@ -10,180 +10,181 @@
 // TINDER SCRAPER & PASTER
 // ===================================================================================
 
-const TINDER_SELECTORS = {
-    myName: 'a[title="My Profile"] h2 span',
-    theirName: '.chatProfile h1 span:first-child',
-    theirAge: '.chatProfile h1 span.Typs\\(display-2-regular\\)',
-    verified: '.chatProfile h1 svg[title="Verified!"]',
-    profileContainer: 'div[class*="Bgc(--color--background-sparks-profile)"]',
-    profileSection: ':scope > div > div',
-    location: '.chatProfile .Typs\\(body-1-regular\\)',
-    chatLogContainer: 'div[role="log"]',
-    matchMessage: 'h1.Typs\\(display-3-regular\\)',
-    chatNodes: ':scope > *',
-    messageText: 'span.text',
-    sentMessage: 'div[role="article"].Ta\\(e\\)',
-    messageStatus: 'div[class*="msg__status"]',
-    interestsSection: {
-        title: 'interests',
-        items: 'li span',
-    },
-    lookingForSection: {
-        title: 'looking for',
-        text: '.Typs\\(display-3-strong\\)',
-        type: '.Bdrs\\(30px\\)',
-    },
-    genericSection: {
-        items: 'li',
-        key: 'h3',
-        value: '.Typs\\(body-1-regular\\)',
-    },
-};
-
-function parseTinderDate(dateText) {
-    const today = new Date();
-    const text = dateText.toLowerCase().trim();
-    const formatDate = (d) => d.toISOString().split('T')[0];
-
-    if (text === 'today') return formatDate(today);
-    if (text === 'yesterday') {
-        const yesterday = new Date();
-        yesterday.setDate(today.getDate() - 1);
-        return formatDate(yesterday);
-    }
-
-    try {
-        const dateOnlyText = text.split(',')[0];
-        const parts = dateOnlyText.split('/');
-        if (parts.length === 3) {
-            const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
-            const month = parts[0].padStart(2, '0');
-            const day = parts[1].padStart(2, '0');
-            const isoDate = new Date(`${year}-${month}-${day}`);
-            if (!isNaN(isoDate.getTime())) return formatDate(isoDate);
-        }
-        const parsed = new Date(text);
-        if (!isNaN(parsed.getTime())) return formatDate(parsed);
-    } catch (e) {
-        console.warn('[Tinder Scraper] Could not parse date:', dateText);
-    }
-    return null;
-}
-
-function scrapeTinderProfile(theirName, theirAge) {
-    const profileParts = [`Name: ${theirName}, Age: ${theirAge}`];
-    const matchBasics = {};
-    const profileContainer = document.querySelector(TINDER_SELECTORS.profileContainer);
-    if (profileContainer) {
-        const sections = profileContainer.querySelectorAll(TINDER_SELECTORS.profileSection);
-        sections.forEach(sectionWrapper => {
-            const parsedData = parseProfileSection(sectionWrapper);
-            if (parsedData && parsedData.content) {
-                profileParts.push(`\n${parsedData.title}:${parsedData.content}`);
-                Object.assign(matchBasics, parsedData.basics);
-            }
-        });
-    }
-    return { theirProfile: profileParts.join('\n'), matchBasics };
-}
-
-function parseProfileSection(sectionWrapper) {
-    const titleElement = sectionWrapper.querySelector('h2');
-    if (!titleElement) return null;
-
-    const title = titleElement.textContent.trim();
-    const basics = {};
-    let content = '';
-
-    if (title.toLowerCase() === 'about me') {
-        const aboutMeContentElement = titleElement.parentElement.nextElementSibling;
-        if (aboutMeContentElement) {
-            content = aboutMeContentElement.textContent.trim();
-            if (content) basics['About'] = content;
-        }
-    } else if (title.toLowerCase() === TINDER_SELECTORS.interestsSection.title) {
-        const interests = Array.from(sectionWrapper.querySelectorAll(TINDER_SELECTORS.interestsSection.items)).map(el => el.textContent.trim());
-        content = interests.join(', ');
-        if (content) basics['Interests'] = content;
-    } else if (title.toLowerCase() === TINDER_SELECTORS.lookingForSection.title) {
-        const lookingForText = sectionWrapper.querySelector(TINDER_SELECTORS.lookingForSection.text)?.textContent.trim();
-        const relationshipType = sectionWrapper.querySelector(TINDER_SELECTORS.lookingForSection.type)?.textContent.trim();
-        const items = [lookingForText, relationshipType].filter(Boolean);
-        content = items.join('; ');
-        if (lookingForText) basics['Looking for'] = lookingForText;
-        if (relationshipType) basics['Relationship Type'] = relationshipType;
-    } else {
-        const items = [];
-        sectionWrapper.querySelectorAll(TINDER_SELECTORS.genericSection.items).forEach(li => {
-            const keyEl = li.querySelector(TINDER_SELECTORS.genericSection.key);
-            const valueEl = li.querySelector(TINDER_SELECTORS.genericSection.value);
-            if (keyEl && valueEl) {
-                const key = keyEl.textContent.trim();
-                const value = valueEl.textContent.trim();
-                items.push(`${key}: ${value}`);
-                basics[key] = value;
-            } else {
-                const text = li.textContent.trim().replace(/\n/g, ' ').replace(/\s+/g, ' ');
-                if (text) items.push(text);
-            }
-        });
-        content = items.join('; ');
-    }
-
-    return { title, content, basics };
-}
-
-function scrapeTinderConversationHistory() {
-    const conversationHistory = [];
-    const chatLogContainer = document.querySelector(TINDER_SELECTORS.chatLogContainer);
-    let currentDate = new Date().toISOString().split('T')[0];
-
-    const matchMessageElement = chatLogContainer?.querySelector(TINDER_SELECTORS.matchMessage);
-    if (matchMessageElement) {
-        const matchText = matchMessageElement.textContent.trim();
-        const match = matchText.match(/you matched with .* on (.*)/i);
-        if (match && match[1]) {
-            const date = parseTinderDate(match[1]);
-            if (date) currentDate = date;
-        }
-    }
-
-    const allChatNodes = chatLogContainer?.querySelectorAll(TINDER_SELECTORS.chatNodes);
-
-    allChatNodes?.forEach(node => {
-        if (node.tagName === 'TIME') {
-            const dateText = node.textContent.trim();
-            const parsedDate = parseTinderDate(dateText);
-            if (parsedDate) {
-                currentDate = parsedDate;
-            }
-            return;
-        }
-
-        if (node.tagName === 'DIV' && node.getAttribute('role') === 'article') {
-            const messageText = node.querySelector(TINDER_SELECTORS.messageText)?.textContent.trim();
-            if (!messageText) return;
-
-            const isMyMessage = node.classList.contains('Ta(e)');
-            const role = isMyMessage ? 'user' : 'assistant';
-            
-            const lastMessage = conversationHistory.length > 0 ? conversationHistory[conversationHistory.length - 1] : null;
-
-            if (lastMessage && lastMessage.role === role && lastMessage.date === currentDate) {
-                lastMessage.content += `. ${messageText}`;
-            } else {
-                conversationHistory.push({
-                    role,
-                    content: messageText,
-                    date: currentDate
-                });
-            }
-        }
-    });
-    return conversationHistory;
-}
 
 export function scrapeTinderPage() {
+    const TINDER_SELECTORS = {
+        myName: 'a[title="My Profile"] h2 span',
+        theirName: '.chatProfile h1 span:first-child',
+        theirAge: '.chatProfile h1 span.Typs\\(display-2-regular\\)',
+        verified: '.chatProfile h1 svg[title="Verified!"]',
+        profileContainer: 'div[class*="Bgc(--color--background-sparks-profile)"]',
+        profileSection: ':scope > div > div',
+        location: '.chatProfile .Typs\\(body-1-regular\\)',
+        chatLogContainer: 'div[role="log"]',
+        matchMessage: 'h1.Typs\\(display-3-regular\\)',
+        chatNodes: ':scope > *',
+        messageText: 'span.text',
+        sentMessage: 'div[role="article"].Ta\\(e\\)',
+        messageStatus: 'div[class*="msg__status"]',
+        interestsSection: {
+            title: 'interests',
+            items: 'li span',
+        },
+        lookingForSection: {
+            title: 'looking for',
+            text: '.Typs\\(display-3-strong\\)',
+            type: '.Bdrs\\(30px\\)',
+        },
+        genericSection: {
+            items: 'li',
+            key: 'h3',
+            value: '.Typs\\(body-1-regular\\)',
+        },
+    };
+
+    function parseTinderDate(dateText) {
+        const today = new Date();
+        const text = dateText.toLowerCase().trim();
+        const formatDate = (d) => d.toISOString().split('T')[0];
+
+        if (text === 'today') return formatDate(today);
+        if (text === 'yesterday') {
+            const yesterday = new Date();
+            yesterday.setDate(today.getDate() - 1);
+            return formatDate(yesterday);
+        }
+
+        try {
+            const dateOnlyText = text.split(',')[0];
+            const parts = dateOnlyText.split('/');
+            if (parts.length === 3) {
+                const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+                const month = parts[0].padStart(2, '0');
+                const day = parts[1].padStart(2, '0');
+                const isoDate = new Date(`${year}-${month}-${day}`);
+                if (!isNaN(isoDate.getTime())) return formatDate(isoDate);
+            }
+            const parsed = new Date(text);
+            if (!isNaN(parsed.getTime())) return formatDate(parsed);
+        } catch (e) {
+            console.warn('[Tinder Scraper] Could not parse date:', dateText);
+        }
+        return null;
+    }
+
+    function parseProfileSection(sectionWrapper) {
+        const titleElement = sectionWrapper.querySelector('h2');
+        if (!titleElement) return null;
+
+        const title = titleElement.textContent.trim();
+        const basics = {};
+        let content = '';
+
+        if (title.toLowerCase() === 'about me') {
+            const aboutMeContentElement = titleElement.parentElement.nextElementSibling;
+            if (aboutMeContentElement) {
+                content = aboutMeContentElement.textContent.trim();
+                if (content) basics['About'] = content;
+            }
+        } else if (title.toLowerCase() === TINDER_SELECTORS.interestsSection.title) {
+            const interests = Array.from(sectionWrapper.querySelectorAll(TINDER_SELECTORS.interestsSection.items)).map(el => el.textContent.trim());
+            content = interests.join(', ');
+            if (content) basics['Interests'] = content;
+        } else if (title.toLowerCase() === TINDER_SELECTORS.lookingForSection.title) {
+            const lookingForText = sectionWrapper.querySelector(TINDER_SELECTORS.lookingForSection.text)?.textContent.trim();
+            const relationshipType = sectionWrapper.querySelector(TINDER_SELECTORS.lookingForSection.type)?.textContent.trim();
+            const items = [lookingForText, relationshipType].filter(Boolean);
+            content = items.join('; ');
+            if (lookingForText) basics['Looking for'] = lookingForText;
+            if (relationshipType) basics['Relationship Type'] = relationshipType;
+        } else {
+            const items = [];
+            sectionWrapper.querySelectorAll(TINDER_SELECTORS.genericSection.items).forEach(li => {
+                const keyEl = li.querySelector(TINDER_SELECTORS.genericSection.key);
+                const valueEl = li.querySelector(TINDER_SELECTORS.genericSection.value);
+                if (keyEl && valueEl) {
+                    const key = keyEl.textContent.trim();
+                    const value = valueEl.textContent.trim();
+                    items.push(`${key}: ${value}`);
+                    basics[key] = value;
+                } else {
+                    const text = li.textContent.trim().replace(/\n/g, ' ').replace(/\s+/g, ' ');
+                    if (text) items.push(text);
+                }
+            });
+            content = items.join('; ');
+        }
+
+        return { title, content, basics };
+    }
+
+    function scrapeTinderProfile(theirName, theirAge) {
+        const profileParts = [`Name: ${theirName}, Age: ${theirAge}`];
+        const matchBasics = {};
+        const profileContainer = document.querySelector(TINDER_SELECTORS.profileContainer);
+        if (profileContainer) {
+            const sections = profileContainer.querySelectorAll(TINDER_SELECTORS.profileSection);
+            sections.forEach(sectionWrapper => {
+                const parsedData = parseProfileSection(sectionWrapper);
+                if (parsedData && parsedData.content) {
+                    profileParts.push(`\n${parsedData.title}:${parsedData.content}`);
+                    Object.assign(matchBasics, parsedData.basics);
+                }
+            });
+        }
+        return { theirProfile: profileParts.join('\n'), matchBasics };
+    }
+
+    function scrapeTinderConversationHistory() {
+        const conversationHistory = [];
+        const chatLogContainer = document.querySelector(TINDER_SELECTORS.chatLogContainer);
+        let currentDate = new Date().toISOString().split('T')[0];
+
+        const matchMessageElement = chatLogContainer?.querySelector(TINDER_SELECTORS.matchMessage);
+        if (matchMessageElement) {
+            const matchText = matchMessageElement.textContent.trim();
+            const match = matchText.match(/you matched with .* on (.*)/i);
+            if (match && match[1]) {
+                const date = parseTinderDate(match[1]);
+                if (date) currentDate = date;
+            }
+        }
+
+        const allChatNodes = chatLogContainer?.querySelectorAll(TINDER_SELECTORS.chatNodes);
+
+        allChatNodes?.forEach(node => {
+            if (node.tagName === 'TIME') {
+                const dateText = node.textContent.trim();
+                const parsedDate = parseTinderDate(dateText);
+                if (parsedDate) {
+                    currentDate = parsedDate;
+                }
+                return;
+            }
+
+            if (node.tagName === 'DIV' && node.getAttribute('role') === 'article') {
+                const messageText = node.querySelector(TINDER_SELECTORS.messageText)?.textContent.trim();
+                if (!messageText) return;
+
+                const isMyMessage = node.classList.contains('Ta(e)');
+                const role = isMyMessage ? 'user' : 'assistant';
+
+                const lastMessage = conversationHistory.length > 0 ? conversationHistory[conversationHistory.length - 1] : null;
+
+                if (lastMessage && lastMessage.role === role && lastMessage.date === currentDate) {
+                    lastMessage.content += `. ${messageText}`;
+                } else {
+                    conversationHistory.push({
+                        role,
+                        content: messageText,
+                        date: currentDate
+                    });
+                }
+            }
+        });
+        return conversationHistory;
+    }
+
     console.log('[Tinder Scraper] Starting scrapeTinderPage function.');
     try {
         const myNameElement = document.querySelector(TINDER_SELECTORS.myName);
@@ -191,7 +192,7 @@ export function scrapeTinderPage() {
 
         const theirNameElement = document.querySelector(TINDER_SELECTORS.theirName);
         const theirName = theirNameElement ? theirNameElement.textContent.trim() : "Match";
-        
+
         const theirAgeElement = document.querySelector(TINDER_SELECTORS.theirAge);
         const theirAge = theirAgeElement ? theirAgeElement.textContent.trim() : "Not specified";
 
@@ -263,7 +264,7 @@ export function scrapeBumblePage() {
     const BUMBLE_SELECTORS = {
         detailedProfilePage: 'section[data-qa-role="settings-section-about"]',
         myName: '[data-qa-role="sidebar-profile-name"]',
-        theirProfilePane: 'aside.page__profile.is-expanded .profile',
+        theirProfilePane: 'aside.page__profile .profile',
         theirName: '[data-qa-role="profile-name"]',
         theirAge: '[data-qa-role="profile-age"]',
         verified: '.profile__verify span[data-qa-icon-name="badge-feature-verification"]',
