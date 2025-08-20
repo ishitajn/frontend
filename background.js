@@ -5,8 +5,9 @@ import informal from './lib/spacetime-informal.min.js';
 import { DEBUG } from './modules/debug.js';
 import { memoryManager, generateCacheHash } from './modules/matchMemory.js';
 import { fetchTimezoneFromCoords, geocodeLocation } from './modules/geolocation.js';
-import { getGenerationState, setGenerationState } from './modules/state.js';
+import { getGenerationState, setGenerationState, DEFAULTS } from './modules/state.js';
 import { handleAITask, buildFinalPayload } from './modules/ai.js';
+import { USER_LOCATIONS } from './modules/config.js';
 
 spacetime.extend(informal);
 
@@ -385,6 +386,8 @@ Generate one date idea in the specified JSON format.`;
 
     async function fetchConversationAnalysis(url, scrapedData, nlpMode, uuid) {
         const settings = await chrome.storage.local.get(['userLocationChoice', 'myProfile', 'ai_model']);
+        const locationName = USER_LOCATIONS[settings.userLocationChoice]?.name || settings.userLocationChoice;
+
         const requestBody = {
             matchId: uuid,
             scraped_data: {
@@ -396,7 +399,7 @@ Generate one date idea in the specified JSON format.`;
             },
             ui_settings: {
                 useEnhancedNlp: nlpMode === 'enhanced',
-                myLocation: settings.userLocationChoice,
+                myLocation: locationName,
                 myProfile: settings.myProfile,
                 local_model_name: settings.ai_model
             }

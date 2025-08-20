@@ -47,9 +47,23 @@ function updateModelDropdown() {
 
 document.addEventListener('DOMContentLoaded', initializePopup);
 
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+const debouncedRefreshDataAndUI = debounce(refreshDataAndUI, 500);
+
 async function initializePopup() {
     const callbacks = {
-        refreshDataAndUI,
+        refreshDataAndUI: debouncedRefreshDataAndUI,
         handleGenerateClick,
         handleCopyClick,
         handleCancelClick,
