@@ -353,7 +353,7 @@ Generate one date idea in the specified JSON format.`;
             try {
                 const response = await fetch(url, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'text/plain' },
                     body: JSON.stringify({
                         matchId: "test",
                         scraped_data: {
@@ -405,7 +405,7 @@ Generate one date idea in the specified JSON format.`;
         const response = await fetch(url, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'text/plain'
             },
             body: JSON.stringify(requestBody)
         });
