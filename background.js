@@ -78,7 +78,7 @@ chrome.runtime.onConnect.addListener((port) => {
                     if (!conversationAnalysisUrl) {
                         throw new Error("Conversation Analysis URL is not configured.");
                     }
-                    matchProfile = await fetchConversationAnalysis(conversationAnalysisUrl, scrapedData, nlpMode);
+                    matchProfile = await fetchConversationAnalysis(conversationAnalysisUrl, scrapedData, nlpMode, uuid);
                 }
 
                 matchProfile.metadata.lastUpdated = new Date().toISOString();
@@ -374,7 +374,8 @@ Generate one date idea in the specified JSON format.`;
                 if (response.ok) {
                     port.postMessage({ action: 'testConnectionResponse', success: true, type: 'nlp' });
                 } else {
-                    port.postMessage({ action: 'testConnectionResponse', success: false, type: 'nlp', error: `Server responded with status: ${response.status}` });
+                    const errorText = await response.text();
+                    port.postMessage({ action: 'testConnectionResponse', success: false, type: 'nlp', error: `Server responded with status: ${response.status} - ${errorText}` });
                 }
             } catch (error) {
                 port.postMessage({ action: 'testConnectionResponse', success: false, type: 'nlp', error: error.message });
@@ -382,10 +383,10 @@ Generate one date idea in the specified JSON format.`;
         }
     };
 
-    async function fetchConversationAnalysis(url, scrapedData, nlpMode) {
+    async function fetchConversationAnalysis(url, scrapedData, nlpMode, uuid) {
         const settings = await chrome.storage.local.get(['userLocationChoice', 'myProfile', 'ai_model']);
         const requestBody = {
-            matchId: scrapedData.uuid,
+            matchId: uuid,
             scraped_data: {
                 myName: scrapedData.myName,
                 theirName: scrapedData.theirName,
