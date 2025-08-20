@@ -93,7 +93,6 @@ async function initializePopup() {
     });
     await loadAndApplySettings();
     updateModelDropdown();
-    await refreshDataAndUI();
 }
 
 function handleTestApiConnection() {
