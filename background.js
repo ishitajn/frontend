@@ -375,17 +375,17 @@ Generate one date idea in the specified JSON format.`;
         const requestBody = {
             matchId: uuid,
             scraped_data: {
-                myName: scrapedData.myName,
-                theirName: scrapedData.theirName,
-                theirProfile: scrapedData.theirProfile,
-                theirLocationString: scrapedData.matchLocation,
-                conversationHistory: scrapedData.conversationHistory
+                myName: scrapedData.myName ?? "Unknown",
+                theirName: scrapedData.theirName ?? "Unknown",
+                theirProfile: scrapedData.theirProfile ?? "",
+                theirLocationString: scrapedData.matchLocation ?? "",
+                conversationHistory: scrapedData.conversationHistory ?? []
             },
             ui_settings: {
                 useEnhancedNlp: nlpMode === 'enhanced',
-                myLocation: locationName,
-                myProfile: settings.myProfile,
-                local_model_name: settings.ai_model
+                myLocation: locationName ?? "",
+                myProfile: settings.myProfile ?? "",
+                local_model_name: settings.ai_model ?? ""
             }
         };
 
