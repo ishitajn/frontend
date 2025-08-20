@@ -46,30 +46,15 @@ export function setupEventListeners(callbacks) {
 
     document.getElementById('ai-provider-select')?.addEventListener('change', callbacks.updateModelDropdown);
 
-    document.querySelector('.tab-buttons')?.addEventListener('click', (event) => {
+    document.querySelector('.app-container')?.addEventListener('click', (event) => {
         const target = event.target.closest('.tab-button');
         if (!target) return;
 
         const tabId = target.dataset.tab;
+        const tabContainer = target.closest('.tab-container');
 
-        // Handle main tabs
-        if (target.parentElement.parentElement.id !== 'settings-view') {
-            document.querySelectorAll('#main-view .tab-button').forEach(btn => btn.classList.remove('active'));
-            document.querySelectorAll('#main-view .tab-content').forEach(content => content.classList.remove('active'));
-        }
-
-        target.classList.add('active');
-        document.getElementById(tabId)?.classList.add('active');
-    });
-
-    document.querySelector('#settings-view .tab-buttons')?.addEventListener('click', (event) => {
-        const target = event.target.closest('.tab-button');
-        if (!target) return;
-
-        const tabId = target.dataset.tab;
-
-        document.querySelectorAll('#settings-view .tab-button').forEach(btn => btn.classList.remove('active'));
-        document.querySelectorAll('#settings-view .tab-content').forEach(content => content.classList.remove('active'));
+        tabContainer.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+        tabContainer.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
 
         target.classList.add('active');
         document.getElementById(tabId)?.classList.add('active');

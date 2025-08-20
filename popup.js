@@ -97,7 +97,7 @@ async function initializePopup() {
 }
 
 function handleTestApiConnection() {
-    const url = document.getElementById(SELECTORS.localLlamaUrl).value;
+    const url = document.getElementById('localLlamaUrl').value;
     const resultEl = document.getElementById('api-test-result');
     resultEl.textContent = 'Testing...';
     resultEl.className = 'test-result';
