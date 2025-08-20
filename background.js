@@ -355,8 +355,20 @@ Generate one date idea in the specified JSON format.`;
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        scrapedData: { conversationHistory: [] },
-                        nlpMode: 'fast'
+                        matchId: "test",
+                        scraped_data: {
+                            myName: "test",
+                            theirName: "test",
+                            theirProfile: "test",
+                            theirLocationString: "test",
+                            conversationHistory: []
+                        },
+                        ui_settings: {
+                            useEnhancedNlp: false,
+                            myLocation: "test",
+                            myProfile: "test",
+                            local_model_name: "test"
+                        }
                     })
                 });
                 if (response.ok) {
@@ -371,15 +383,30 @@ Generate one date idea in the specified JSON format.`;
     };
 
     async function fetchConversationAnalysis(url, scrapedData, nlpMode) {
+        const settings = await chrome.storage.local.get(['userLocationChoice', 'myProfile', 'ai_model']);
+        const requestBody = {
+            matchId: scrapedData.uuid,
+            scraped_data: {
+                myName: scrapedData.myName,
+                theirName: scrapedData.theirName,
+                theirProfile: scrapedData.theirProfile,
+                theirLocationString: scrapedData.matchLocation,
+                conversationHistory: scrapedData.conversationHistory
+            },
+            ui_settings: {
+                useEnhancedNlp: nlpMode === 'enhanced',
+                myLocation: settings.userLocationChoice,
+                myProfile: settings.myProfile,
+                local_model_name: settings.ai_model
+            }
+        };
+
         const response = await fetch(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-                scrapedData,
-                nlpMode
-            })
+            body: JSON.stringify(requestBody)
         });
 
         if (!response.ok) {
