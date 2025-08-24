@@ -326,18 +326,29 @@ export function updateConversationAnalysisDisplay(analysis) {
     }
 
     const { sentiment, flirtation_level, engagement, pace } = analysis;
+    const parts = [];
 
-    const sentimentEmoji = sentiment > 0.5 ? '🟢' : sentiment < -0.5 ? '🔴' : '🟡';
-    const flirtEmoji = flirtation_level > 0.7 ? '🔥' : flirtation_level > 0.4 ? '😏' : '😊';
-    const engagementEmoji = engagement > 0.6 ? '💬' : '...';
-    const paceEmoji = pace > 10 ? '🐇' : pace < 2 ? '🐢' : '🚶';
+    if (typeof sentiment === 'number') {
+        const sentimentEmoji = sentiment > 0.5 ? '🟢' : sentiment < -0.5 ? '🔴' : '🟡';
+        parts.push(`<span>${sentimentEmoji} Sentiment: ${sentiment.toFixed(2)}</span>`);
+    }
 
-    displayEl.innerHTML = `
-        <span>${sentimentEmoji} Sentiment: ${sentiment.toFixed(2)}</span> |
-        <span>${flirtEmoji} Flirtation: ${flirtation_level.toFixed(2)}</span> |
-        <span>${engagementEmoji} Engagement: ${engagement.toFixed(2)}</span> |
-        <span>${paceEmoji} Pace: ${pace.toFixed(2)}</span>
-    `;
+    if (typeof flirtation_level === 'number') {
+        const flirtEmoji = flirtation_level > 0.7 ? '🔥' : flirtation_level > 0.4 ? '😏' : '😊';
+        parts.push(`<span>${flirtEmoji} Flirtation: ${flirtation_level.toFixed(2)}</span>`);
+    }
+
+    if (typeof engagement === 'number') {
+        const engagementEmoji = engagement > 0.6 ? '💬' : '...';
+        parts.push(`<span>${engagementEmoji} Engagement: ${engagement.toFixed(2)}</span>`);
+    }
+
+    if (typeof pace === 'number') {
+        const paceEmoji = pace > 10 ? '🐇' : pace < 2 ? '🐢' : '🚶';
+        parts.push(`<span>${paceEmoji} Pace: ${pace.toFixed(2)}</span>`);
+    }
+
+    displayEl.innerHTML = parts.join(' | ');
 }
 
 export function updateTopicsDisplay(analysis) {
