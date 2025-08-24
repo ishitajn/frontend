@@ -10,17 +10,22 @@ import { buildTaskPrompt } from './prompts/taskPrompt.js';
  * @returns {{systemMessage: string, userMessage: string}}
  */
 export function generatePrompts(data) {
-    // FIX: Destructure from the clean, top-level data object
     const { conversationHistory, taskInstructions, geoContextData, forceIncludeGeoContext, conversationAnalysis } = data;
 
-    // If conversationAnalysis is missing, we cannot proceed.
     if (!conversationAnalysis) {
         throw new Error("generatePrompts failed: conversationAnalysis object is missing.");
     }
 
-    const state = conversationAnalysis.conversationState;
+    // Use system_prompt and user_prompt from payload if they exist
+    if (conversationAnalysis.system_prompt && conversationAnalysis.user_prompt) {
+        return {
+            systemMessage: conversationAnalysis.system_prompt,
+            userMessage: conversationAnalysis.user_prompt,
+        };
+    }
 
-    // Geo-context inclusion logic
+    // Fallback to old logic
+    const state = conversationAnalysis.conversationState;
     const lastMessageFromMatch = conversationHistory?.filter(msg => msg.role === 'assistant').pop()?.content || '';
     let includeGeoContext = false;
     if (geoContextData) {
@@ -30,27 +35,13 @@ export function generatePrompts(data) {
     }
 
     const timeContext = getTimeContext();
-    const contextData = {
-        ...data,
-        includeGeoContext
-    };
-
-    // The taskInstructions object is already correctly structured from popup.js
-    // We just need to add the conversationBreakDetected flag.
-    const finalTaskInstructions = {
-        ...taskInstructions,
-        conversationBreakDetected: state.startsWith('REENGAGING'),
-    };
+    const contextData = { ...data, includeGeoContext };
+    const finalTaskInstructions = { ...taskInstructions, conversationBreakDetected: state.startsWith('REENGAGING') };
 
     const systemMessage = getSystemPrompt(conversationAnalysis, timeContext);
     const contextMessage = buildContextPrompt(contextData, conversationAnalysis);
-    // FIX: Pass conversationAnalysis explicitly to buildTaskPrompt
     const taskMessage = buildTaskPrompt(finalTaskInstructions, contextData, conversationAnalysis);
-
     const userMessage = `${contextMessage}\n${taskMessage}`;
 
-    return {
-        systemMessage,
-        userMessage
-    };
+    return { systemMessage, userMessage };
 }

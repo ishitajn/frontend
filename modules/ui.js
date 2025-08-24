@@ -57,6 +57,10 @@ export const SELECTORS = {
     matchCountry: 'match-country',
     timeDifference: 'time-difference',
     distanceInfo: 'distance-info',
+    isVirtual: 'is-virtual',
+    conversationAnalysisDisplay: 'conversation-analysis-display',
+    topicsDisplay: 'topics-display',
+    suggestionsDisplay: 'suggestions-display',
     dateIdeaBtn: 'date-idea-btn',
     refinementActions: 'refinement-actions',
 };
@@ -288,28 +292,108 @@ export function updateGeoContextDisplay(geoContext, sessionMatchProfile, session
     if (card) card.hidden = !geoContext;
     if (!geoContext) return;
 
-    const { userLocation, matchLocation, distance_miles, timeZoneDifference, countryDifference } = geoContext;
+    const { user_location, match_location, time_difference, distance, is_virtual } = geoContext;
 
     const dataMap = {
         geoUserName: myName || 'User',
         geoMatchName: theirName || 'Match',
-        userLocation: userLocation?.city || 'Your Location',
-        matchLocation: matchLocation?.city || 'Their Location',
-        userTimeOfDay: userLocation?.timeOfDay || 'N/A',
-        matchTimeOfDay: matchLocation?.timeOfDay || 'N/A',
-        userTimezone: userLocation?.timeZone || 'N/A',
-        matchTimezone: matchLocation?.timeZone || 'N/A',
-        userCountry: userLocation?.country || 'N/A',
-        matchCountry: matchLocation?.country || 'N/A',
-        timeDifference: timeZoneDifference !== null ? `${timeZoneDifference} hour(s)` : 'N/A',
-        distanceInfo: distance_miles !== null ? `${Math.round(distance_miles)} miles` : 'N/A',
-        countryDifference: countryDifference ? 'Yes' : 'No'
+        userLocation: user_location?.city || 'Your Location',
+        matchLocation: match_location?.city || 'Their Location',
+        userTime: user_location?.time || 'N/A',
+        matchTime: match_location?.time || 'N/A',
+        userTimeOfDay: user_location?.time_of_day || 'N/A',
+        matchTimeOfDay: match_location?.time_of_day || 'N/A',
+        userTimezone: user_location?.time_zone || 'N/A',
+        matchTimezone: match_location?.time_zone || 'N/A',
+        userCountry: user_location?.country || 'N/A',
+        matchCountry: match_location?.country || 'N/A',
+        timeDifference: time_difference !== null ? `${time_difference} hour(s)` : 'N/A',
+        distanceInfo: distance !== null ? `${Math.round(distance)} miles` : 'N/A',
+        isVirtual: is_virtual ? 'Yes' : 'No'
     };
 
     Object.entries(dataMap).forEach(([id, text]) => {
-        const el = document.getElementById(SELECTORS[id]);
+        const el = document.getElementById(id);
         if (el) el.textContent = text ?? 'N/A';
     });
+}
+
+export function updateConversationAnalysisDisplay(analysis) {
+    const displayEl = document.getElementById(SELECTORS.conversationAnalysisDisplay);
+    if (!displayEl || !analysis) {
+        if (displayEl) displayEl.innerHTML = '';
+        return;
+    }
+
+    const { sentiment, flirtation_level, engagement, pace } = analysis;
+
+    const sentimentEmoji = sentiment > 0.5 ? '🟢' : sentiment < -0.5 ? '🔴' : '🟡';
+    const flirtEmoji = flirtation_level > 0.7 ? '🔥' : flirtation_level > 0.4 ? '😏' : '😊';
+    const engagementEmoji = engagement > 0.6 ? '💬' : '...';
+    const paceEmoji = pace > 10 ? '🐇' : pace < 2 ? '🐢' : '🚶';
+
+    displayEl.innerHTML = `
+        <span>${sentimentEmoji} Sentiment: ${sentiment.toFixed(2)}</span> |
+        <span>${flirtEmoji} Flirtation: ${flirtation_level.toFixed(2)}</span> |
+        <span>${engagementEmoji} Engagement: ${engagement.toFixed(2)}</span> |
+        <span>${paceEmoji} Pace: ${pace.toFixed(2)}</span>
+    `;
+}
+
+export function updateTopicsDisplay(analysis) {
+    const displayEl = document.getElementById(SELECTORS.topicsDisplay);
+    if (!displayEl || !analysis || !analysis.topics) {
+        if (displayEl) displayEl.innerHTML = '';
+        return;
+    }
+
+    const { topics, recent_topics } = analysis;
+    const topicCategories = ['focus', 'avoid', 'neutral', 'sensitive', 'romantic', 'fetish', 'sexual'];
+
+    let html = '<strong>Topics:</strong> ';
+    topicCategories.forEach(category => {
+        if (topics[category] && topics[category].length > 0) {
+            const emoji = {
+                focus: '🎯',
+                avoid: '🔴',
+                neutral: '🟢',
+                sensitive: '🟠',
+                romantic: '💜',
+                fetish: '🤫',
+                sexual: '🔞'
+            }[category];
+            html += `<span class="topic-category">${emoji} ${category}: ${topics[category].join(', ')}</span> | `;
+        }
+    });
+
+    if (recent_topics && recent_topics.length > 0) {
+        html += `<br><strong>Recent:</strong> ${recent_topics.join(' → ')}`;
+    }
+
+    displayEl.innerHTML = html;
+}
+
+export function updateSuggestionsDisplay(analysis) {
+    const displayEl = document.getElementById(SELECTORS.suggestionsDisplay);
+    if (!displayEl || !analysis) {
+        if (displayEl) displayEl.innerHTML = '';
+        return;
+    }
+
+    const { suggest_flirtation, suggest_topic_shift, suggest_follow_up_question, suggest_greeting, topic_shift_recommended } = analysis;
+    let html = '<strong>Suggestions:</strong> ';
+    const suggestions = [];
+    if (suggest_flirtation) suggestions.push('Flirt more');
+    if (suggest_topic_shift) suggestions.push('Shift topic');
+    if (suggest_follow_up_question) suggestions.push('Ask a question');
+    if (suggest_greeting) suggestions.push('Say hi');
+
+    if (topic_shift_recommended) {
+        html += '<span class="suggestion-notice">Topic shift recommended!</span> ';
+    }
+
+    html += suggestions.map(s => `<span class="suggestion-badge">${s}</span>`).join(' ');
+    displayEl.innerHTML = html;
 }
 
 export function startTimer(startTime) {

@@ -6,8 +6,8 @@ import { LINGUISTIC_STYLES, DATE_ARC_PHASES } from './conversationHelpers.js';
 /** @type {import('./conversationHelpers.js').GenerationData} */
 let modalState = {};
 let callbacks = {};
-let currentView = 'analysis'; // Start at the new first view
-const VIEWS = ['analysis', 'memory', 'context', 'final'];
+let currentView = 'geo'; // Start at the new first view
+const VIEWS = ['geo', 'analysis', 'topics', 'suggestions', 'context', 'final'];
 
 const CONVERSATION_STATES = ['OPENER', 'EARLY_CONVO', 'ACTIVE_CONVO', 'REENGAGING_DAY', 'REENGAGING_WEEK', 'REENGAGING_MONTH'];
 const INTENT_OPTIONS = ['questioning', 'planning', 'reacting_to_humor', 'storytelling', 'flirting_or_sexual'];
@@ -104,21 +104,58 @@ function renderView() {
 
     let html = '';
     switch (currentView) {
-    case 'analysis':
-        html = renderAnalysisView();
-        break;
-    case 'memory':
-        html = renderMemoryView();
-        break;
-    case 'context':
-        html = renderContextView();
-        break;
-    case 'final':
-        html = renderFinalPayloadView();
-        break;
+        case 'geo':
+            html = renderGeoView();
+            break;
+        case 'analysis':
+            html = renderAnalysisView();
+            break;
+        case 'topics':
+            html = renderTopicsView();
+            break;
+        case 'suggestions':
+            html = renderSuggestionsView();
+            break;
+        case 'context':
+            html = renderContextView();
+            break;
+        case 'final':
+            html = renderFinalPayloadView();
+            break;
     }
     contentEl.innerHTML = html;
     attachEventListeners();
+}
+
+function renderGeoView() {
+    const { conversationAnalysis } = modalState;
+    return `
+        <h3>View 1: Geo Context</h3>
+        ${createCollapsibleJSON('View/Edit Raw Geo Object', conversationAnalysis.geo_context)}
+    `;
+}
+
+function renderTopicsView() {
+    const { conversationAnalysis } = modalState;
+    return `
+        <h3>View 3: Topics</h3>
+        ${createCollapsibleJSON('View/Edit Raw Topics Object', conversationAnalysis.topics)}
+    `;
+}
+
+function renderSuggestionsView() {
+    const { conversationAnalysis } = modalState;
+    const suggestions = {
+        suggest_flirtation: conversationAnalysis.suggest_flirtation,
+        suggest_topic_shift: conversationAnalysis.suggest_topic_shift,
+        suggest_follow_up_question: conversationAnalysis.suggest_follow_up_question,
+        suggest_greeting: conversationAnalysis.suggest_greeting,
+        topic_shift_recommended: conversationAnalysis.topic_shift_recommended,
+    };
+    return `
+        <h3>View 4: Suggestions</h3>
+        ${createCollapsibleJSON('View/Edit Raw Suggestions Object', suggestions)}
+    `;
 }
 
 function renderAnalysisView() {
@@ -155,20 +192,6 @@ function renderAnalysisView() {
             <tr><td>Intents</td><td>${createMultiSelect('subtext-intents', 'conversationAnalysis.lastMessageAnalysis.intents', INTENT_OPTIONS, lastMessageAnalysis.intents)}</td></tr>
         </table>
         ${createCollapsibleJSON('View/Edit Raw Analysis Object', conversationAnalysis)}
-    `;
-}
-
-function renderMemoryView() {
-    const { memory } = modalState.conversationAnalysis;
-    return `
-        <h3>View 2: Match Memory</h3>
-        <table class="payload-table">
-            <tr><td>Date Arc Phase</td><td>${createSelect('memory-dateArcPhase', 'conversationAnalysis.memory.dateArcPhase', DATE_ARC_PHASES, memory.dateArcPhase)}</td></tr>
-            <tr><td>Inside Jokes (one per line)</td><td>${createTextarea('memory-insideJokes', 'conversationAnalysis.memory.insideJokes', (memory.insideJokes || []).join('\n'))}</td></tr>
-            <tr><td>Avoided Topics (one per line)</td><td>${createTextarea('memory-avoidedTopics', 'conversationAnalysis.memory.avoidedTopics', (memory.avoidedTopics || []).join('\n'))}</td></tr>
-            <tr><td>Question History (one per line)</td><td>${createTextarea('memory-questionHistory', 'conversationAnalysis.memory.questionHistory', (memory.questionHistory || []).join('\n'))}</td></tr>
-        </table>
-        ${createCollapsibleJSON('View/Edit Raw Memory Object', memory)}
     `;
 }
 
@@ -221,9 +244,18 @@ function renderFinalPayloadView() {
     };
     modalState.finalPayload = finalPayload;
 
+    const systemPromptDisplay = modalState.conversationAnalysis.system_prompt ?
+        createCollapsibleJSON('Generated System Prompt', modalState.conversationAnalysis.system_prompt, false) :
+        '';
+    const userPromptDisplay = modalState.conversationAnalysis.user_prompt ?
+        createCollapsibleJSON('Generated User Prompt', modalState.conversationAnalysis.user_prompt, false) :
+        '';
+
     return `
         <h3>View 4: Final Payload Review</h3>
         <p>This is the exact data that will be sent to the AI. You can make final edits to the messages below.</p>
+        ${systemPromptDisplay}
+        ${userPromptDisplay}
         <div class="messages-container">
             <div class="message-card">
                 <div class="message-card-header"><strong>System Message</strong></div>
@@ -416,7 +448,7 @@ function updateNavButtons() {
 export function showNlpModal(initialData, cbs) {
     callbacks = cbs;
     modalState = JSON.parse(JSON.stringify(initialData));
-    currentView = 'analysis';
+    currentView = 'geo';
 
     const overlay = document.getElementById('debug-modal-overlay');
     overlay.innerHTML = `

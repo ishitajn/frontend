@@ -3,7 +3,7 @@ import { determineConversationState, LINGUISTIC_STYLES } from './conversationHel
 import { showNlpModal, hideDebugModal } from './debug-modal.js';
 import { initializePort, sendMessage, startHeartbeat, stopHeartbeat, getGenerationState } from './modules/portManager.js';
 import { DEFAULTS, MATCH_SPECIFIC_SETTINGS_KEYS, EMOJI_STRATEGIES, USER_LOCATIONS } from './modules/config.js';
-import { SELECTORS, showView, showError, showErrorInResponseArea, setUIRefreshingState, setUIGeneratingState, updateUIAfterGeneration, updateSliderLabels, updateSliderValueLabel, updateGeoContextDisplay, startTimer, stopTimer, resetTimerDisplay, populateSelect, updateClearButtonVisibility } from './modules/ui.js';
+import { SELECTORS, showView, showError, showErrorInResponseArea, setUIRefreshingState, setUIGeneratingState, updateUIAfterGeneration, updateSliderLabels, updateSliderValueLabel, updateGeoContextDisplay, startTimer, stopTimer, resetTimerDisplay, populateSelect, updateClearButtonVisibility, updateConversationAnalysisDisplay, updateTopicsDisplay, updateSuggestionsDisplay } from './modules/ui.js';
 import { setupEventListeners } from './modules/eventListeners.js';
 
 const DEBUG = {
@@ -188,21 +188,39 @@ async function handleNlpAnalysisResponse(message) {
         return;
     }
 
+    // Directly store the new, comprehensive analysis payload
     state.sessionMatchProfile = message.matchProfile;
     state.currentMatchUUID = message.matchProfile.uuid;
 
+    // The new payload is stored under the 'analysis' key
+    if (message.analysis) {
+        state.sessionMatchProfile.analysis = message.analysis;
+    }
+
+
     await loadAndApplySettings();
 
-    // The new NLP analysis response contains the geoContext, so we can update the UI directly
-    if (state.sessionMatchProfile.analysis?.geoContext) {
-        updateGeoContextDisplay(state.sessionMatchProfile.analysis.geoContext, state.sessionMatchProfile, state.sessionScrapedData);
-    } else {
-        // If it's not there, fall back to the old method for now.
-        await handleLocationChange();
-    }
+    // Update all UI components with the new data
+    updateUIWithNlpData(state.sessionMatchProfile.analysis);
 
     displayConversationState();
     showView(SELECTORS.mainView);
+}
+
+function updateUIWithNlpData(analysis) {
+    if (!analysis) return;
+
+    // Update Geo Context
+    if (analysis.geo_context) {
+        updateGeoContextDisplay(analysis.geo_context, state.sessionMatchProfile, state.sessionScrapedData);
+    }
+
+    // Update conversation analysis display
+    updateConversationAnalysisDisplay(analysis);
+
+    // Update topics and suggestions
+    updateTopicsDisplay(analysis);
+    updateSuggestionsDisplay(analysis);
 }
 
 function handleGeoCalculationsResponse(message) {
