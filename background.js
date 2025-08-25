@@ -302,14 +302,21 @@ chrome.runtime.onConnect.addListener((port) => {
                     };
                 } else {
                     // External analysis
-                    const response = await fetch(analysisUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(scrapedData)
-                    });
+                    try {
+                        const response = await fetch(analysisUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(scrapedData)
+                        });
 
-                    if (!response.ok) {
-                        throw new Error(`External analysis service failed with status: ${response.status}`);
+                        if (!response.ok) {
+                            throw new Error(`External analysis service failed with status: ${response.status}`);
+                        }
+                    } catch (e) {
+                        if (e.message.includes('Failed to fetch')) {
+                            throw new Error('Failed to fetch. This may be a CORS issue or the server may be unreachable. Please check the server configuration and network access.');
+                        }
+                        throw e; // Re-throw other errors
                     }
                     const externalAnalysis = await response.json();
                     matchProfile.analysis = transformExternalAnalysis(externalAnalysis);
