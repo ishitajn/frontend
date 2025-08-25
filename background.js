@@ -304,16 +304,32 @@ chrome.runtime.onConnect.addListener((port) => {
                 DEBUG.log('NLP', 'Analysis complete. Sending response.', {
                     matchProfile
                 });
-                port.postMessage({
-                    action: 'nlpAnalysisResponse',
-                    matchProfile
-                });
+                try {
+                    port.postMessage({
+                        action: 'nlpAnalysisResponse',
+                        matchProfile
+                    });
+                } catch (e) {
+                    if (e.message.includes('disconnected port')) {
+                        DEBUG.log('NLP', 'Port disconnected before analysis response could be sent.');
+                    } else {
+                        throw e;
+                    }
+                }
             } catch (error) {
                 DEBUG.error('NLP', 'Analysis failed', error);
-                port.postMessage({
-                    action: 'nlpAnalysisResponse',
-                    error: error.message
-                });
+                try {
+                    port.postMessage({
+                        action: 'nlpAnalysisResponse',
+                        error: error.message
+                    });
+                } catch (e) {
+                    if (e.message.includes('disconnected port')) {
+                        DEBUG.log('NLP', 'Port disconnected before analysis error response could be sent.');
+                    } else {
+                        throw e;
+                    }
+                }
             }
         },
 
