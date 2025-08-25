@@ -484,6 +484,23 @@ chrome.runtime.onConnect.addListener((port) => {
             DEBUG.log('HEARTBEAT', 'Received heartbeat.');
         },
 
+        "testApiConnection": async(request) => {
+            const { url } = request.data;
+            let success = false;
+            try {
+                const response = await fetch(`${url}/ready`, { method: 'GET' });
+                if (response.ok) {
+                    success = true;
+                }
+            } catch (e) {
+                success = false;
+            }
+            port.postMessage({
+                action: 'testApiConnectionResponse',
+                data: { url, success }
+            });
+        },
+
         "getAIDateIdea": async(request) => {
             const { uuid, generationId } = request.data;
             const matchProfile = await memoryManager.getMatchProfile(uuid);

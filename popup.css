@@ -233,3 +233,47 @@ footer { padding: 8px 12px; font-size: 10px; color: var(--text-muted); text-alig
     flex-shrink: 0;
     margin-left: 0; /* Override default margin-left: auto */
 }
+
+/* --- Tab Styles --- */
+.tabs {
+    display: flex;
+    background-color: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
+}
+.tab-link {
+    padding: 10px 14px;
+    cursor: pointer;
+    border: none;
+    background-color: transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    border-bottom: 2px solid transparent;
+    transition: all var(--transition-speed) ease;
+}
+.tab-link:hover {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+}
+.tab-link.active {
+    color: var(--accent-primary);
+    border-bottom-color: var(--accent-primary);
+}
+.tab-content {
+    display: none;
+}
+.tab-content.active {
+    display: block;
+}
+
+/* --- Input with Button --- */
+.input-with-button {
+    display: flex;
+    gap: 8px;
+}
+.input-with-button input {
+    flex-grow: 1;
+}
+.input-with-button .btn {
+    flex-shrink: 0;
+}

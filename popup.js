@@ -1,7 +1,7 @@
 // popup.js (Re-architected for Manifest V3 Robustness with Heartbeat)
 import { scrapeBumblePage, pasteTextIntoBumbleInput, scrapeTinderPage, pasteTextIntoTinderInput } from './content-scraper.js';
 import { getToneDescription, getLengthDescription, getEmojiInstruction, getStyleDescription, determineConversationState, LINGUISTIC_STYLES } from './conversationHelpers.js';
-import { showNlpModal, hideDebugModal } from './debug-modal.js';
+import { generatePrompts } from './prompts.js';
 
 const DEBUG = {
     log: (category, message, data = null) => console.log(`[WINGMAN-POPUP-${category.toUpperCase()}] ${message}`, data ?? ''),
@@ -27,6 +27,8 @@ const DEFAULTS = {
     local_llama_url: 'http://localhost:8080/v1/chat/completions',
     local_model_name: 'llama3:latest',
     local_llama_api_key: '',
+    analysis_url: 'http://10.0.0.24:8000/analyze',
+    analysis_type: 'local',
 };
 
 const MATCH_SPECIFIC_SETTINGS_KEYS = [
@@ -120,6 +122,11 @@ const SELECTORS = {
     localLlamaUrl: 'localLlamaUrl',
     localLlamaApiKey: 'localLlamaApiKey',
     localModelName: 'localModelName',
+    analysisUrl: 'analysisUrl',
+    analysisType: 'analysisType',
+    testApiBtn: 'test-api-btn',
+    testAnalysisBtn: 'test-analysis-btn',
+    tabsContainer: 'tabs',
     userLocationSelect: 'user-location-select',
     myProfileSetting: 'my-profile-setting',
     infoTooltip: 'info-tooltip',
@@ -188,6 +195,423 @@ function sendMessage(message) {
     }
 }
 
+// --- Tab Management ---
+function handleTabClick(event) {
+    const target = event.target;
+    if (!target.classList.contains('tab-link')) return;
+
+    const tabName = target.dataset.tab;
+
+    // Deactivate all tabs and content
+    document.querySelectorAll('.tab-link').forEach(tab => tab.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+    // Activate the clicked tab and its content
+    target.classList.add('active');
+    document.getElementById(tabName).classList.add('active');
+
+    // Render content if it's a debug tab
+    if (['analysis', 'memory', 'context', 'final-payload'].includes(tabName)) {
+        renderDebugView(tabName);
+    }
+}
+
+function toggleDebugTabs() {
+    const debugModeEnabled = document.getElementById(SELECTORS.debugModeToggle).checked;
+    const tabs = document.querySelectorAll('.tab-link');
+    tabs.forEach(tab => {
+        const tabName = tab.dataset.tab;
+        if (tabName !== 'tune-response') {
+            tab.style.display = debugModeEnabled ? '' : 'none';
+        }
+    });
+
+    // If not in debug mode and a debug tab is active, switch to the tune-response tab
+    if (!debugModeEnabled) {
+        const activeTab = document.querySelector('.tab-link.active');
+        if (activeTab && activeTab.dataset.tab !== 'tune-response') {
+            document.querySelector('.tab-link[data-tab="tune-response"]').click();
+        }
+    }
+}
+
+
+async function handleTestApiClick(urlInputId) {
+    const urlInput = document.getElementById(urlInputId);
+    const url = urlInput.value;
+    if (!url) {
+        showError('Test Failed', 'URL is empty.');
+        return;
+    }
+
+    const originalButtonText = urlInput.nextElementSibling.textContent;
+    urlInput.nextElementSibling.textContent = '...';
+    urlInput.nextElementSibling.disabled = true;
+
+    sendMessage({
+        action: 'testApiConnection',
+        data: { url }
+    });
+
+    // Listen for the response
+    const listener = (msg) => {
+        if (msg.action === 'testApiConnectionResponse' && msg.data.url === url) {
+            if (msg.data.success) {
+                urlInput.style.borderColor = 'var(--success-color)';
+            } else {
+                urlInput.style.borderColor = 'var(--danger-color)';
+            }
+            urlInput.nextElementSibling.textContent = originalButtonText;
+            urlInput.nextElementSibling.disabled = false;
+
+            setTimeout(() => {
+                urlInput.style.borderColor = '';
+            }, 3000);
+
+            port.onMessage.removeListener(listener);
+        }
+    };
+    port.onMessage.addListener(listener);
+}
+
+
+// --- Debug View Rendering (from debug-modal.js) ---
+// Stubs and constants needed for the moved code
+const DATE_ARC_PHASES = ['opener', 'early_convo', 'active_convo', 'reengaging_day', 'reengaging_week', 'reengaging_month', 'escalation', 'planning', 'post_date', 'fading'];
+const CONVERSATION_STATES = ['OPENER', 'EARLY_CONVO', 'ACTIVE_CONVO', 'REENGAGING_DAY', 'REENGAGING_WEEK', 'REENGAGING_MONTH'];
+const INTENT_OPTIONS = ['questioning', 'planning', 'reacting_to_humor', 'storytelling', 'flirting_or_sexual'];
+let modalState = {}; // Using this name to minimize code changes from debug-modal
+
+function setNestedValue(obj, path, value) {
+    const keys = path.split('.');
+    let current = obj;
+    for (let i = 0; i < keys.length - 1; i++) {
+        if (current[keys[i]] === undefined) {
+            current[keys[i]] = {};
+        }
+        current = current[keys[i]];
+    }
+    current[keys[keys.length - 1]] = value;
+}
+
+function createSelect(id, dataPath, options, selectedValue) {
+    const optionsHtml = options.map(opt => `<option value="${opt}" ${opt === selectedValue ? 'selected' : ''}>${opt.charAt(0).toUpperCase() + opt.slice(1)}</option>`).join('');
+    return `<select id="${id}" data-path="${dataPath}" class="modal-input">${optionsHtml}</select>`;
+}
+
+function createMultiSelect(id, dataPath, allOptions, selectedOptions) {
+    const selectedSet = new Set(selectedOptions || []);
+    const optionsHtml = allOptions.map(opt => `<option value="${opt}" ${selectedSet.has(opt) ? 'selected' : ''}>${opt.charAt(0).toUpperCase() + opt.slice(1)}</option>`).join('');
+    return `<select id="${id}" data-path="${dataPath}" class="modal-input" multiple>${optionsHtml}</select>`;
+}
+
+function createTextarea(id, dataPath, value) {
+    return `<textarea id="${id}" data-path="${dataPath}" class="modal-input">${value || ''}</textarea>`;
+}
+
+function createInput(id, dataPath, value, type = 'text') {
+    return `<input type="${type}" id="${id}" data-path="${dataPath}" value="${value || ''}" class="modal-input">`;
+}
+
+function createCheckbox(id, dataPath, checked) {
+    return `<input type="checkbox" id="${id}" data-path="${dataPath}" ${checked ? 'checked' : ''} class="modal-input">`;
+}
+
+function createSlider(id, dataPath, value, min, max, step, labelMap) {
+    const getLabel = (val) => {
+        const numVal = parseFloat(val);
+        for (const [limit, label] of Object.entries(labelMap).sort((a,b) => b[0] - a[0])) {
+            if (numVal >= parseFloat(limit))
+                return label;
+        }
+        return Object.values(labelMap)[0];
+    };
+    return `
+        <div class="slider-container">
+            <input type="range" id="${id}" data-path="${dataPath}" value="${value}" min="${min}" max="${max}" step="${step}" data-label-map='${JSON.stringify(labelMap)}'>
+            <span id="${id}-value" class="value-display">${value} (${getLabel(value)})</span>
+        </div>
+    `;
+}
+
+function createCollapsibleJSON(title, dataObject, isEditable = true) {
+    if (dataObject === null || typeof dataObject === 'undefined') {
+        return `
+            <div class="collapsible-json-container">
+                <details class="modal-payload-details">
+                    <summary>${title}</summary>
+                    <pre class="raw-json-area" style="color: var(--text-muted);">Not available</pre>
+                </details>
+            </div>
+        `;
+    }
+
+    const jsonString = JSON.stringify(dataObject, null, 2);
+    const key = title.split(' ')[0].toLowerCase();
+    const copyIconSVG = `<svg fill="currentColor" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"></path></svg>`;
+
+    return `
+        <div class="collapsible-json-container">
+            <details class="modal-payload-details">
+                <summary>${title}</summary>
+                <pre ${isEditable ? 'contenteditable="true"' : ''} class="raw-json-area" data-object-key="${key}">${jsonString}</pre>
+            </details>
+            <button class="icon-btn copy-json-btn" title="Copy JSON">
+                ${copyIconSVG}
+            </button>
+        </div>
+    `;
+}
+
+function renderDebugView(viewName) {
+    const contentEl = document.getElementById(viewName);
+    if (!contentEl) return;
+
+    let html = '';
+    switch (viewName) {
+        case 'analysis': html = renderAnalysisView(); break;
+        case 'memory': html = renderMemoryView(); break;
+        case 'context': html = renderContextView(); break;
+        case 'final-payload': html = renderFinalPayloadView(); break;
+    }
+    contentEl.innerHTML = `<div class="card-content">${html}</div>`;
+    attachDebugEventListeners(contentEl);
+}
+
+function renderAnalysisView() {
+    const { conversationAnalysis } = modalState;
+    if (!conversationAnalysis) return '<p>Analysis data not available.</p>';
+    const { lastMessageAnalysis } = conversationAnalysis;
+    const valenceLabels = { '-1': 'Very Negative', '-0.5': 'Negative', '-0.1': 'Neutral', '0.5': 'Positive', '1': 'Very Positive' };
+    const arousalLabels = { '-1': 'Bored/Calm', '-0.5': 'Low Energy', '-0.1': 'Neutral', '0.5': 'Excited', '1': 'Agitated' };
+
+    return `
+        <h3>Conversation Analysis</h3>
+        <table class="payload-table">
+            <tr><td>Conversation State</td><td>${createSelect('analysis-state', 'conversationAnalysis.conversationState', CONVERSATION_STATES, conversationAnalysis.conversationState)}</td></tr>
+            <tr><td>Suppress Greeting?</td><td>${createCheckbox('analysis-suppressGreeting', 'conversationAnalysis.suppressGreeting', conversationAnalysis.suppressGreeting)}</td></tr>
+            <tr><td colspan="2" style="text-align:center; background:#333;"><strong>Last Message Subtext</strong></td></tr>
+            <tr><td>Is Direct Question?</td><td>${createCheckbox('subtext-isDirectQuestion', 'conversationAnalysis.lastMessageAnalysis.isDirectQuestion', lastMessageAnalysis.isDirectQuestion)}</td></tr>
+            <tr><td>Is Low Effort?</td><td>${createCheckbox('subtext-isLowEffort', 'conversationAnalysis.lastMessageAnalysis.isLowEffort', lastMessageAnalysis.isLowEffort)}</td></tr>
+            <tr><td>Is Sarcastic?</td><td>${createCheckbox('subtext-isSarcastic', 'conversationAnalysis.lastMessageAnalysis.isSarcastic', lastMessageAnalysis.isSarcastic)}</td></tr>
+            <tr><td>Is Ambiguous?</td><td>${createCheckbox('subtext-isAmbiguous', 'conversationAnalysis.lastMessageAnalysis.isAmbiguous', lastMessageAnalysis.isAmbiguous)}</td></tr>
+            <tr><td>Is Vulnerable?</td><td>${createCheckbox('subtext-isVulnerable', 'conversationAnalysis.lastMessageAnalysis.isVulnerable', lastMessageAnalysis.isVulnerable)}</td></tr>
+            <tr><td>Valence</td><td>${createSlider('subtext-valence', 'conversationAnalysis.lastMessageAnalysis.valence', lastMessageAnalysis.valence, -1, 1, 0.1, valenceLabels)}</td></tr>
+            <tr><td>Arousal</td><td>${createSlider('subtext-arousal', 'conversationAnalysis.lastMessageAnalysis.arousal', lastMessageAnalysis.arousal, -1, 1, 0.1, arousalLabels)}</td></tr>
+            <tr><td>Intents</td><td>${createMultiSelect('subtext-intents', 'conversationAnalysis.lastMessageAnalysis.intents', INTENT_OPTIONS, lastMessageAnalysis.intents)}</td></tr>
+        </table>
+        ${createCollapsibleJSON('View/Edit Raw Analysis Object', conversationAnalysis)}
+    `;
+}
+
+function renderMemoryView() {
+    if (!modalState.conversationAnalysis || !modalState.conversationAnalysis.memory) return '<p>Memory data not available.</p>';
+    const { memory } = modalState.conversationAnalysis;
+    return `
+        <h3>Match Memory</h3>
+        <table class="payload-table">
+            <tr><td>Date Arc Phase</td><td>${createSelect('memory-dateArcPhase', 'conversationAnalysis.memory.dateArcPhase', DATE_ARC_PHASES, memory.dateArcPhase)}</td></tr>
+            <tr><td>Inside Jokes (one per line)</td><td>${createTextarea('memory-insideJokes', 'conversationAnalysis.memory.insideJokes', (memory.insideJokes || []).join('\\n'))}</td></tr>
+            <tr><td>Avoided Topics (one per line)</td><td>${createTextarea('memory-avoidedTopics', 'conversationAnalysis.memory.avoidedTopics', (memory.avoidedTopics || []).join('\\n'))}</td></tr>
+            <tr><td>Question History (one per line)</td><td>${createTextarea('memory-questionHistory', 'conversationAnalysis.memory.questionHistory', (memory.questionHistory || []).join('\\n'))}</td></tr>
+        </table>
+        ${createCollapsibleJSON('View/Edit Raw Memory Object', memory)}
+    `;
+}
+
+function renderContextView() {
+    if (!modalState.conversationHistory) return '<p>Context data not available.</p>';
+    const historyHtml = modalState.conversationHistory.map((msg, index) => `
+        <div class="message-card" data-index="${index}">
+            <div class="message-card-header">
+                <select class="modal-input" data-path="conversationHistory.${index}.role">
+                    <option value="user" ${msg.role === 'user' ? 'selected' : ''}>User</option>
+                    <option value="assistant" ${msg.role === 'assistant' ? 'selected' : ''}>Assistant</option>
+                </select>
+                <button class="icon-btn remove-msg-btn" title="Remove Message">&times;</button>
+            </div>
+            <div class="message-card-content">
+                <textarea class="modal-input" data-path="conversationHistory.${index}.content">${msg.content}</textarea>
+            </div>
+        </div>
+    `).join('');
+
+    return `
+        <h3>Profiles & History</h3>
+        <table class="payload-table">
+            <tr><td>My Name</td><td>${createInput('context-myName', 'myName', modalState.myName)}</td></tr>
+            <tr><td>Their Name</td><td>${createInput('context-theirName', 'theirName', modalState.theirName)}</td></tr>
+            <tr><td>My Profile</td><td>${createTextarea('context-myProfile', 'myProfile', modalState.myProfile)}</td></tr>
+            <tr><td>Their Profile</td><td>${createTextarea('context-theirProfile', 'theirProfile', modalState.theirProfile)}</td></tr>
+            <tr><td>Force Geo-Context?</td><td>${createCheckbox('context-forceIncludeGeoContext', 'forceIncludeGeoContext', modalState.forceIncludeGeoContext)}</td></tr>
+        </table>
+        <h4>Conversation History</h4>
+        <div class="messages-container">${historyHtml}</div>
+        <button id="add-message-btn" class="btn btn-secondary add-message-btn">Add Message</button>
+        ${createCollapsibleJSON('View/Edit Raw GeoContext Data', modalState.geoContextData)}
+    `;
+}
+
+function renderFinalPayloadView() {
+    if (!modalState.taskInstructions) {
+        modalState.taskInstructions = {
+            myName: state.sessionScrapedData?.myName || DEFAULTS.myProfile.split(',')[0].trim(),
+            theirName: state.sessionMatchProfile?.metadata?.theirName || 'Match',
+            goal: document.getElementById(SELECTORS.customInstruction).value.trim(),
+            flirtyValue: Number(document.getElementById(SELECTORS.flirtySlider).value),
+            lengthValue: Number(document.getElementById(SELECTORS.lengthSlider).value),
+            linguisticStyle: document.getElementById(SELECTORS.linguisticStyleSelect).value,
+            emojiStrategy: document.getElementById(SELECTORS.emojiStrategySelect).value,
+            temperature: parseFloat(document.getElementById(SELECTORS.temperatureSlider).value),
+            top_p: parseFloat(document.getElementById(SELECTORS.topPSlider).value),
+            endWithQuestion: document.getElementById(SELECTORS.questionToggleCheckbox).checked,
+            strictGoalOverride: document.getElementById(SELECTORS.strictGoalToggle).checked,
+            forceNewTopic: document.getElementById(SELECTORS.newTopicToggle).checked,
+            local_model_name: document.getElementById(SELECTORS.localModelName).value,
+        };
+        modalState.forceIncludeGeoContext = document.getElementById(SELECTORS.geoContextToggle).checked;
+    }
+
+    const { systemMessage, userMessage } = generatePrompts(modalState);
+    const finalPayload = {
+        messages: [{
+                role: "system",
+                content: systemMessage
+            }, {
+                role: "user",
+                content: userMessage
+            }
+        ],
+        temperature: modalState.taskInstructions.temperature,
+        top_p: modalState.taskInstructions.top_p
+    };
+    modalState.finalPayload = finalPayload;
+
+    return `
+        <h3>Final Payload Review</h3>
+        <p>This is the exact data that will be sent to the AI. You can make final edits to the messages below.</p>
+        <div class="messages-container">
+            <div class="message-card">
+                <div class="message-card-header"><strong>System Message</strong></div>
+                <div class="message-card-content">${createTextarea('final-system', 'finalPayload.messages.0.content', systemMessage)}</div>
+            </div>
+            <div class="message-card">
+                <div class="message-card-header"><strong>User Message</strong></div>
+                <div class="message-card-content">${createTextarea('final-user', 'finalPayload.messages.1.content', userMessage)}</div>
+            </div>
+        </div>
+        ${createCollapsibleJSON('View/Edit Raw Final Payload', finalPayload, false)}
+    `;
+}
+
+function attachDebugEventListeners(container) {
+    container.addEventListener('input', updateStateFromUI);
+    container.addEventListener('change', updateStateFromUI);
+
+    container.querySelectorAll('input[type="range"][data-label-map]').forEach(slider => {
+        slider.addEventListener('input', (e) => {
+            const targetSlider = e.currentTarget;
+            const valueDisplay = document.getElementById(`${targetSlider.id}-value`);
+            if (valueDisplay) {
+                const labelMap = JSON.parse(targetSlider.dataset.labelMap);
+                const currentValue = targetSlider.value;
+                const getLabel = (val) => {
+                     const numVal = parseFloat(val);
+                     for (const [limit, label] of Object.entries(labelMap).sort((a,b) => b[0] - a[0])) {
+                         if (numVal >= parseFloat(limit)) return label;
+                     }
+                     return Object.values(labelMap)[0];
+                };
+                valueDisplay.textContent = `${currentValue} (${getLabel(currentValue)})`;
+            }
+        });
+    });
+
+    container.querySelectorAll('.copy-json-btn').forEach(btn => {
+        btn.addEventListener('click', e => {
+            const button = e.currentTarget;
+            const pre = button.closest('.collapsible-json-container').querySelector('pre.raw-json-area');
+            if (!pre) return;
+            navigator.clipboard.writeText(pre.textContent.replace(/\\n/g, '\\n'));
+            const originalIcon = button.innerHTML;
+            button.innerHTML = '✅';
+            button.disabled = true;
+            setTimeout(() => {
+                button.innerHTML = originalIcon;
+                button.disabled = false;
+            }, 1500);
+        });
+    });
+
+    container.querySelectorAll('.raw-json-area[contenteditable="true"]').forEach(area => {
+        area.addEventListener('blur', e => {
+            try {
+                const newJson = JSON.parse(e.target.textContent);
+                const key = e.target.dataset.objectKey;
+                if (key === 'memory') modalState.conversationAnalysis.memory = newJson;
+                else if (key === 'analysis') modalState.conversationAnalysis = newJson;
+                else modalState[key] = newJson;
+                renderDebugView(container.id);
+            } catch (err) {
+                console.error("Invalid JSON entered:", err);
+                e.target.style.border = '1px solid red';
+            }
+        });
+        area.addEventListener('focus', e => { e.target.style.border = ''; });
+    });
+
+    if (container.id === 'context') {
+        container.querySelector('#add-message-btn')?.addEventListener('click', () => {
+            modalState.conversationHistory.push({ role: 'user', content: '', date: new Date().toISOString().split('T')[0] });
+            renderDebugView('context');
+        });
+        container.querySelectorAll('.remove-msg-btn').forEach(btn => {
+            btn.addEventListener('click', e => {
+                const index = e.currentTarget.closest('.message-card').dataset.index;
+                modalState.conversationHistory.splice(index, 1);
+                renderDebugView('context');
+            });
+        });
+    }
+}
+
+function updateStateFromUI(e) {
+    const el = e.target;
+    const path = el.dataset.path;
+    if (!path) return;
+
+    let value;
+    if (el.type === 'checkbox') value = el.checked;
+    else if (el.type === 'range' || el.type === 'number') value = parseFloat(el.value);
+    else if (el.multiple) value = Array.from(el.selectedOptions).map(opt => opt.value);
+    else value = el.value;
+
+    if (path.endsWith('insideJokes') || path.endsWith('avoidedTopics') || path.endsWith('questionHistory')) {
+        value = el.value.split('\\n').filter(Boolean);
+    }
+
+    setNestedValue(modalState, path, value);
+
+    const objectKey = path.split('.')[0];
+    const activeTab = document.querySelector('.tab-content.active').id;
+    if ((objectKey === 'conversationAnalysis' || objectKey === 'memory') && (activeTab==='analysis' || activeTab==='memory')) {
+        updateRawJsonDisplay(activeTab);
+    }
+}
+
+function updateRawJsonDisplay(key) {
+    const pre = document.querySelector(`#${key} .raw-json-area[data-object-key="${key}"]`);
+    if (!pre) return;
+
+    let objectToDisplay;
+    switch (key) {
+        case 'analysis': objectToDisplay = modalState.conversationAnalysis; break;
+        case 'memory': objectToDisplay = modalState.conversationAnalysis.memory; break;
+        case 'geocontext': objectToDisplay = modalState.geoContextData; break;
+    }
+    if(objectToDisplay) pre.textContent = JSON.stringify(objectToDisplay, null, 2);
+}
+
 function setupPort() {
     port = chrome.runtime.connect({
         name: "wingman-popup"
@@ -228,6 +652,7 @@ async function initializePopup() {
     setupPort();
     await loadAndApplySettings();
     await refreshDataAndUI();
+    toggleDebugTabs();
 }
 
 async function refreshDataAndUI() {
@@ -324,6 +749,18 @@ async function handleNlpAnalysisResponse(message) {
     state.sessionMatchProfile = message.matchProfile;
     state.currentMatchUUID = message.matchProfile.uuid;
 
+    // Populate modalState for debug views
+    modalState = {
+        ...state.sessionScrapedData,
+        ...state.sessionMatchProfile.metadata,
+        myProfile: (await chrome.storage.local.get('myProfile')).myProfile || DEFAULTS.myProfile,
+        conversationHistory: state.sessionMatchProfile.conversationHistory,
+        conversationAnalysis: state.sessionMatchProfile.analysis,
+        geoContextData: state.sessionMatchProfile.memory.geoContextData,
+        taskInstructions: {}, // This will be populated on generate click
+    };
+
+
     await loadAndApplySettings();
     await handleLocationChange();
 
@@ -411,6 +848,10 @@ function setupEventListeners() {
     });
     document.getElementById(SELECTORS.dateIdeaBtn)?.addEventListener('click', handleDateIdeaClick);
     document.getElementById(SELECTORS.refinementActions)?.addEventListener('click', handleRefinementClick);
+    document.querySelector('.tabs')?.addEventListener('click', handleTabClick);
+    document.getElementById(SELECTORS.testApiBtn)?.addEventListener('click', () => handleTestApiClick(SELECTORS.localLlamaUrl));
+    document.getElementById(SELECTORS.testAnalysisBtn)?.addEventListener('click', () => handleTestApiClick(SELECTORS.analysisUrl));
+    document.getElementById(SELECTORS.debugModeToggle)?.addEventListener('change', toggleDebugTabs);
 
     populateSelect(SELECTORS.linguisticStyleSelect, LINGUISTIC_STYLES.map(s => ({
                 value: s,
@@ -776,42 +1217,32 @@ async function handleGenerateClick() {
     }
 
     const dataForBackground = await gatherCoreDataForGeneration();
+
     if (document.getElementById(SELECTORS.debugModeToggle).checked) {
-        const fullGenerationData = {
-            ...state.sessionScrapedData,
-            ...state.sessionMatchProfile.metadata,
-            myProfile: dataForBackground.myProfile,
-            conversationHistory: state.sessionMatchProfile.conversationHistory,
-            conversationAnalysis: state.sessionMatchProfile.analysis,
-            geoContextData: state.sessionMatchProfile.memory.geoContextData,
-            forceIncludeGeoContext: dataForBackground.forceIncludeGeoContext,
-            taskInstructions: dataForBackground.taskInstructions,
+        // In debug mode, the user can edit the payload, so we send it directly.
+        // First, ensure the final payload is generated and up-to-date in modalState
+        const { systemMessage, userMessage } = generatePrompts(modalState);
+        const finalPayload = {
+            messages: [{ role: "system", content: systemMessage }, { role: "user", content: userMessage }],
+            temperature: modalState.taskInstructions.temperature,
+            top_p: modalState.taskInstructions.top_p,
         };
-        const debugCallbacks = {
-            sendFinalPayloadToAI: (payload) => {
-                sendMessage({
-                    action: "getAIResponse",
-                    data: {
-                        payload,
-                        generationId: Date.now(),
-                        uuid: state.currentMatchUUID,
-                        logData: {
-                            uuid: state.currentMatchUUID,
-                            analysis: state.sessionMatchProfile.analysis,
-                            payload: payload
-                        }
-                    }
-                });
-            },
-            setUIGeneratingState,
-            showErrorInResponseArea,
-            hideDebugModal,
-            startTimer,
-            stopTimer,
-            resetTimerDisplay
-        };
-        showNlpModal(fullGenerationData, debugCallbacks);
+
+        sendMessage({
+            action: "getAIResponse",
+            data: {
+                payload: finalPayload,
+                generationId: Date.now(),
+                uuid: state.currentMatchUUID,
+                logData: {
+                    uuid: state.currentMatchUUID,
+                    analysis: modalState.conversationAnalysis, // Use potentially modified analysis
+                    payload: finalPayload
+                }
+            }
+        });
     } else {
+        // In normal mode, get the final payload from the background script
         sendMessage({
             action: "getFinalPayload",
             data: dataForBackground
