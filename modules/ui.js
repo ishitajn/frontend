@@ -172,27 +172,6 @@ export function populateSelect(selectId, options) {
         select.innerHTML = options.map(opt => `<option value="${opt.value}">${opt.text}</option>`).join('');
 }
 
-export function updateSliderLabels() {
-    const flirtyLabels = {
-        0: 'Neutral',
-        20: 'Friendly',
-        40: 'Warm',
-        60: 'Flirty',
-        80: 'Very Flirty',
-        100: 'Daring'
-    };
-    const lengthLabels = {
-        0: 'Micro',
-        20: 'Short',
-        40: 'Medium',
-        60: 'Long',
-        80: 'Epic',
-        100: 'Manifesto'
-    };
-    updateSliderValueLabel(SELECTORS.flirtySlider, SELECTORS.flirtyValueLabel, 0, flirtyLabels);
-    updateSliderValueLabel(SELECTORS.lengthSlider, SELECTORS.lengthValueLabel, 0, lengthLabels);
-}
-
 export function updateSliderValueLabel(sliderId, labelId, precision = 1, labelMap = null) {
     const slider = document.getElementById(sliderId);
     const label = document.getElementById(labelId);
@@ -202,81 +181,8 @@ export function updateSliderValueLabel(sliderId, labelId, precision = 1, labelMa
     }
 }
 
-export function handleTooltipShow(event) {
-    clearTimeout(tooltipTimeout);
-    const icon = event.currentTarget;
-    const tooltipId = icon.dataset.tooltipId;
-    const tooltip = document.getElementById(SELECTORS.infoTooltip);
-    const content = getTooltipContent(tooltipId);
-    if (!content || !tooltip)
-        return;
-    tooltip.innerHTML = content;
-    const iconRect = icon.getBoundingClientRect();
-    const bodyRect = document.body.getBoundingClientRect();
-    const popupRect = document.querySelector('.app-container').getBoundingClientRect();
-
-    tooltip.style.visibility = 'hidden';
-    tooltip.classList.add('visible');
-
-    let left = iconRect.left - bodyRect.left + (iconRect.width / 2) - (tooltip.offsetWidth / 2);
-
-    if (left < 0) {
-        left = 5;
-    }
-    if (left + tooltip.offsetWidth > popupRect.width) {
-        left = popupRect.width - tooltip.offsetWidth - 5;
-    }
-
-    tooltip.style.top = `${iconRect.bottom - bodyRect.top + 8}px`;
-    tooltip.style.left = `${left}px`;
-    tooltip.style.visibility = 'visible';
-}
-
-export function handleTooltipHide() {
-    tooltipTimeout = setTimeout(() => {
-        document.getElementById(SELECTORS.infoTooltip)?.classList.remove('visible');
-    }, 100);
-}
-
-function getTooltipContent(tooltipId) {
-    const flirtyValue = Number(document.getElementById(SELECTORS.flirtySlider).value);
-    const lengthValue = Number(document.getElementById(SELECTORS.lengthSlider).value);
-    const linguisticStyle = document.getElementById(SELECTORS.linguisticStyleSelect).value;
-    const styleDescriptions = {
-        'auto': '<strong>Auto:</strong> Adapts to the match’s last message.',
-        'casual': '<strong>Casual:</strong> Relaxed, everyday flow.',
-        'witty': '<strong>Witty:</strong> Clever wordplay and banter.',
-        'playful': '<strong>Playful:</strong> Fun, cheeky vibe.',
-        'direct': '<strong>Direct:</strong> Straightforward and confident.',
-        'intellectual': '<strong>Intellectual:</strong> Thoughtful and deep.',
-        'poetic': '<strong>Poetic:</strong> Vivid and expressive language.',
-        'charming': '<strong>Charming:</strong> Polished and charismatic.',
-        'sarcastic': '<strong>Sarcastic:</strong> Dry humor and irony.',
-        'sexual': '<strong>Sexual:</strong> Bold and evocative.',
-        'mysterious': '<strong>Mysterious:</strong> Enigmatic and intriguing.'
-    };
-    const emojiDescriptions = {
-        'auto': "<strong>Auto:</strong> " + getEmojiInstruction('auto', flirtyValue, linguisticStyle),
-        'friendly': "<strong>Friendly:</strong> " + getEmojiInstruction('friendly', flirtyValue, linguisticStyle),
-        'playful': "<strong>Playful:</strong> " + getEmojiInstruction('playful', flirtyValue, linguisticStyle),
-        'bold': "<strong>Bold:</strong> " + getEmojiInstruction('bold', flirtyValue, linguisticStyle),
-        'no_emoji': "<strong>No Emoji:</strong> No emojis will be used."
-    };
-    switch (tooltipId) {
-    case 'flirt-info':
-        return getToneDescription(flirtyValue);
-    case 'length-info':
-        return getLengthDescription(lengthValue);
-    case 'style-info':
-        return styleDescriptions[linguisticStyle] || "Select a style.";
-    case 'emoji-info':
-        return emojiDescriptions[document.getElementById(SELECTORS.emojiStrategySelect).value] || "Select a strategy.";
-    case 'start-fresh-info':
-        return "<strong>Start Fresh:</strong> Ignores their last message and generates a new opener from their profile.";
-    default:
-        return null;
-    }
-}
+// The tooltip functions are removed as they depended on deleted helpers.
+// A new tooltip implementation would be needed if this feature is required.
 
 export function updateGeoContextDisplay(geoContext, sessionMatchProfile, sessionScrapedData) {
     if (!sessionMatchProfile || !sessionScrapedData) return;

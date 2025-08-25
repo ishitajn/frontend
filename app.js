@@ -2,7 +2,7 @@ import { mockPayload } from './dev/mock_payload.js';
 import { scrapeBumblePage, pasteTextIntoBumbleInput, scrapeTinderPage, pasteTextIntoTinderInput } from './content-scraper.js';
 import { initializePort, sendMessage, startHeartbeat, stopHeartbeat, getGenerationState } from './modules/portManager.js';
 import { DEFAULTS, MATCH_SPECIFIC_SETTINGS_KEYS, EMOJI_STRATEGIES, USER_LOCATIONS } from './modules/config.js';
-import { initializeTabs, showView, renderAllTabs } from './modules/ui.js';
+import { initializeTabs, showView, renderAllTabs, SELECTORS, setUIRefreshingState, showError, showErrorInResponseArea, setUIGeneratingState, updateUIAfterGeneration, updateSliderLabels, updateSliderValueLabel, updateClearButtonVisibility, startTimer, stopTimer, resetTimerDisplay } from './modules/ui.js';
 import { getState, setState, getNlpPayload } from './modules/uiState.js';
 
 const DEBUG = {
@@ -176,7 +176,7 @@ async function handleNlpAnalysisResponse(message) {
 
 async function handleLocationChange() {
     const state = getState();
-    const select = document.getElementById('user-location-select');
+    const select = document.getElementById(SELECTORS.userLocationSelect);
     const choice = select.value;
     const loadingIndicator = document.getElementById('location-loading-indicator');
     let messageData = {
@@ -223,17 +223,16 @@ async function handleLocationChange() {
 async function handleSettingChange(event) {
     const state = getState();
     const el = event.target;
-    // This logic needs to be moved to the new ui.js
-    // if (el.id === SELECTORS.customInstruction) {
-    //     updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearInstructionBtn));
-    // } else if (el.id === SELECTORS.responseArea) {
-    //     updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearResponseBtn));
-    //     document.getElementById(SELECTORS.refinementActions).classList.add('hidden');
-    // }
-    const key = el.dataset.storageKey || (el.id === 'response-area' ? 'lastResponse' : null);
+    if (el.id === SELECTORS.customInstruction) {
+        updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearInstructionBtn));
+    } else if (el.id === SELECTORS.responseArea) {
+        updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearResponseBtn));
+        document.getElementById(SELECTORS.refinementActions).classList.add('hidden');
+    }
+    const key = el.dataset.storageKey || (el.id === SELECTORS.responseArea ? 'lastResponse' : null);
     if (!key)
         return;
-    const value = el.type === 'checkbox' ? el.checked : (el.id === 'response-area' ? el.textContent : el.value);
+    const value = el.type === 'checkbox' ? el.checked : (el.id === SELECTORS.responseArea ? el.textContent : el.value);
     if (MATCH_SPECIFIC_SETTINGS_KEYS.includes(key) && state.currentMatchUUID) {
         const storageKey = getMatchSettingsKey(state.currentMatchUUID);
         const result = await chrome.storage.local.get(storageKey);
@@ -276,27 +275,25 @@ async function loadAndApplySettings() {
                 el.value = value;
         }
     });
-    const responseArea = document.getElementById('response-area');
+    const responseArea = document.getElementById(SELECTORS.responseArea);
     if (responseArea && finalSettings.lastResponse) {
         responseArea.textContent = finalSettings.lastResponse;
     }
-    // These UI update calls need to be moved to the new ui.js
-    // updateSliderLabels();
-    // updateSliderValueLabel(SELECTORS.temperatureSlider, SELECTORS.temperatureValueLabel);
-    // updateSliderValueLabel(SELECTORS.topPSlider, SELECTORS.topPValueLabel, 2);
-    // updateClearButtonVisibility(document.getElementById(SELECTORS.customInstruction), document.getElementById(SELECTORS.clearInstructionBtn));
-    // updateClearButtonVisibility(responseArea, document.getElementById(SELECTORS.clearResponseBtn));
+    updateSliderValueLabel(SELECTORS.temperatureSlider, SELECTORS.temperatureValueLabel);
+    updateSliderValueLabel(SELECTORS.topPSlider, SELECTORS.topPValueLabel, 2);
+    updateClearButtonVisibility(document.getElementById(SELECTORS.customInstruction), document.getElementById(SELECTORS.clearInstructionBtn));
+    updateClearButtonVisibility(responseArea, document.getElementById(SELECTORS.clearResponseBtn));
 }
 
 async function handleMatchReset() {
     const state = getState();
     if (!state.currentMatchUUID)
         return;
-    const btn = document.getElementById('reset-match-btn');
+    const btn = document.getElementById(SELECTORS.resetMatchBtn);
     btn.disabled = true;
     try {
         await chrome.storage.local.remove(getMatchSettingsKey(state.currentMatchUUID));
-        document.getElementById('response-area').textContent = '';
+        document.getElementById(SELECTORS.responseArea).textContent = '';
         await loadAndApplySettings();
     } catch (e) {
         DEBUG.error("RESET", "Failed to reset match settings:", e);
@@ -383,8 +380,8 @@ function handleCancelClick() {
 }
 
 function handleCopyClick() {
-    const responseArea = document.getElementById('response-area');
-    const copyBtn = document.getElementById('copy-btn');
+    const responseArea = document.getElementById(SELECTORS.responseArea);
+    const copyBtn = document.getElementById(SELECTORS.copyBtn);
     if (!responseArea || !copyBtn || !responseArea.textContent)
         return;
     navigator.clipboard.writeText(responseArea.textContent).then(() => {
@@ -475,7 +472,7 @@ function handleRefinementClick(event) {
         return;
 
     const refinementType = btn.dataset.refineType;
-    const responseArea = document.getElementById('response-area');
+    const responseArea = document.getElementById(SELECTORS.responseArea);
     const originalResponse = responseArea.textContent;
 
     if (!refinementType || !originalResponse)
