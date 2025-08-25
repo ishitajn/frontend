@@ -11,6 +11,22 @@ export const SELECTORS = {
     responseArea: 'response-area',
     generateBtn: 'generate-btn',
     copyBtn: 'copy-btn',
+
+    // Tune Tab Controls
+    conversationStateSelect: 'conversation-state-select',
+    currentGoalSelect: 'current-goal-select',
+    topicSelect: 'topic-select',
+    flirtySlider: 'flirty-slider',
+    lengthSlider: 'length-slider',
+    linguisticStyleSelect: 'linguistic-style-select',
+    emojiStrategySelect: 'emoji-strategy-select',
+    escalateFlirtationToggle: 'escalate-flirtation-toggle',
+    topicShiftToggle: 'topic-shift-toggle',
+    hasQuestionToggle: 'has-question-toggle',
+    lastGreetedToggle: 'last-greeted-toggle',
+    geoContextToggleTune: 'geo-context-toggle-tune',
+    temperatureSlider: 'temperature-slider',
+    topPSlider: 'top-p-slider',
     cancelBtn: 'cancel-btn',
     customInstruction: 'custom-instruction',
     clearResponseBtn: 'clear-response-btn',
@@ -318,14 +334,62 @@ function renderSuggestions(suggestions) {
 }
 
 export function renderTuneTab(payload) {
-    const tuneTab = document.getElementById('tune-tab');
-    if (!tuneTab) return;
-    let html = '<div class="card"><div class="card-content">';
-    html += renderTopics(payload.conversation_state.topics);
-    html += '<hr>';
-    html += renderSuggestions(payload.suggestions);
-    html += '</div></div>';
-    tuneTab.innerHTML = html;
+    const { conversation_state, suggestions, conversation_analysis } = payload;
+
+    // Populate Conversation State Dropdown
+    const convoStateSelect = document.getElementById('conversation-state-select');
+    if (convoStateSelect) {
+        // These would be predefined states
+        const states = ['Opener', 'Rapport Building', 'Escalation', 'Planning Meetup', 'Re-engaging'];
+        convoStateSelect.innerHTML = states.map(s => `<option value="${s.toLowerCase().replace(' ', '_')}">${s}</option>`).join('');
+        // Maybe select one based on payload.analysis.engagement or another field
+    }
+
+    // Populate Goal Dropdown
+    const goalSelect = document.getElementById('current-goal-select');
+    if (goalSelect) {
+        const goals = ['Get number', 'Plan date', 'Banter', 'Deepen connection'];
+        goalSelect.innerHTML = goals.map(g => `<option value="${g.toLowerCase().replace(' ', '_')}">${g}</option>`).join('');
+    }
+
+    // Populate Topic Dropdown
+    const topicSelect = document.getElementById('topic-select');
+    if (topicSelect) {
+        let options = '';
+        // Add identified topics
+        for (const [category, topics] of Object.entries(conversation_state.topics)) {
+            if (topics.length > 0) {
+                options += `<optgroup label="Identified - ${category}">`;
+                options += topics.map(t => `<option value="id_${category}_${t}">${t}</option>`).join('');
+                options += `</optgroup>`;
+            }
+        }
+        // Add suggested topics
+        for (const [category, suggs] of Object.entries(suggestions)) {
+            if (Array.isArray(suggs) && suggs.length > 0) {
+                options += `<optgroup label="Suggestion - ${category}">`;
+                options += suggs.map(s => `<option value="sugg_${category}_${s.substring(0, 20)}">${s}</option>`).join('');
+                options += `</optgroup>`;
+            }
+        }
+        topicSelect.innerHTML = options;
+    }
+
+    // Set toggle states
+    const toggleMap = {
+        'escalate-flirtation-toggle': conversation_analysis.suggest_flirtation,
+        'topic-shift-toggle': suggestions.topic_shift_recommended,
+        'has-question-toggle': conversation_analysis.match_last_message_has_question,
+        'last-greeted-toggle': conversation_analysis.last_user_greeted,
+        'geo-context-toggle-tune': conversation_analysis.Match_last_message_geo_context,
+    };
+
+    for (const [id, value] of Object.entries(toggleMap)) {
+        const toggle = document.getElementById(id);
+        if (toggle) {
+            toggle.checked = value;
+        }
+    }
 }
 
 function renderKeyValue(dataObject) {
@@ -347,11 +411,17 @@ export function renderAnalysisTab(payload) {
     const analysisTab = document.getElementById('analysis-tab');
     if (!analysisTab) return;
     let html = '<div class="card"><div class="card-content">';
-    html += '<h4>Analysis</h4>';
+    html += '<h4>Core Analysis</h4>';
     html += renderKeyValue(payload.analysis);
     html += '<hr>';
     html += '<h4>Conversation Analysis</h4>';
     html += renderKeyValue(payload.conversation_analysis);
+    html += '<hr>';
+    html += '<h4>Conversation State</h4>';
+    html += createCollapsibleJSON('Conversation State', payload.conversation_state);
+    html += '<hr>';
+    html += '<h4>Suggestions</h4>';
+    html += createCollapsibleJSON('Suggestions', payload.suggestions);
     html += '</div></div>';
     analysisTab.innerHTML = html;
 }

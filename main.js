@@ -274,15 +274,39 @@ async function handleLocationChange() {
 async function handleSettingChange(event) {
     const state = getState();
     const el = event.target;
+
+    // Handle visibility of clear buttons for old inputs
     if (el.id === SELECTORS.customInstruction) {
         updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearInstructionBtn));
     } else if (el.id === SELECTORS.responseArea) {
         updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearResponseBtn));
     }
-    const key = el.dataset.storageKey || (el.id === SELECTORS.responseArea ? 'lastResponse' : null);
+
+    // Determine the storage key
+    let key = el.dataset.storageKey;
+    if (!key) {
+        // For new controls without data-storage-key, use their ID as the key
+        const newTuneControls = [
+            'conversation-state-select', 'current-goal-select', 'topic-select',
+            'flirty-slider', 'length-slider', 'linguistic-style-select', 'emoji-strategy-select',
+            'escalate-flirtation-toggle', 'topic-shift-toggle', 'has-question-toggle',
+            'last-greeted-toggle', 'geo-context-toggle-tune'
+        ];
+        if (newTuneControls.includes(el.id)) {
+            key = el.id;
+        }
+    }
+     if (el.id === SELECTORS.responseArea) {
+        key = 'lastResponse';
+    }
+
     if (!key)
         return;
-    const value = el.type === 'checkbox' ? el.checked : (el.id === SELECTORS.responseArea ? el.textContent : el.value);
+
+    // Determine the value
+    const value = el.type === 'checkbox' ? el.checked : el.value;
+
+    // Check if it's a match-specific setting
     if (MATCH_SPECIFIC_SETTINGS_KEYS.includes(key) && state.currentMatchUUID) {
         const storageKey = getMatchSettingsKey(state.currentMatchUUID);
         const result = await chrome.storage.local.get(storageKey);
@@ -329,6 +353,20 @@ async function loadAndApplySettings() {
     const responseArea = document.getElementById(SELECTORS.responseArea);
     if (responseArea && finalSettings.lastResponse) {
         responseArea.textContent = finalSettings.lastResponse;
+    }
+
+    // Also load settings for the new Tune tab controls
+    for (const key of MATCH_SPECIFIC_SETTINGS_KEYS) {
+        if (finalSettings.hasOwnProperty(key)) {
+            const el = document.getElementById(key);
+            if (el) {
+                if (el.type === 'checkbox') {
+                    el.checked = finalSettings[key];
+                } else {
+                    el.value = finalSettings[key];
+                }
+            }
+        }
     }
     DEBUG.log('SETTINGS', 'loadAndApplySettings: END');
 }

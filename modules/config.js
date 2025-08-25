@@ -28,7 +28,12 @@ export const DEFAULTS = {
 export const MATCH_SPECIFIC_SETTINGS_KEYS = [
     'flirtyValue', 'lengthValue', 'linguisticStyle', 'emojiStrategy',
     'endWithQuestion', 'strictGoalOverride', 'geoContextToggle', 'newTopic',
-    'customInstruction', 'lastResponse'
+    'customInstruction', 'lastResponse',
+    // New Tune Tab Controls
+    'conversation-state-select', 'current-goal-select', 'topic-select',
+    'flirty-slider', 'length-slider', 'linguistic-style-select', 'emoji-strategy-select',
+    'escalate-flirtation-toggle', 'topic-shift-toggle', 'has-question-toggle',
+    'last-greeted-toggle', 'geo-context-toggle-tune'
 ];
 
 export const EMOJI_STRATEGIES = {

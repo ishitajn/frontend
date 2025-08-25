@@ -88,11 +88,54 @@
                     <button class="tab-button" data-tab="context-tab">Context</button>
                     <button class="tab-button" data-tab="final-view-tab">Final View</button>
                 </div>
+
                 <!-- Tune Tab -->
                 <div id="tune-tab" class="tab-content active">
-                    <!-- This will be populated with controls for suggestions and topics -->
-                    <p>Tune Tab Content</p>
+                    <div class="card">
+                        <div class="card-content">
+                            <div class="control-group stacked"><label for="conversation-state-select">Conversation State</label><select id="conversation-state-select"></select></div>
+                            <div class="control-group stacked"><label for="current-goal-select">Current Goal</label><select id="current-goal-select"></select></div>
+                            <div class="control-group stacked"><label for="topic-select">Topic</label><select id="topic-select"></select></div>
+
+                            <div class="control-group">
+                                <label class="label-with-info"><span>Flirt Level</span><span class="value-label" id="flirty-value-label"></span></label>
+                                <input type="range" id="flirty-slider" min="0" max="100" step="10">
+                            </div>
+                             <div class="control-group">
+                                <label class="label-with-info"><span>Length</span><span class="value-label" id="length-value-label"></span></label>
+                                <input type="range" id="length-slider" min="0" max="100" step="10">
+                            </div>
+
+                            <div class="control-group stacked"><label for="linguistic-style-select">Linguistic Style</label><select id="linguistic-style-select"></select></div>
+                            <div class="control-group stacked"><label for="emoji-strategy-select">Emoji Strategy</label><select id="emoji-strategy-select"></select></div>
+
+                            <div class="quick-toggles">
+                                <label class="toggle-switch"><input type="checkbox" id="escalate-flirtation-toggle"><span>Escalate Flirt</span></label>
+                                <label class="toggle-switch"><input type="checkbox" id="topic-shift-toggle"><span>Shift Topic</span></label>
+                                <label class="toggle-switch"><input type="checkbox" id="has-question-toggle"><span>Has Question</span></label>
+                                <label class="toggle-switch"><input type="checkbox" id="last-greeted-toggle"><span>Last Greeted</span></label>
+                                <label class="toggle-switch"><input type="checkbox" id="geo-context-toggle-tune"><span>Geo Context</span></label>
+                            </div>
+
+                            <hr>
+
+                            <details class="card">
+                                <summary class="card-header">AI Model Parameters</summary>
+                                <div class="card-content">
+                                    <div class="control-group">
+                                        <label class="label-with-info"><span>Creativity</span><span id="temperature-value-label" class="value-label"></span></label>
+                                        <input type="range" id="temperature-slider" data-storage-key="modelTemperature" min="0" max="2" step="0.1">
+                                    </div>
+                                    <div class="control-group">
+                                        <label class="label-with-info"><span>Focus</span><span id="top-p-value-label" class="value-label"></span></label>
+                                        <input type="range" id="top-p-slider" data-storage-key="topPValue" min="0" max="1" step="0.05">
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
+                    </div>
                 </div>
+
                 <!-- Analysis Tab -->
                 <div id="analysis-tab" class="tab-content">
                     <p>Analysis Tab Content</p>
@@ -187,8 +230,9 @@
         <footer>Wingman AI v1.0</footer>
     </div>
 
+    <div id="debug-modal-overlay" class="modal-overlay hidden"></div>
     <div id="info-tooltip" class="tooltip"></div>
 
-    <script type="module" src="main.js"></script>
+    <script type="module" src="popup.js"></script>
 </body>
 </html>
