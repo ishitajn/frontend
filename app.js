@@ -101,7 +101,7 @@ async function refreshDataAndUI() {
     }
 
     setState({ isRefreshing: true });
-    // setUIRefreshingState(true); // This function needs to be moved to the new ui.js
+    setUIRefreshingState(true);
 
     try {
         const [tab] = await chrome.tabs.query({
@@ -140,11 +140,11 @@ async function refreshDataAndUI() {
         });
 
     } catch (e) {
-        // showError('Initialization Failed', e.message); // This function needs to be moved to the new ui.js
+        showError('Initialization Failed', e.message);
         DEBUG.error('INIT', 'Refresh failed', e);
     } finally {
         setState({ isRefreshing: false });
-        // setUIRefreshingState(false);
+        setUIRefreshingState(false);
     }
 }
 
@@ -371,6 +371,7 @@ async function handleGenerateClick() {
 // The gatherCoreDataForGeneration function is no longer needed.
 
 function handleCancelClick() {
+    const state = getState();
     if (state.currentMatchUUID) {
         sendMessage({
             action: "cancelGeneration",
@@ -382,8 +383,8 @@ function handleCancelClick() {
 }
 
 function handleCopyClick() {
-    const responseArea = document.getElementById(SELECTORS.responseArea);
-    const copyBtn = document.getElementById(SELECTORS.copyBtn);
+    const responseArea = document.getElementById('response-area');
+    const copyBtn = document.getElementById('copy-btn');
     if (!responseArea || !copyBtn || !responseArea.textContent)
         return;
     navigator.clipboard.writeText(responseArea.textContent).then(() => {
@@ -396,6 +397,7 @@ function handleCopyClick() {
 }
 
 async function autoType(text) {
+    const state = getState();
     if (!state.pasterFn)
         return;
     try {
@@ -410,14 +412,15 @@ async function autoType(text) {
                 },
                 function : state.pasterFn,
                 args: [text]
-        });
+            });
+        }
+    } catch (error) {
+        DEBUG.error('AUTOTYPE', 'Failed to auto-type', error);
     }
-} catch (error) {
-    DEBUG.error('AUTOTYPE', 'Failed to auto-type', error);
-}
 }
 
 function displayConversationState() {
+    const state = getState();
     if (!state.sessionMatchProfile?.analysis)
         return;
     const analysis = state.sessionMatchProfile.analysis;
@@ -433,14 +436,14 @@ function displayConversationState() {
         'break_over_week': 'Status: Re-engaging (1-4 week pause)',
         'break_over_month': 'Status: Re-engaging (1+ month pause)'
     };
-    const statusEl = document.getElementById(SELECTORS.conversationStatusDisplay);
+    const statusEl = document.getElementById('conversation-status-display');
     if (statusEl && convoState && typeof convoState === 'string') {
         statusEl.textContent = stateDisplayMap[convoState.toLowerCase()] || `Status: ${convoState}`;
     } else if (statusEl) {
         statusEl.textContent = 'Status: Unknown';
     }
 
-    const dateIdeaBtn = document.getElementById(SELECTORS.dateIdeaBtn);
+    const dateIdeaBtn = document.getElementById('date-idea-btn');
     if (dateIdeaBtn) {
         const showButton = dateArcPhase === 'escalation' || dateArcPhase === 'planning_meetup';
         dateIdeaBtn.classList.toggle('hidden', !showButton);
@@ -448,6 +451,7 @@ function displayConversationState() {
 }
 
 function handleDateIdeaClick() {
+    const state = getState();
     if (!state.sessionMatchProfile || !state.currentMatchUUID) {
         showErrorInResponseArea("Error: Match profile data not loaded. Please refresh.");
         return;
@@ -465,12 +469,13 @@ function handleDateIdeaClick() {
 }
 
 function handleRefinementClick(event) {
+    const state = getState();
     const btn = event.target.closest('.btn-refine');
     if (!btn)
         return;
 
     const refinementType = btn.dataset.refineType;
-    const responseArea = document.getElementById(SELECTORS.responseArea);
+    const responseArea = document.getElementById('response-area');
     const originalResponse = responseArea.textContent;
 
     if (!refinementType || !originalResponse)
