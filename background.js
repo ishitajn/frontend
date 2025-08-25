@@ -93,11 +93,20 @@ chrome.runtime.onConnect.addListener((port) => {
                     matchProfile
                 });
             } catch (error) {
+                if (String(error.message).includes('disconnected port')) {
+                    DEBUG.log('PORT', 'Port disconnected during NLP analysis. Aborting response delivery.');
+                    return;
+                }
+
                 DEBUG.error('NLP', 'Analysis failed', error);
-                port.postMessage({
-                    action: 'nlpAnalysisResponse',
-                    error: error.message
-                });
+                try {
+                    port.postMessage({
+                        action: 'nlpAnalysisResponse',
+                        error: error.message
+                    });
+                } catch (sendError) {
+                    DEBUG.error('PORT', `Could not send NLP error response. Port likely disconnected. Original error: ${error.message}`);
+                }
             }
         },
 
