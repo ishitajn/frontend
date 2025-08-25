@@ -266,39 +266,54 @@ chrome.runtime.onConnect.addListener((port) => {
                 }
 
                 const newCacheHash = await generateCacheHash(scrapedData.conversationHistory, scrapedData.theirProfile);
-                if (matchProfile.memory?.lastCacheHash === newCacheHash && matchProfile.analysis) {
-                    DEBUG.log('NLP-CACHE', 'Cache HIT.', {
-                        uuid
-                    });
-                    port.postMessage({
-                        action: 'nlpAnalysisResponse',
-                        matchProfile
-                    });
+
+                const settings = await chrome.storage.local.get(['analysis_type', 'analysis_url']);
+                const analysisType = settings.analysis_type || 'local';
+                const analysisUrl = settings.analysis_url || DEFAULTS.analysis_url;
+
+                // Bypass cache if using a non-local analysis for now
+                if (analysisType === 'local' && matchProfile.memory?.lastCacheHash === newCacheHash && matchProfile.analysis) {
+                    DEBUG.log('NLP-CACHE', 'Cache HIT.', { uuid });
+                    try {
+                        port.postMessage({ action: 'nlpAnalysisResponse', matchProfile });
+                    } catch (e) { /* port closed */ }
                     return;
                 }
-                DEBUG.log('NLP-CACHE', 'Cache MISS. Running full analysis.', {
-                    uuid
-                });
+                DEBUG.log('NLP-CACHE', 'Cache MISS or non-local analysis. Running full analysis.', { uuid, analysisType });
 
                 matchProfile.conversationHistory = scrapedData.conversationHistory;
                 matchProfile.metadata.theirProfile = scrapedData.theirProfile;
                 matchProfile.metadata.matchLocation = scrapedData.matchLocation;
 
-                const { updatedMemory, lastMessageAnalysis } = runFullConversationAnalysis(matchProfile.conversationHistory, matchProfile.memory);
-                matchProfile.memory = updatedMemory;
+                if (analysisType === 'local') {
+                    const { updatedMemory, lastMessageAnalysis } = runFullConversationAnalysis(matchProfile.conversationHistory, matchProfile.memory);
+                    matchProfile.memory = updatedMemory;
+
+                    const state = determineConversationState(scrapedData.conversationHistory);
+                    const suppressGreeting = hasRecentGreeting(scrapedData.conversationHistory) && !state.startsWith('REENGAGING');
+
+                    matchProfile.analysis = {
+                        conversationState: state,
+                        suppressGreeting: suppressGreeting,
+                        lastMessageAnalysis: lastMessageAnalysis,
+                        memory: matchProfile.memory,
+                    };
+                } else {
+                    // External analysis
+                    const response = await fetch(analysisUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(scrapedData)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`External analysis service failed with status: ${response.status}`);
+                    }
+                    const externalAnalysis = await response.json();
+                    matchProfile.analysis = transformExternalAnalysis(externalAnalysis);
+                }
+
                 matchProfile.memory.lastCacheHash = newCacheHash;
-
-                const state = determineConversationState(scrapedData.conversationHistory);
-                const suppressGreeting = hasRecentGreeting(scrapedData.conversationHistory) && !state.startsWith('REENGAGING');
-
-                const fullAnalysis = {
-                    conversationState: state,
-                    suppressGreeting: suppressGreeting,
-                    lastMessageAnalysis: lastMessageAnalysis,
-                    memory: matchProfile.memory,
-                };
-
-                matchProfile.analysis = fullAnalysis;
                 matchProfile.metadata.lastUpdated = new Date().toISOString();
                 await memoryManager.saveMatchProfile(uuid, matchProfile);
                 DEBUG.log('NLP', 'Analysis complete. Sending response.', {
@@ -590,6 +605,52 @@ function cleanAIResponse(rawResponse) {
         }
     }
     return (earliestStopIndex !== -1 ? rawResponse.substring(0, earliestStopIndex) : rawResponse).trim();
+}
+
+function transformExternalAnalysis(externalData) {
+    const { analysis, conversation_analysis, memory } = externalData;
+
+    // Helper to map sentiment string to a numeric valence score (-1 to 1)
+    const getValence = (sentiment) => {
+        const sentimentMap = {
+            'very positive': 0.8,
+            'positive': 0.5,
+            'neutral': 0.0,
+            'negative': -0.5,
+            'very negative': -0.8
+        };
+        return sentimentMap[sentiment?.toLowerCase()] ?? 0.0;
+    };
+
+    // Helper to map engagement string to a numeric arousal score (-1 to 1)
+    const getArousal = (engagement) => {
+        const arousalMap = {
+            'very high': 0.8,
+            'high': 0.5,
+            'medium': 0.0,
+            'low': -0.5,
+            'very low': -0.8
+        };
+        return arousalMap[engagement?.toLowerCase()] ?? 0.0;
+    };
+
+    const transformed = {
+        conversationState: conversation_analysis?.Last_message_day || 'UNKNOWN',
+        suppressGreeting: conversation_analysis?.greeting_detected === false,
+        lastMessageAnalysis: {
+            isDirectQuestion: conversation_analysis?.match_last_message_has_question === true,
+            isLowEffort: conversation_analysis?.recent_engagement_score === 'low',
+            isSarcastic: false, // Not provided in external payload
+            isAmbiguous: false, // Not provided
+            isVulnerable: false, // Not provided
+            valence: getValence(analysis?.sentiment),
+            arousal: getArousal(analysis?.engagement),
+            intents: [], // Not provided, default to empty
+        },
+        memory: memory || {}, // Assume memory structure is compatible or provided as is
+    };
+
+    return transformed;
 }
 
 async function fetchLocalLlamaResponse(apiKey, payload, settings, signal) {
