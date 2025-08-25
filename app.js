@@ -89,6 +89,7 @@ function handleTestConnectionResponse(message) {
 }
 
 async function refreshDataAndUI() {
+    const state = getState();
     if (state.isRefreshing)
         return;
 
@@ -99,8 +100,8 @@ async function refreshDataAndUI() {
         return;
     }
 
-    state.isRefreshing = true;
-    setUIRefreshingState(true);
+    setState({ isRefreshing: true });
+    // setUIRefreshingState(true); // This function needs to be moved to the new ui.js
 
     try {
         const [tab] = await chrome.tabs.query({
@@ -111,10 +112,10 @@ async function refreshDataAndUI() {
 
         if (tab.url?.startsWith("https://tinder.com/")) {
             scraperFn = scrapeTinderPage;
-            state.pasterFn = pasteTextIntoTinderInput;
+            setState({ pasterFn: pasteTextIntoTinderInput });
         } else if (tab.url?.startsWith("https://bumble.com/")) {
             scraperFn = scrapeBumblePage;
-            state.pasterFn = pasteTextIntoBumbleInput;
+            setState({ pasterFn: pasteTextIntoBumbleInput });
         } else {
             throw new Error('Unsupported Site: Please navigate to a conversation on Tinder.com or Bumble.com.');
         }
@@ -124,27 +125,27 @@ async function refreshDataAndUI() {
                 tabId: tab.id
             },
             function : scraperFn
-    });
-const pageData = results[0]?.result;
-if (!pageData || pageData.error) {
-    throw new Error(`Could not read page. ${pageData?.error || 'Please make sure a conversation is selected.'}`);
-}
+        });
+        const pageData = results[0]?.result;
+        if (!pageData || pageData.error) {
+            throw new Error(`Could not read page. ${pageData?.error || 'Please make sure a conversation is selected.'}`);
+        }
 
-state.sessionScrapedData = pageData;
-sendMessage({
-    action: "getNlpAnalysis",
-    data: {
-        scrapedData: pageData
+        setState({ sessionScrapedData: pageData });
+        sendMessage({
+            action: "getNlpAnalysis",
+            data: {
+                scrapedData: pageData
+            }
+        });
+
+    } catch (e) {
+        // showError('Initialization Failed', e.message); // This function needs to be moved to the new ui.js
+        DEBUG.error('INIT', 'Refresh failed', e);
+    } finally {
+        setState({ isRefreshing: false });
+        // setUIRefreshingState(false);
     }
-});
-
-} catch (e) {
-    showError('Initialization Failed', e.message);
-    DEBUG.error('INIT', 'Refresh failed', e);
-} finally {
-    state.isRefreshing = false;
-    setUIRefreshingState(false);
-}
 }
 
 async function handleNlpAnalysisResponse(message) {
@@ -174,7 +175,8 @@ async function handleNlpAnalysisResponse(message) {
 // The handleGeoCalculationsResponse and handleFinalPayloadResponse functions are no longer needed.
 
 async function handleLocationChange() {
-    const select = document.getElementById(SELECTORS.userLocationSelect);
+    const state = getState();
+    const select = document.getElementById('user-location-select');
     const choice = select.value;
     const loadingIndicator = document.getElementById('location-loading-indicator');
     let messageData = {
@@ -202,8 +204,8 @@ async function handleLocationChange() {
             } else if (error.code === error.TIMEOUT) {
                 errorMessage = 'Geolocation request timed out.';
             }
-            showErrorInResponseArea(errorMessage);
-            updateGeoContextDisplay(null, state.sessionMatchProfile, state.sessionScrapedData);
+            // showErrorInResponseArea(errorMessage);
+            // updateGeoContextDisplay(null, state.sessionMatchProfile, state.sessionScrapedData);
             return;
         } finally {
             loadingIndicator.classList.add('hidden');
@@ -211,24 +213,27 @@ async function handleLocationChange() {
     } else {
         messageData.userLocation = USER_LOCATIONS[choice];
     }
-    sendMessage({
-        action: "getGeoCalculations",
-        data: messageData
-    });
+    // This message is no longer valid as getGeoCalculations was removed
+    // sendMessage({
+    //     action: "getGeoCalculations",
+    //     data: messageData
+    // });
 }
 
 async function handleSettingChange(event) {
+    const state = getState();
     const el = event.target;
-    if (el.id === SELECTORS.customInstruction) {
-        updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearInstructionBtn));
-    } else if (el.id === SELECTORS.responseArea) {
-        updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearResponseBtn));
-        document.getElementById(SELECTORS.refinementActions).classList.add('hidden');
-    }
-    const key = el.dataset.storageKey || (el.id === SELECTORS.responseArea ? 'lastResponse' : null);
+    // This logic needs to be moved to the new ui.js
+    // if (el.id === SELECTORS.customInstruction) {
+    //     updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearInstructionBtn));
+    // } else if (el.id === SELECTORS.responseArea) {
+    //     updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearResponseBtn));
+    //     document.getElementById(SELECTORS.refinementActions).classList.add('hidden');
+    // }
+    const key = el.dataset.storageKey || (el.id === 'response-area' ? 'lastResponse' : null);
     if (!key)
         return;
-    const value = el.type === 'checkbox' ? el.checked : (el.id === SELECTORS.responseArea ? el.textContent : el.value);
+    const value = el.type === 'checkbox' ? el.checked : (el.id === 'response-area' ? el.textContent : el.value);
     if (MATCH_SPECIFIC_SETTINGS_KEYS.includes(key) && state.currentMatchUUID) {
         const storageKey = getMatchSettingsKey(state.currentMatchUUID);
         const result = await chrome.storage.local.get(storageKey);
@@ -245,6 +250,7 @@ async function handleSettingChange(event) {
 }
 
 async function loadAndApplySettings() {
+    const state = getState();
     const globalKeys = Object.keys(DEFAULTS);
     const globalSettings = {
         ...DEFAULTS,
@@ -270,25 +276,27 @@ async function loadAndApplySettings() {
                 el.value = value;
         }
     });
-    const responseArea = document.getElementById(SELECTORS.responseArea);
+    const responseArea = document.getElementById('response-area');
     if (responseArea && finalSettings.lastResponse) {
         responseArea.textContent = finalSettings.lastResponse;
     }
-    updateSliderLabels();
-    updateSliderValueLabel(SELECTORS.temperatureSlider, SELECTORS.temperatureValueLabel);
-    updateSliderValueLabel(SELECTORS.topPSlider, SELECTORS.topPValueLabel, 2);
-    updateClearButtonVisibility(document.getElementById(SELECTORS.customInstruction), document.getElementById(SELECTORS.clearInstructionBtn));
-    updateClearButtonVisibility(responseArea, document.getElementById(SELECTORS.clearResponseBtn));
+    // These UI update calls need to be moved to the new ui.js
+    // updateSliderLabels();
+    // updateSliderValueLabel(SELECTORS.temperatureSlider, SELECTORS.temperatureValueLabel);
+    // updateSliderValueLabel(SELECTORS.topPSlider, SELECTORS.topPValueLabel, 2);
+    // updateClearButtonVisibility(document.getElementById(SELECTORS.customInstruction), document.getElementById(SELECTORS.clearInstructionBtn));
+    // updateClearButtonVisibility(responseArea, document.getElementById(SELECTORS.clearResponseBtn));
 }
 
 async function handleMatchReset() {
+    const state = getState();
     if (!state.currentMatchUUID)
         return;
-    const btn = document.getElementById(SELECTORS.resetMatchBtn);
+    const btn = document.getElementById('reset-match-btn');
     btn.disabled = true;
     try {
         await chrome.storage.local.remove(getMatchSettingsKey(state.currentMatchUUID));
-        document.getElementById(SELECTORS.responseArea).textContent = '';
+        document.getElementById('response-area').textContent = '';
         await loadAndApplySettings();
     } catch (e) {
         DEBUG.error("RESET", "Failed to reset match settings:", e);
