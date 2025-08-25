@@ -1298,9 +1298,10 @@ async function handleGenerateClick() {
     if (document.getElementById(SELECTORS.debugModeToggle).checked) {
         // In debug mode, show the modal instead of sending to the background script
         const fullGenerationData = {
-            ...modalState, // This already has most of what we need
-            forceIncludeGeoContext: dataForBackground.forceIncludeGeoContext,
-            taskInstructions: dataForBackground.taskInstructions,
+            ...modalState, // Base state from analysis
+            myProfile: dataForBackground.myProfile, // Overwrite with fresh profile from settings
+            forceIncludeGeoContext: dataForBackground.forceIncludeGeoContext, // Overwrite with fresh toggle state
+            taskInstructions: dataForBackground.taskInstructions, // Overwrite with fresh instructions from main UI
         };
         showDebugModal(fullGenerationData);
     } else {
