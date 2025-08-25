@@ -228,7 +228,7 @@ async function handleSettingChange(event) {
         updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearInstructionBtn));
     } else if (el.id === SELECTORS.responseArea) {
         updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearResponseBtn));
-        document.getElementById(SELECTORS.refinementActions).classList.add('hidden');
+        // The 'refinementActions' element was part of the old UI.
     }
     const key = el.dataset.storageKey || (el.id === SELECTORS.responseArea ? 'lastResponse' : null);
     if (!key)
@@ -280,10 +280,8 @@ async function loadAndApplySettings() {
     if (responseArea && finalSettings.lastResponse) {
         responseArea.textContent = finalSettings.lastResponse;
     }
-    updateSliderValueLabel(SELECTORS.temperatureSlider, SELECTORS.temperatureValueLabel);
-    updateSliderValueLabel(SELECTORS.topPSlider, SELECTORS.topPValueLabel, 2);
-    updateClearButtonVisibility(document.getElementById(SELECTORS.customInstruction), document.getElementById(SELECTORS.clearInstructionBtn));
-    updateClearButtonVisibility(responseArea, document.getElementById(SELECTORS.clearResponseBtn));
+    // The rest of the UI elements controlled by this function were part of the old UI
+    // and have been removed. This function may be refactored further in the future.
 }
 
 async function handleMatchReset() {
@@ -414,47 +412,5 @@ async function autoType(text) {
 // The displayConversationState function is no longer needed as its logic
 // has been integrated into handleNlpAnalysisResponse.
 
-function handleDateIdeaClick() {
-    const state = getState();
-    if (!state.sessionMatchProfile || !state.currentMatchUUID) {
-        showErrorInResponseArea("Error: Match profile data not loaded. Please refresh.");
-        return;
-    }
-    setUIGeneratingState(true);
-    startTimer(Date.now());
-
-    sendMessage({
-        action: 'getAIDateIdea',
-        data: {
-            uuid: state.currentMatchUUID,
-            generationId: Date.now()
-        }
-    });
-}
-
-function handleRefinementClick(event) {
-    const state = getState();
-    const btn = event.target.closest('.btn-refine');
-    if (!btn)
-        return;
-
-    const refinementType = btn.dataset.refineType;
-    const responseArea = document.getElementById(SELECTORS.responseArea);
-    const originalResponse = responseArea.textContent;
-
-    if (!refinementType || !originalResponse)
-        return;
-
-    setUIGeneratingState(true);
-    startTimer(Date.now());
-
-    sendMessage({
-        action: 'refineAIResponse',
-        data: {
-            uuid: state.currentMatchUUID,
-            originalResponse,
-            refinementType,
-            generationId: Date.now()
-        }
-    });
-}
+// The handleDateIdeaClick and handleRefinementClick functions are obsolete
+// as their corresponding UI elements have been removed in the new design.
