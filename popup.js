@@ -127,6 +127,7 @@ const SELECTORS = {
     testApiBtn: 'test-api-btn',
     testAnalysisBtn: 'test-analysis-btn',
     tabsContainer: 'tabs',
+    advancedDebugBtn: 'advanced-debug-btn',
     userLocationSelect: 'user-location-select',
     myProfileSetting: 'my-profile-setting',
     infoTooltip: 'info-tooltip',
@@ -146,7 +147,6 @@ const SELECTORS = {
     matchCountry: 'match-country',
     timeDifference: 'time-difference',
     distanceInfo: 'distance-info',
-    dateIdeaBtn: 'date-idea-btn',
     refinementActions: 'refinement-actions',
 };
 
@@ -221,10 +221,17 @@ function toggleDebugTabs() {
     const tabs = document.querySelectorAll('.tab-link');
     tabs.forEach(tab => {
         const tabName = tab.dataset.tab;
-        if (tabName !== 'tune-response') {
+        if (tabName !== 'tune-response' && tab.id !== 'advanced-debug-btn') {
             tab.style.display = debugModeEnabled ? '' : 'none';
         }
     });
+
+    // Also toggle the advanced button
+    const advancedBtn = document.getElementById(SELECTORS.advancedDebugBtn);
+    if (advancedBtn) {
+        advancedBtn.style.display = debugModeEnabled ? '' : 'none';
+    }
+
 
     // If not in debug mode and a debug tab is active, switch to the tune-response tab
     if (!debugModeEnabled) {
@@ -371,11 +378,67 @@ function renderDebugView(viewName) {
     switch (viewName) {
         case 'analysis': html = renderAnalysisView(); break;
         case 'memory': html = renderMemoryView(); break;
-        case 'context': html = renderContextView(); break;
-        case 'final-payload': html = renderFinalPayloadView(); break;
+        // context and final-payload are now in the modal
     }
     contentEl.innerHTML = `<div class="card-content">${html}</div>`;
     attachDebugEventListeners(contentEl);
+}
+
+function renderModalDebugView(viewName, container) {
+    if (!container) return;
+
+    let html = '';
+    switch(viewName) {
+        case 'context': html = renderContextView(); break;
+        case 'final-payload': html = renderFinalPayloadView(); break;
+    }
+    container.innerHTML = html;
+    attachDebugEventListeners(container);
+}
+
+
+function showDebugModal() {
+    const overlay = document.getElementById('debug-modal-overlay');
+    overlay.innerHTML = `
+        <div class="modal">
+            <div class="modal-header">Advanced Debug</div>
+            <div class="tabs">
+                <button class="tab-link active" data-tab="context">Context</button>
+                <button class="tab-link" data-tab="final-payload">Final Payload</button>
+            </div>
+            <div class="modal-content" id="debug-modal-content-area"></div>
+            <div class="modal-footer">
+                <div class="modal-actions">
+                    <button id="modal-close-btn" class="btn btn-secondary">Close</button>
+                </div>
+            </div>
+        </div>
+    `;
+    overlay.classList.remove('hidden');
+
+    const contentArea = document.getElementById('debug-modal-content-area');
+
+    // Attach listeners for the modal's own tabs
+    overlay.querySelector('.tabs').addEventListener('click', (e) => {
+        if (e.target.classList.contains('tab-link')) {
+            overlay.querySelectorAll('.tab-link').forEach(t => t.classList.remove('active'));
+            e.target.classList.add('active');
+            renderModalDebugView(e.target.dataset.tab, contentArea);
+        }
+    });
+
+    document.getElementById('modal-close-btn').addEventListener('click', hideDebugModal);
+
+    // Render the initial view
+    renderModalDebugView('context', contentArea);
+}
+
+function hideDebugModal() {
+    const overlay = document.getElementById('debug-modal-overlay');
+    if (overlay) {
+        overlay.classList.add('hidden');
+        overlay.innerHTML = ''; // Clean up
+    }
 }
 
 function renderAnalysisView() {
@@ -846,12 +909,12 @@ function setupEventListeners() {
                 bubbles: true
             }));
     });
-    document.getElementById(SELECTORS.dateIdeaBtn)?.addEventListener('click', handleDateIdeaClick);
     document.getElementById(SELECTORS.refinementActions)?.addEventListener('click', handleRefinementClick);
     document.querySelector('.tabs')?.addEventListener('click', handleTabClick);
     document.getElementById(SELECTORS.testApiBtn)?.addEventListener('click', () => handleTestApiClick(SELECTORS.localLlamaUrl));
     document.getElementById(SELECTORS.testAnalysisBtn)?.addEventListener('click', () => handleTestApiClick(SELECTORS.analysisUrl));
     document.getElementById(SELECTORS.debugModeToggle)?.addEventListener('change', toggleDebugTabs);
+    document.getElementById(SELECTORS.advancedDebugBtn)?.addEventListener('click', showDebugModal);
 
     populateSelect(SELECTORS.linguisticStyleSelect, LINGUISTIC_STYLES.map(s => ({
                 value: s,
@@ -1346,13 +1409,11 @@ function setUIGeneratingState(isGenerating) {
     const copyBtn = document.getElementById(SELECTORS.copyBtn);
     const responseArea = document.getElementById(SELECTORS.responseArea);
     const refinementActions = document.getElementById(SELECTORS.refinementActions);
-    const dateIdeaBtn = document.getElementById(SELECTORS.dateIdeaBtn);
 
-    if (!generateBtn || !cancelBtn || !copyBtn || !responseArea || !refinementActions || !dateIdeaBtn)
+    if (!generateBtn || !cancelBtn || !copyBtn || !responseArea || !refinementActions)
         return;
 
     generateBtn.disabled = isGenerating;
-    dateIdeaBtn.disabled = isGenerating;
     document.querySelectorAll('.btn-refine').forEach(btn => btn.disabled = isGenerating);
 
     generateBtn.innerHTML = isGenerating ? 'Thinking...' : 'Generate';
@@ -1368,8 +1429,6 @@ function setUIGeneratingState(isGenerating) {
         responseArea.classList.add('loading');
         responseArea.classList.remove('error');
     } else {
-        dateIdeaBtn.disabled = false;
-        dateIdeaBtn.innerHTML = `<svg fill="currentColor" viewBox="0 0 24 24" width="18" height="18"><path d="M9 11H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm2-7h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z"></path></svg> Suggest a Date Idea`;
         responseArea.classList.remove('loading');
         if (!responseArea.textContent || responseArea.classList.contains('error')) {
             copyBtn.classList.add('hidden');
@@ -1449,29 +1508,6 @@ function displayConversationState() {
     const statusEl = document.getElementById(SELECTORS.conversationStatusDisplay);
     if (statusEl)
         statusEl.textContent = stateDisplayMap[convoState] || 'Status: Unknown';
-
-    const dateIdeaBtn = document.getElementById(SELECTORS.dateIdeaBtn);
-    if (dateIdeaBtn) {
-        const showButton = dateArcPhase === 'escalation' || dateArcPhase === 'planning';
-        dateIdeaBtn.classList.toggle('hidden', !showButton);
-    }
-}
-
-function handleDateIdeaClick() {
-    if (!state.sessionMatchProfile || !state.currentMatchUUID) {
-        showErrorInResponseArea("Error: Match profile data not loaded. Please refresh.");
-        return;
-    }
-    setUIGeneratingState(true);
-    startTimer(Date.now());
-
-    sendMessage({
-        action: 'getAIDateIdea',
-        data: {
-            uuid: state.currentMatchUUID,
-            generationId: Date.now()
-        }
-    });
 }
 
 function handleRefinementClick(event) {

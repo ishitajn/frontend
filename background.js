@@ -517,50 +517,6 @@ chrome.runtime.onConnect.addListener((port) => {
             });
         },
 
-        "getAIDateIdea": async(request) => {
-            const { uuid, generationId } = request.data;
-            const matchProfile = await memoryManager.getMatchProfile(uuid);
-            if (!matchProfile) {
-                await setGenerationState(uuid, { isGenerating: false, error: 'Match profile not found.' }, port);
-                return;
-            }
-
-            const { metadata, memory } = matchProfile;
-            const systemPrompt = `You are a creative and thoughtful date planner. Your goal is to generate a single, unique, and compelling date idea based on the provided context about two people. The idea should be specific, actionable, and tailored to their personalities and shared interests. You must return the response in a valid JSON object with three keys: "title" (a short, catchy name for the date), "description" (a 2-3 sentence explanation of the date), and "reasoning" (a 1-2 sentence explanation of why this is a good idea for them specifically).`;
-            const userPrompt = `Based on the following context, generate one unique date idea.
-
-- **Their Name:** ${metadata.theirName}
-- **Their Profile & Interests:** ${metadata.theirProfile}
-- **Shared Conversation Topics:** ${Object.keys(memory.topics || {}).join(', ')}
-- **Inside Jokes:** ${memory.insideJokes.join(', ')}
-- **Geo-Context:** ${JSON.stringify(memory.geoContextData)}
-
-Generate one date idea in the specified JSON format.`;
-
-            const payload = {
-                model: "llama3:latest",
-                messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
-                temperature: 0.8,
-                response_format: { type: "json_object" }
-            };
-
-            const options = {
-                onSuccess: (responseText) => {
-                    let idea;
-                    try {
-                        idea = JSON.parse(responseText);
-                        if (!idea || typeof idea.title !== 'string' || typeof idea.description !== 'string' || typeof idea.reasoning !== 'string') {
-                            throw new Error("AI returned invalid JSON structure for date idea.");
-                        }
-                    } catch (parseError) {
-                        throw new Error(`AI response was not valid JSON. Raw: ${responseText.substring(0, 100)}...`);
-                    }
-                    return `Date Idea: ${idea.title}\n\n${idea.description}\n\n(Why it's a good idea: ${idea.reasoning})`;
-                }
-            };
-            await handleAITask(uuid, generationId, payload, port, options);
-        },
-
         "refineAIResponse": async(request) => {
             const { originalResponse, refinementType, uuid, generationId } = request.data;
 
