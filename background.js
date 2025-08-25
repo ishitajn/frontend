@@ -1,16 +1,11 @@
 // background.js
-import spacetime from './lib/spacetime.min.js';
-import informal from './lib/spacetime-informal.min.js';
 import { DEBUG } from './modules/debug.js';
 import { memoryManager, generateCacheHash } from './modules/matchMemory.js';
-import { fetchTimezoneFromCoords, geocodeLocation } from './modules/geolocation.js';
 import { getGenerationState, setGenerationState, DEFAULTS } from './modules/state.js';
 import { handleAITask, buildFinalPayload } from './modules/ai.js';
 import { USER_LOCATIONS } from './modules/config.js';
 import { DATE_IDEA_SYSTEM_PROMPT } from './prompts/dateIdeaPrompt.js';
 import { apiClient } from './modules/apiClient.js';
-
-spacetime.extend(informal);
 
 const abortControllers = new Map();
 
