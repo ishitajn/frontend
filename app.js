@@ -2,7 +2,7 @@ import { mockPayload } from './dev/mock_payload.js';
 import { scrapeBumblePage, pasteTextIntoBumbleInput, scrapeTinderPage, pasteTextIntoTinderInput } from './content-scraper.js';
 import { initializePort, sendMessage, startHeartbeat, stopHeartbeat, getGenerationState } from './modules/portManager.js';
 import { DEFAULTS, MATCH_SPECIFIC_SETTINGS_KEYS, EMOJI_STRATEGIES, USER_LOCATIONS } from './modules/config.js';
-import { initializeTabs, showView, renderAllTabs, SELECTORS, setUIRefreshingState, showError, showErrorInResponseArea, setUIGeneratingState, updateUIAfterGeneration, updateSliderLabels, updateSliderValueLabel, updateClearButtonVisibility, startTimer, stopTimer, resetTimerDisplay } from './modules/ui.js';
+import { initializeTabs, showView, renderAllTabs, SELECTORS, setUIRefreshingState, showError, showErrorInResponseArea, setUIGeneratingState, updateUIAfterGeneration, updateSliderValueLabel, updateClearButtonVisibility, startTimer, stopTimer, resetTimerDisplay } from './modules/ui.js';
 import { getState, setState, getNlpPayload } from './modules/uiState.js';
 
 const DEBUG = {
@@ -38,13 +38,12 @@ function updateModelDropdown() {
 document.addEventListener('DOMContentLoaded', initializePopup);
 
 const debouncedRefreshDataAndUI = () => {
-    // This will be replaced with a better implementation
     refreshDataAndUI();
 };
 
 async function initializePopup() {
     initializeTabs();
-    renderAllTabs(getNlpPayload()); // Render with mock data on load
+    renderAllTabs(getNlpPayload());
     initializePort({
         'nlpAnalysisResponse': handleNlpAnalysisResponse,
         'generationUpdate': (message) => {
@@ -154,10 +153,6 @@ async function handleNlpAnalysisResponse(message) {
         return;
     }
 
-    // This is where we would set the real payload into the state
-    // For now, we're using mock data, but the structure is here.
-    // setNlpPayload(message.payload);
-
     setState({
         sessionMatchProfile: message.matchProfile,
         currentMatchUUID: message.matchProfile.uuid,
@@ -165,14 +160,11 @@ async function handleNlpAnalysisResponse(message) {
 
     await loadAndApplySettings();
 
-    // Render all the tabs with the new data
     renderAllTabs(getNlpPayload());
 
-    displayConversationState(); // This function will need to be updated
-    showView('main-view'); // Use string literal for now
+    displayConversationState();
+    showView('main-view');
 }
-
-// The handleGeoCalculationsResponse and handleFinalPayloadResponse functions are no longer needed.
 
 async function handleLocationChange() {
     const state = getState();
@@ -204,8 +196,7 @@ async function handleLocationChange() {
             } else if (error.code === error.TIMEOUT) {
                 errorMessage = 'Geolocation request timed out.';
             }
-            // showErrorInResponseArea(errorMessage);
-            // updateGeoContextDisplay(null, state.sessionMatchProfile, state.sessionScrapedData);
+            showErrorInResponseArea(errorMessage);
             return;
         } finally {
             loadingIndicator.classList.add('hidden');
@@ -213,11 +204,6 @@ async function handleLocationChange() {
     } else {
         messageData.userLocation = USER_LOCATIONS[choice];
     }
-    // This message is no longer valid as getGeoCalculations was removed
-    // sendMessage({
-    //     action: "getGeoCalculations",
-    //     data: messageData
-    // });
 }
 
 async function handleSettingChange(event) {
@@ -346,16 +332,12 @@ function syncUIWithState(generationState) {
 async function handleGenerateClick() {
     const state = getState();
     if (!state.nlpPayload) {
-        // showErrorInResponseArea is not defined yet, need to move it to the new ui.js
-        console.error("Error: NLP data is not available.");
+        showErrorInResponseArea("Error: NLP data is not available.");
         if (!state.isRefreshing) {
             refreshDataAndUI();
         }
         return;
     }
-
-    // The debug mode is now replaced by the Context tab, so we don't need the old logic.
-    // We just send the full payload to the background script.
     sendMessage({
         action: "getAIResponse",
         data: {
@@ -364,8 +346,6 @@ async function handleGenerateClick() {
         }
     });
 }
-
-// The gatherCoreDataForGeneration function is no longer needed.
 
 function handleCancelClick() {
     const state = getState();
