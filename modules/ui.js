@@ -313,7 +313,7 @@ export function updateGeoContextDisplay(geoContext, sessionMatchProfile, session
     };
 
     Object.entries(dataMap).forEach(([id, text]) => {
-        const el = document.getElementById(id);
+        const el = document.getElementById(SELECTORS[id]);
         if (el) el.textContent = text ?? 'N/A';
     });
 }

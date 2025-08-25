@@ -192,12 +192,6 @@ async function handleNlpAnalysisResponse(message) {
     state.sessionMatchProfile = message.matchProfile;
     state.currentMatchUUID = message.matchProfile.uuid;
 
-    // The new payload is stored under the 'analysis' key
-    if (message.analysis) {
-        state.sessionMatchProfile.analysis = message.analysis;
-    }
-
-
     await loadAndApplySettings();
 
     // Update all UI components with the new data
