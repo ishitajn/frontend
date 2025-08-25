@@ -35,6 +35,33 @@ function updateModelDropdown() {
     });
 }
 
+function setupEventListeners() {
+    const listeners = {
+        [SELECTORS.settingsBtn]: { 'click': () => showView(SELECTORS.settingsView) },
+        [SELECTORS.backBtn]: { 'click': () => showView(SELECTORS.mainView) },
+        [SELECTORS.generateBtn]: { 'click': handleGenerateClick },
+        [SELECTORS.copyBtn]: { 'click': handleCopyClick },
+        [SELECTORS.cancelBtn]: { 'click': handleCancelClick },
+        [SELECTORS.resetMatchBtn]: { 'click': handleMatchReset },
+        [SELECTORS.masterResetBtn]: { 'click': handleMasterReset },
+        'ai-provider-select': { 'change': updateModelDropdown },
+        'test-api-btn': { 'click': handleTestApiConnection },
+        'test-nlp-btn': { 'click': handleTestNlpConnection },
+    };
+
+    for (const selector in listeners) {
+        const element = document.getElementById(selector);
+        if (element) {
+            for (const event in listeners[selector]) {
+                element.addEventListener(event, listeners[selector][event]);
+            }
+        }
+    }
+
+    document.body.addEventListener('input', handleSettingChange);
+    document.body.addEventListener('change', handleSettingChange);
+}
+
 document.addEventListener('DOMContentLoaded', initializePopup);
 
 const debouncedRefreshDataAndUI = () => {
@@ -43,6 +70,7 @@ const debouncedRefreshDataAndUI = () => {
 
 async function initializePopup() {
     initializeTabs();
+    setupEventListeners();
     renderAllTabs(getNlpPayload());
     initializePort({
         'nlpAnalysisResponse': handleNlpAnalysisResponse,
