@@ -153,16 +153,31 @@ async function handleNlpAnalysisResponse(message) {
         return;
     }
 
+    const nlpPayload = message.payload;
+    if (!nlpPayload || !nlpPayload.matchId) {
+        showError('NLP Analysis Error', 'Received an invalid payload from the backend.');
+        return;
+    }
+
+    // Set the new payload and the UUID into the state
     setState({
-        sessionMatchProfile: message.matchProfile,
-        currentMatchUUID: message.matchProfile.uuid,
+        nlpPayload: nlpPayload,
+        currentMatchUUID: nlpPayload.matchId,
     });
 
     await loadAndApplySettings();
 
-    renderAllTabs(getNlpPayload());
+    // Render all tabs with the new, real data
+    renderAllTabs(nlpPayload);
 
-    displayConversationState();
+    // Update the conversation status display directly
+    const statusEl = document.getElementById('conversation-status-display');
+    if (statusEl && nlpPayload.analysis.sentiment) {
+        statusEl.textContent = `Status: ${nlpPayload.analysis.sentiment} | Engagement: ${nlpPayload.analysis.engagement}`;
+    } else if (statusEl) {
+        statusEl.textContent = 'Status: Unknown';
+    }
+
     showView('main-view');
 }
 
@@ -396,36 +411,8 @@ async function autoType(text) {
     }
 }
 
-function displayConversationState() {
-    const state = getState();
-    if (!state.sessionMatchProfile?.analysis)
-        return;
-    const analysis = state.sessionMatchProfile.analysis;
-    const convoState = analysis.conversation_dynamics?.stage;
-    const dateArcPhase = analysis.recommended_actions?.dateArcPhase;
-
-    const stateDisplayMap = {
-        'opener': 'Status: New Conversation (Opener)',
-        'rapport_building': 'Status: Rapport Building',
-        'escalation': 'Status: Escalating',
-        'planning_meetup': 'Status: Planning Meetup',
-        'break_over_day': 'Status: Re-engaging (1-7 day pause)',
-        'break_over_week': 'Status: Re-engaging (1-4 week pause)',
-        'break_over_month': 'Status: Re-engaging (1+ month pause)'
-    };
-    const statusEl = document.getElementById('conversation-status-display');
-    if (statusEl && convoState && typeof convoState === 'string') {
-        statusEl.textContent = stateDisplayMap[convoState.toLowerCase()] || `Status: ${convoState}`;
-    } else if (statusEl) {
-        statusEl.textContent = 'Status: Unknown';
-    }
-
-    const dateIdeaBtn = document.getElementById('date-idea-btn');
-    if (dateIdeaBtn) {
-        const showButton = dateArcPhase === 'escalation' || dateArcPhase === 'planning_meetup';
-        dateIdeaBtn.classList.toggle('hidden', !showButton);
-    }
-}
+// The displayConversationState function is no longer needed as its logic
+// has been integrated into handleNlpAnalysisResponse.
 
 function handleDateIdeaClick() {
     const state = getState();
