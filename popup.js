@@ -127,7 +127,6 @@ const SELECTORS = {
     testApiBtn: 'test-api-btn',
     testAnalysisBtn: 'test-analysis-btn',
     tabsContainer: 'tabs',
-    advancedDebugBtn: 'advanced-debug-btn',
     userLocationSelect: 'user-location-select',
     myProfileSetting: 'my-profile-setting',
     infoTooltip: 'info-tooltip',
@@ -216,31 +215,6 @@ function handleTabClick(event) {
     }
 }
 
-function toggleDebugTabs() {
-    const debugModeEnabled = document.getElementById(SELECTORS.debugModeToggle).checked;
-    const tabs = document.querySelectorAll('.tab-link');
-    tabs.forEach(tab => {
-        const tabName = tab.dataset.tab;
-        if (tabName !== 'tune-response' && tab.id !== 'advanced-debug-btn') {
-            tab.style.display = debugModeEnabled ? '' : 'none';
-        }
-    });
-
-    // Also toggle the advanced button
-    const advancedBtn = document.getElementById(SELECTORS.advancedDebugBtn);
-    if (advancedBtn) {
-        advancedBtn.style.display = debugModeEnabled ? '' : 'none';
-    }
-
-
-    // If not in debug mode and a debug tab is active, switch to the tune-response tab
-    if (!debugModeEnabled) {
-        const activeTab = document.querySelector('.tab-link.active');
-        if (activeTab && activeTab.dataset.tab !== 'tune-response') {
-            document.querySelector('.tab-link[data-tab="tune-response"]').click();
-        }
-    }
-}
 
 
 async function handleTestApiClick(urlInputId) {
@@ -377,67 +351,110 @@ function renderDebugView(viewName) {
     let html = '';
     switch (viewName) {
         case 'analysis': html = renderAnalysisView(); break;
-        case 'memory': html = renderMemoryView(); break;
-        // context and final-payload are now in the modal
     }
     contentEl.innerHTML = `<div class="card-content">${html}</div>`;
     attachDebugEventListeners(contentEl);
 }
 
-function renderModalDebugView(viewName, container) {
-    if (!container) return;
+// --- Modal Logic (re-implementing multi-view modal) ---
+const MODAL_VIEWS = ['memory', 'context', 'final-payload'];
+let currentModalView = 'memory';
+
+function renderModalView() {
+    const contentEl = document.getElementById('debug-modal-content');
+    if (!contentEl) return;
 
     let html = '';
-    switch(viewName) {
+    switch (currentModalView) {
+        case 'memory': html = renderMemoryView(); break;
         case 'context': html = renderContextView(); break;
         case 'final-payload': html = renderFinalPayloadView(); break;
     }
-    container.innerHTML = html;
-    attachDebugEventListeners(container);
+    contentEl.innerHTML = html;
+    attachDebugEventListeners(contentEl);
 }
 
+function handleModalNav(direction) {
+    const currentIndex = MODAL_VIEWS.indexOf(currentModalView);
+    let nextIndex = currentIndex + direction;
+    if (nextIndex < 0 || nextIndex >= MODAL_VIEWS.length) return;
 
-function showDebugModal() {
+    currentModalView = MODAL_VIEWS[nextIndex];
+    renderModalView();
+    updateModalNavButtons();
+}
+
+function updateModalNavButtons() {
+    const currentIndex = MODAL_VIEWS.indexOf(currentModalView);
+    document.getElementById('modal-back-btn').disabled = currentIndex === 0;
+
+    const primaryBtn = document.getElementById('modal-primary-action-btn');
+    primaryBtn.textContent = (currentIndex === MODAL_VIEWS.length - 1) ? 'Send to AI' : 'Next';
+}
+
+function showDebugModal(generationData) {
+    modalState = JSON.parse(JSON.stringify(generationData)); // Deep copy to avoid side-effects
+    currentModalView = 'memory';
+
     const overlay = document.getElementById('debug-modal-overlay');
     overlay.innerHTML = `
         <div class="modal">
-            <div class="modal-header">Advanced Debug</div>
-            <div class="tabs">
-                <button class="tab-link active" data-tab="context">Context</button>
-                <button class="tab-link" data-tab="final-payload">Final Payload</button>
-            </div>
-            <div class="modal-content" id="debug-modal-content-area"></div>
+            <div class="modal-header">Debug & Override Mode</div>
+            <div class="modal-content" id="debug-modal-content"></div>
             <div class="modal-footer">
                 <div class="modal-actions">
-                    <button id="modal-close-btn" class="btn btn-secondary">Close</button>
+                    <button id="modal-cancel-btn" class="btn btn-secondary">Cancel</button>
+                    <button id="modal-back-btn" class="btn btn-secondary">Back</button>
+                    <button id="modal-primary-action-btn" class="btn btn-primary">Next</button>
                 </div>
             </div>
         </div>
     `;
     overlay.classList.remove('hidden');
 
-    const contentArea = document.getElementById('debug-modal-content-area');
+    document.getElementById('modal-cancel-btn').addEventListener('click', hideDebugModal);
+    document.getElementById('modal-back-btn').addEventListener('click', () => handleModalNav(-1));
+    document.getElementById('modal-primary-action-btn').addEventListener('click', () => {
+        if (currentModalView === 'final-payload') {
+            const { systemMessage, userMessage } = generatePrompts(modalState);
+            const finalPayload = {
+                messages: [{ role: "system", content: systemMessage }, { role: "user", content: userMessage }],
+                temperature: modalState.taskInstructions.temperature,
+                top_p: modalState.taskInstructions.top_p,
+            };
 
-    // Attach listeners for the modal's own tabs
-    overlay.querySelector('.tabs').addEventListener('click', (e) => {
-        if (e.target.classList.contains('tab-link')) {
-            overlay.querySelectorAll('.tab-link').forEach(t => t.classList.remove('active'));
-            e.target.classList.add('active');
-            renderModalDebugView(e.target.dataset.tab, contentArea);
+            setUIGeneratingState(true);
+            startTimer(Date.now());
+            hideDebugModal();
+
+            sendMessage({
+                action: "getAIResponse",
+                data: {
+                    payload: finalPayload,
+                    generationId: Date.now(),
+                    uuid: state.currentMatchUUID,
+                    logData: {
+                        uuid: state.currentMatchUUID,
+                        analysis: modalState.conversationAnalysis,
+                        payload: finalPayload
+                    }
+                }
+            });
+
+        } else {
+            handleModalNav(1);
         }
     });
 
-    document.getElementById('modal-close-btn').addEventListener('click', hideDebugModal);
-
-    // Render the initial view
-    renderModalDebugView('context', contentArea);
+    renderModalView();
+    updateModalNavButtons();
 }
 
 function hideDebugModal() {
     const overlay = document.getElementById('debug-modal-overlay');
     if (overlay) {
         overlay.classList.add('hidden');
-        overlay.innerHTML = ''; // Clean up
+        overlay.innerHTML = '';
     }
 }
 
@@ -715,7 +732,6 @@ async function initializePopup() {
     setupPort();
     await loadAndApplySettings();
     await refreshDataAndUI();
-    toggleDebugTabs();
 }
 
 async function refreshDataAndUI() {
@@ -913,8 +929,6 @@ function setupEventListeners() {
     document.querySelector('.tabs')?.addEventListener('click', handleTabClick);
     document.getElementById(SELECTORS.testApiBtn)?.addEventListener('click', () => handleTestApiClick(SELECTORS.localLlamaUrl));
     document.getElementById(SELECTORS.testAnalysisBtn)?.addEventListener('click', () => handleTestApiClick(SELECTORS.analysisUrl));
-    document.getElementById(SELECTORS.debugModeToggle)?.addEventListener('change', toggleDebugTabs);
-    document.getElementById(SELECTORS.advancedDebugBtn)?.addEventListener('click', showDebugModal);
 
     populateSelect(SELECTORS.linguisticStyleSelect, LINGUISTIC_STYLES.map(s => ({
                 value: s,
@@ -1282,28 +1296,13 @@ async function handleGenerateClick() {
     const dataForBackground = await gatherCoreDataForGeneration();
 
     if (document.getElementById(SELECTORS.debugModeToggle).checked) {
-        // In debug mode, the user can edit the payload, so we send it directly.
-        // First, ensure the final payload is generated and up-to-date in modalState
-        const { systemMessage, userMessage } = generatePrompts(modalState);
-        const finalPayload = {
-            messages: [{ role: "system", content: systemMessage }, { role: "user", content: userMessage }],
-            temperature: modalState.taskInstructions.temperature,
-            top_p: modalState.taskInstructions.top_p,
+        // In debug mode, show the modal instead of sending to the background script
+        const fullGenerationData = {
+            ...modalState, // This already has most of what we need
+            forceIncludeGeoContext: dataForBackground.forceIncludeGeoContext,
+            taskInstructions: dataForBackground.taskInstructions,
         };
-
-        sendMessage({
-            action: "getAIResponse",
-            data: {
-                payload: finalPayload,
-                generationId: Date.now(),
-                uuid: state.currentMatchUUID,
-                logData: {
-                    uuid: state.currentMatchUUID,
-                    analysis: modalState.conversationAnalysis, // Use potentially modified analysis
-                    payload: finalPayload
-                }
-            }
-        });
+        showDebugModal(fullGenerationData);
     } else {
         // In normal mode, get the final payload from the background script
         sendMessage({
