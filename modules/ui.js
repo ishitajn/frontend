@@ -440,3 +440,169 @@ export function updateClearButtonVisibility(inputEl, clearBtnEl) {
     const hasContent = (inputEl.value && inputEl.value.trim() !== '') || (inputEl.textContent && inputEl.textContent.trim() !== '');
     clearBtnEl.classList.toggle('hidden', !hasContent);
 }
+
+// Merged from contextTab.js
+function createCollapsibleJSON(title, dataObject) {
+    if (dataObject === null || typeof dataObject === 'undefined') {
+        return `
+            <div class="collapsible-json-container">
+                <details class="modal-payload-details">
+                    <summary>${title}</summary>
+                    <pre class="raw-json-area" style="color: var(--text-muted);">Not available</pre>
+                </details>
+            </div>
+        `;
+    }
+
+    const jsonString = JSON.stringify(dataObject, null, 2);
+    const key = title.split(' ')[0].toLowerCase();
+    const copyIconSVG = `<svg fill="currentColor" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"></path></svg>`;
+
+    return `
+        <div class="collapsible-json-container">
+            <details class="modal-payload-details">
+                <summary>${title}</summary>
+                <pre class="raw-json-area" data-object-key="${key}">${jsonString}</pre>
+            </details>
+            <button class="icon-btn copy-json-btn" title="Copy JSON">
+                ${copyIconSVG}
+            </button>
+        </div>
+    `;
+}
+
+export function renderContextTab(analysis) {
+    const contextTab = document.getElementById('context-tab');
+    if (!contextTab) return;
+
+    if (!analysis) {
+        contextTab.innerHTML = '<div class="card"><div class="card-content">Analysis data not available.</div></div>';
+        return;
+    }
+
+    let html = '<div class="card"><div class="card-content">';
+    html += createCollapsibleJSON('Geo Context', analysis?.geo_context);
+    html += createCollapsibleJSON('Topics', analysis?.topics);
+    const suggestions = {
+        suggest_flirtation: analysis?.suggest_flirtation ?? false,
+        suggest_topic_shift: analysis?.suggest_topic_shift ?? false,
+        suggest_follow_up_question: analysis?.suggest_follow_up_question ?? false,
+        suggest_greeting: analysis?.suggest_greeting ?? false,
+        topic_shift_recommended: analysis?.topic_shift_recommended ?? false,
+    };
+    html += createCollapsibleJSON('Suggestions', suggestions);
+    html += createCollapsibleJSON('Full Analysis Object', analysis);
+    html += '</div></div>';
+
+    contextTab.innerHTML = html;
+}
+
+// Merged from finalTab.js
+import { generatePrompts } from '../prompts.js';
+
+export async function updateFinalTab(gatherFn) {
+    const finalJsonDisplay = document.getElementById('final-json-display');
+    if (!finalJsonDisplay) return;
+
+    try {
+        const generationData = await gatherFn();
+        if (!generationData.conversationAnalysis) {
+            finalJsonDisplay.textContent = 'Waiting for analysis data...';
+            return;
+        }
+
+        const { systemMessage, userMessage } = generatePrompts(generationData);
+
+        const finalPayload = {
+            messages: [
+                { role: "system", content: systemMessage },
+                { role: "user", content: userMessage }
+            ],
+            temperature: generationData.taskInstructions.temperature,
+            top_p: generationData.taskInstructions.top_p,
+        };
+
+        finalJsonDisplay.textContent = JSON.stringify(finalPayload, null, 2);
+    } catch (error) {
+        finalJsonDisplay.textContent = `Error generating final payload: ${error.message}`;
+        console.error("Final payload generation failed:", error);
+    }
+}
+
+// Merged from eventListeners.js
+import { LINGUISTIC_STYLES as L_STYLES } from '../conversationHelpers.js';
+import { EMOJI_STRATEGIES as E_STRATEGIES, USER_LOCATIONS as U_LOCATIONS } from './config.js';
+
+export function setupEventListeners(callbacks) {
+    window.addEventListener('focus', callbacks.refreshDataAndUI);
+    document.getElementById(SELECTORS.generateBtn)?.addEventListener('click', callbacks.handleGenerateClick);
+    document.getElementById(SELECTORS.copyBtn)?.addEventListener('click', callbacks.handleCopyClick);
+    document.getElementById(SELECTORS.cancelBtn)?.addEventListener('click', callbacks.handleCancelClick);
+    document.getElementById(SELECTORS.settingsBtn)?.addEventListener('click', () => callbacks.showView(SELECTORS.settingsView));
+    document.getElementById(SELECTORS.backBtn)?.addEventListener('click', () => callbacks.showView(SELECTORS.mainView));
+    document.getElementById(SELECTORS.masterResetBtn)?.addEventListener('click', callbacks.handleMasterReset);
+    document.getElementById(SELECTORS.resetMatchBtn)?.addEventListener('click', callbacks.handleMatchReset);
+    document.getElementById(SELECTORS.flirtySlider)?.addEventListener('input', updateSliderLabels);
+    document.getElementById(SELECTORS.lengthSlider)?.addEventListener('input', updateSliderLabels);
+    document.getElementById(SELECTORS.temperatureSlider)?.addEventListener('input', () => updateSliderValueLabel(SELECTORS.temperatureSlider, SELECTORS.temperatureValueLabel));
+    document.getElementById(SELECTORS.topPSlider)?.addEventListener('input', () => updateSliderValueLabel(SELECTORS.topPSlider, SELECTORS.topPValueLabel, 2));
+    document.querySelectorAll('.info-icon, [data-tooltip-id]').forEach(icon => {
+        icon.addEventListener('mouseenter', handleTooltipShow);
+        icon.addEventListener('mouseleave', handleTooltipHide);
+    });
+    document.getElementById('main-view')?.addEventListener('input', callbacks.handleSettingChange);
+    document.getElementById('main-view')?.addEventListener('change', callbacks.handleSettingChange);
+    document.getElementById('settings-view')?.addEventListener('input', callbacks.handleSettingChange);
+    document.getElementById('settings-view')?.addEventListener('change', callbacks.handleSettingChange);
+    document.getElementById(SELECTORS.clearResponseBtn)?.addEventListener('click', () => {
+        const area = document.getElementById(SELECTORS.responseArea);
+        area.textContent = '';
+        area.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    document.getElementById(SELECTORS.clearInstructionBtn)?.addEventListener('click', () => {
+        const area = document.getElementById(SELECTORS.customInstruction);
+        area.value = '';
+        area.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    document.getElementById(SELECTORS.dateIdeaBtn)?.addEventListener('click', callbacks.handleDateIdeaClick);
+    document.getElementById(SELECTORS.refinementActions)?.addEventListener('click', callbacks.handleRefinementClick);
+    document.getElementById('test-api-btn')?.addEventListener('click', callbacks.handleTestApiConnection);
+    document.getElementById('test-nlp-btn')?.addEventListener('click', callbacks.handleTestNlpConnection);
+    document.getElementById('ai-provider-select')?.addEventListener('change', callbacks.updateModelDropdown);
+
+    document.querySelector('.app-container')?.addEventListener('click', (event) => {
+        const target = event.target.closest('.tab-button');
+        if (!target) return;
+
+        const tabId = target.dataset.tab;
+        const tabContainer = target.closest('.tab-container');
+
+        tabContainer.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+        tabContainer.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+        target.classList.add('active');
+        document.getElementById(tabId)?.classList.add('active');
+    });
+
+    const copyFinalBtn = document.getElementById('copy-final-json-btn');
+    const finalJsonDisplay = document.getElementById('final-json-display');
+    copyFinalBtn?.addEventListener('click', () => {
+        if (finalJsonDisplay.textContent) {
+            navigator.clipboard.writeText(finalJsonDisplay.textContent).then(() => {
+                const originalText = copyFinalBtn.innerHTML;
+                copyFinalBtn.innerHTML = 'Copied!';
+                setTimeout(() => {
+                    copyFinalBtn.innerHTML = originalText;
+                }, 1500);
+            });
+        }
+    });
+
+    const updateFinalTabCallback = () => updateFinalTab(callbacks.gatherCoreDataForGeneration);
+    document.getElementById('tune-tab')?.addEventListener('input', updateFinalTabCallback);
+    document.getElementById('context-tab')?.addEventListener('input', updateFinalTabCallback);
+
+    populateSelect(SELECTORS.linguisticStyleSelect, L_STYLES.map(s => ({ value: s, text: s.charAt(0).toUpperCase() + s.slice(1) })));
+    populateSelect(SELECTORS.emojiStrategySelect, Object.entries(E_STRATEGIES).map(([value, text]) => ({ value, text })));
+    populateSelect(SELECTORS.userLocationSelect, Object.entries(U_LOCATIONS).map(([key, loc]) => ({ value: key, text: loc.name })));
+}

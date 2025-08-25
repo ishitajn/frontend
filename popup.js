@@ -2,10 +2,29 @@ import { scrapeBumblePage, pasteTextIntoBumbleInput, scrapeTinderPage, pasteText
 import { determineConversationState, LINGUISTIC_STYLES } from './conversationHelpers.js';
 import { initializePort, sendMessage, startHeartbeat, stopHeartbeat, getGenerationState } from './modules/portManager.js';
 import { DEFAULTS, MATCH_SPECIFIC_SETTINGS_KEYS, EMOJI_STRATEGIES, USER_LOCATIONS } from './modules/config.js';
-import { SELECTORS, showView, showError, showErrorInResponseArea, setUIRefreshingState, setUIGeneratingState, updateUIAfterGeneration, updateSliderLabels, updateSliderValueLabel, updateGeoContextDisplay, startTimer, stopTimer, resetTimerDisplay, populateSelect, updateClearButtonVisibility, updateConversationAnalysisDisplay, updateTopicsDisplay, updateSuggestionsDisplay } from './modules/ui.js';
-import { setupEventListeners } from './modules/eventListeners.js';
-import { renderContextTab } from './modules/contextTab.js';
-import { setupFinalTab, updateFinalTab } from './modules/finalTab.js';
+import {
+    SELECTORS,
+    showView,
+    showError,
+    showErrorInResponseArea,
+    setUIRefreshingState,
+    setUIGeneratingState,
+    updateUIAfterGeneration,
+    updateSliderLabels,
+    updateSliderValueLabel,
+    updateGeoContextDisplay,
+    startTimer,
+    stopTimer,
+    resetTimerDisplay,
+    populateSelect,
+    updateClearButtonVisibility,
+    updateConversationAnalysisDisplay,
+    updateTopicsDisplay,
+    updateSuggestionsDisplay,
+    renderContextTab,
+    updateFinalTab,
+    setupEventListeners
+} from './modules/ui.js';
 
 const DEBUG = {
     log: (category, message, data = null) => console.log(`[WINGMAN-POPUP-${category.toUpperCase()}] ${message}`, data ?? ''),
@@ -72,17 +91,16 @@ async function initializePopup() {
         handleMasterReset,
         handleMatchReset,
         handleSettingChange,
-        handleLocationChange,
         handleDateIdeaClick,
         handleRefinementClick,
         handleTestApiConnection,
         handleTestNlpConnection,
         updateModelDropdown,
+        gatherCoreDataForGeneration,
     };
     setupEventListeners(callbacks);
     initializePort({
         'nlpAnalysisResponse': handleNlpAnalysisResponse,
-        'geoCalculationsResponse': handleGeoCalculationsResponse,
         'finalPayloadResponse': handleFinalPayloadResponse,
         'generationUpdate': (message) => {
             if (message.uuid === state.currentMatchUUID) {
@@ -94,7 +112,6 @@ async function initializePopup() {
     });
     await loadAndApplySettings();
     updateModelDropdown();
-    setupFinalTab(state);
 }
 
 function handleTestApiConnection() {
@@ -207,7 +224,7 @@ function updateUIWithNlpData(analysis) {
     if (!analysis) {
         // Clear all dynamic tabs if no analysis
         renderContextTab(null);
-        updateFinalTab(state);
+        updateFinalTab(gatherCoreDataForGeneration);
         return;
     }
 
@@ -225,14 +242,7 @@ function updateUIWithNlpData(analysis) {
 
     // Update context and final tabs
     renderContextTab(analysis);
-    updateFinalTab(state);
-}
-
-function handleGeoCalculationsResponse(message) {
-    if (state.sessionMatchProfile) {
-        state.sessionMatchProfile.memory.geoContextData = message.geoContext || null;
-    }
-    updateGeoContextDisplay(message.geoContext, state.sessionMatchProfile, state.sessionScrapedData);
+    updateFinalTab(gatherCoreDataForGeneration);
 }
 
 function handleFinalPayloadResponse(message) {
@@ -249,50 +259,6 @@ function handleFinalPayloadResponse(message) {
             uuid: state.currentMatchUUID,
             logData: message.logData
         }
-    });
-}
-
-async function handleLocationChange() {
-    const select = document.getElementById(SELECTORS.userLocationSelect);
-    const choice = select.value;
-    const loadingIndicator = document.getElementById('location-loading-indicator');
-    let messageData = {
-        uuid: state.currentMatchUUID
-    };
-    if (choice === 'autodetect') {
-        loadingIndicator.classList.remove('hidden');
-        try {
-            const position = await new Promise((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(resolve, reject, {
-                    timeout: 5000,
-                    enableHighAccuracy: true
-                });
-            });
-            messageData.userCoords = {
-                latitude: position.coords.latitude,
-                longitude: position.coords.longitude
-            };
-        } catch (error) {
-            let errorMessage = 'Geolocation failed. Please select a location manually.';
-            if (error.code === error.PERMISSION_DENIED) {
-                errorMessage = 'Geolocation permission denied. Please enable it in your browser settings.';
-            } else if (error.code === error.POSITION_UNAVAILABLE) {
-                errorMessage = 'Location information is unavailable.';
-            } else if (error.code === error.TIMEOUT) {
-                errorMessage = 'Geolocation request timed out.';
-            }
-            showErrorInResponseArea(errorMessage);
-            updateGeoContextDisplay(null, state.sessionMatchProfile, state.sessionScrapedData);
-            return;
-        } finally {
-            loadingIndicator.classList.add('hidden');
-        }
-    } else {
-        messageData.userLocation = USER_LOCATIONS[choice];
-    }
-    sendMessage({
-        action: "getGeoCalculations",
-        data: messageData
     });
 }
 
@@ -426,40 +392,42 @@ async function handleGenerateClick() {
         return;
     }
 
-    const dataForBackground = await gatherCoreDataForGeneration();
+    const generationData = await gatherCoreDataForGeneration();
     sendMessage({
         action: "getFinalPayload",
-        data: dataForBackground
+        data: generationData
     });
 }
 
 async function gatherCoreDataForGeneration() {
     const settings = await chrome.storage.local.get('myProfile');
     const myProfile = settings.myProfile || DEFAULTS.myProfile;
-    const myName = state.sessionScrapedData?.myName || DEFAULTS.myProfile.split(',')[0].trim();
-    const theirName = state.sessionMatchProfile?.metadata?.theirName || 'Match';
 
     const taskInstructions = {
-        myName: myName,
-        theirName: theirName,
-        goal: document.getElementById(SELECTORS.customInstruction).value.trim(),
-        flirtyValue: Number(document.getElementById(SELECTORS.flirtySlider).value),
-        lengthValue: Number(document.getElementById(SELECTORS.lengthSlider).value),
-        linguisticStyle: document.getElementById(SELECTORS.linguisticStyleSelect).value,
-        emojiStrategy: document.getElementById(SELECTORS.emojiStrategySelect).value,
-        temperature: parseFloat(document.getElementById(SELECTORS.temperatureSlider).value),
-        top_p: parseFloat(document.getElementById(SELECTORS.topPSlider).value),
-        endWithQuestion: document.getElementById(SELECTORS.questionToggleCheckbox).checked,
-        strictGoalOverride: document.getElementById(SELECTORS.strictGoalToggle).checked,
-        forceNewTopic: document.getElementById(SELECTORS.newTopicToggle).checked,
-        local_model_name: document.getElementById(SELECTORS.localModelName).value,
+        myName: state.sessionScrapedData?.myName,
+        theirName: state.sessionMatchProfile?.metadata?.theirName,
+        goal: document.getElementById('custom-instruction')?.value.trim() ?? '',
+        flirtyValue: Number(document.getElementById('flirty-slider')?.value ?? 50),
+        lengthValue: Number(document.getElementById('length-slider')?.value ?? 50),
+        linguisticStyle: document.getElementById('linguistic-style-select')?.value ?? 'auto',
+        emojiStrategy: document.getElementById('emoji-strategy-select')?.value ?? 'auto',
+        temperature: parseFloat(document.getElementById('temperature-slider')?.value ?? 1.0),
+        top_p: parseFloat(document.getElementById('top-p-slider')?.value ?? 1.0),
+        endWithQuestion: document.getElementById('question-toggle-checkbox')?.checked ?? false,
+        strictGoalOverride: document.getElementById('strict-goal-toggle')?.checked ?? false,
+        forceNewTopic: document.getElementById('new-topic-toggle')?.checked ?? false,
+        local_model_name: document.getElementById('localModelName')?.value ?? '',
     };
 
     return {
         uuid: state.currentMatchUUID,
+        conversationHistory: state.sessionMatchProfile?.conversationHistory ?? [],
         taskInstructions: taskInstructions,
+        geoContextData: state.sessionMatchProfile?.memory?.geoContextData,
+        forceIncludeGeoContext: document.getElementById('geo-context-toggle')?.checked ?? false,
+        conversationAnalysis: state.sessionMatchProfile?.analysis,
         myProfile: myProfile,
-        forceIncludeGeoContext: document.getElementById(SELECTORS.geoContextToggle).checked,
+        theirProfile: state.sessionMatchProfile?.metadata?.theirProfile,
     };
 }
 
