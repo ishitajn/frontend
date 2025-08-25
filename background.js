@@ -279,7 +279,9 @@ chrome.runtime.onConnect.addListener((port) => {
                     } catch (e) { /* port closed */ }
                     return;
                 }
-                DEBUG.log('NLP-CACHE', 'Cache MISS or non-local analysis. Running full analysis.', { uuid, analysisType });
+
+                const logMessage = analysisType === 'local' ? 'Cache MISS. Running local analysis.' : 'Calling external analysis service.';
+                DEBUG.log('NLP', logMessage, { uuid, analysisType });
 
                 matchProfile.conversationHistory = scrapedData.conversationHistory;
                 matchProfile.metadata.theirProfile = scrapedData.theirProfile;
