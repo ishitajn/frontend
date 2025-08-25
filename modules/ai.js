@@ -1,11 +1,11 @@
 import { DEBUG } from './debug.js';
 import { performanceLogger } from './performanceLogger.js';
-import { generatePrompts } from '../prompts.js';
+import { generatePrompts } from './prompts.js';
 import { getGenerationState, setGenerationState, DEFAULTS } from './state.js';
 
 const abortControllers = new Map();
 
-async function handleAITask(uuid, generationId, payload, port, options = {}) {
+async function handleAITask(uuid, generationId, nlpPayload, port, options = {}) {
     if (abortControllers.has(uuid)) {
         abortControllers.get(uuid).abort("A new generation request was started.");
     }
@@ -17,6 +17,17 @@ async function handleAITask(uuid, generationId, payload, port, options = {}) {
     try {
         const storedSettings = await chrome.storage.local.get(Object.keys(DEFAULTS));
         const settings = { ...DEFAULTS, ...storedSettings };
+
+        const { system_prompt, user_prompt } = generatePrompts(nlpPayload);
+        const payload = {
+            model: settings.local_model_name,
+            messages: [
+                { role: "system", content: system_prompt },
+                { role: "user", content: user_prompt }
+            ],
+            temperature: 0.7, // These could be made configurable later
+            top_p: 1.0,
+        };
 
         let responseText;
         switch (settings.ai_provider) {
@@ -39,9 +50,11 @@ async function handleAITask(uuid, generationId, payload, port, options = {}) {
         const finalResponse = options.onSuccess ? options.onSuccess(responseText) : cleanAIResponse(responseText);
 
         await setGenerationState(uuid, { isGenerating: false, response: finalResponse, generationStartTime: null }, port);
-        if (options.logData) {
-            await performanceLogger.log({ ...options.logData, response: finalResponse });
-        }
+
+        // Logging can be re-enabled later if needed
+        // if (options.logData) {
+        //     await performanceLogger.log({ ...options.logData, response: finalResponse });
+        // }
 
     } catch (error) {
         const currentState = await getGenerationState(uuid);
@@ -103,23 +116,6 @@ async function fetchAnthropicResponse(apiKey, payload, settings, signal) {
     return responseData.content[0].text.trim();
 }
 
-function buildFinalPayload(data) {
-    const { systemMessage, userMessage } = generatePrompts(data);
-    return {
-        model: data.taskInstructions.local_model_name,
-        messages: [{
-                role: "system",
-                content: systemMessage
-            }, {
-                role: "user",
-                content: userMessage
-            }
-        ],
-        temperature: data.taskInstructions.temperature,
-        top_p: data.taskInstructions.top_p
-    };
-}
-
 function cleanAIResponse(rawResponse) {
     if (typeof rawResponse !== 'string' || !rawResponse)
         return '';
@@ -155,4 +151,4 @@ async function fetchLocalLlamaResponse(apiKey, payload, settings, signal) {
     return responseData.choices[0].message.content.trim();
 }
 
-export { handleAITask, buildFinalPayload, cleanAIResponse, fetchLocalLlamaResponse };
+export { handleAITask, cleanAIResponse, fetchLocalLlamaResponse };

@@ -1,23 +1,13 @@
+import { mockPayload } from './dev/mock_payload.js';
 import { scrapeBumblePage, pasteTextIntoBumbleInput, scrapeTinderPage, pasteTextIntoTinderInput } from './content-scraper.js';
-import { determineConversationState, LINGUISTIC_STYLES } from './conversationHelpers.js';
-import { showNlpModal, hideDebugModal } from './debug-modal.js';
 import { initializePort, sendMessage, startHeartbeat, stopHeartbeat, getGenerationState } from './modules/portManager.js';
 import { DEFAULTS, MATCH_SPECIFIC_SETTINGS_KEYS, EMOJI_STRATEGIES, USER_LOCATIONS } from './modules/config.js';
-import { SELECTORS, showView, showError, showErrorInResponseArea, setUIRefreshingState, setUIGeneratingState, updateUIAfterGeneration, updateSliderLabels, updateSliderValueLabel, updateGeoContextDisplay, startTimer, stopTimer, resetTimerDisplay, populateSelect, updateClearButtonVisibility } from './modules/ui.js';
-import { setupEventListeners } from './modules/eventListeners.js';
+import { initializeTabs, showView, renderAllTabs } from './modules/ui.js';
+import { getState, setState, getNlpPayload } from './modules/uiState.js';
 
 const DEBUG = {
     log: (category, message, data = null) => console.log(`[WINGMAN-POPUP-${category.toUpperCase()}] ${message}`, data ?? ''),
     error: (category, message, error = null) => console.error(`[WINGMAN-POPUP-${category.toUpperCase()}-ERROR] ${message}`, error ?? ''),
-};
-
-const state = {
-    currentMatchUUID: null,
-    currentViewId: SELECTORS.loadingView,
-    pasterFn: null,
-    isRefreshing: false,
-    sessionMatchProfile: null,
-    sessionScrapedData: null,
 };
 
 const getMatchSettingsKey = (uuid) => `matchSettings_${uuid}`;
@@ -47,43 +37,18 @@ function updateModelDropdown() {
 
 document.addEventListener('DOMContentLoaded', initializePopup);
 
-function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
-}
-
-const debouncedRefreshDataAndUI = debounce(refreshDataAndUI, 500);
+const debouncedRefreshDataAndUI = () => {
+    // This will be replaced with a better implementation
+    refreshDataAndUI();
+};
 
 async function initializePopup() {
-    const callbacks = {
-        refreshDataAndUI: debouncedRefreshDataAndUI,
-        handleGenerateClick,
-        handleCopyClick,
-        handleCancelClick,
-        showView,
-        handleMasterReset,
-        handleMatchReset,
-        handleSettingChange,
-        handleLocationChange,
-        handleDateIdeaClick,
-        handleRefinementClick,
-        handleTestApiConnection,
-        handleTestNlpConnection,
-        updateModelDropdown,
-    };
-    setupEventListeners(callbacks);
+    initializeTabs();
+    renderAllTabs(getNlpPayload()); // Render with mock data on load
     initializePort({
         'nlpAnalysisResponse': handleNlpAnalysisResponse,
-        'geoCalculationsResponse': handleGeoCalculationsResponse,
-        'finalPayloadResponse': handleFinalPayloadResponse,
         'generationUpdate': (message) => {
+            const state = getState();
             if (message.uuid === state.currentMatchUUID) {
                 syncUIWithState(message.state);
             }
@@ -188,46 +153,25 @@ async function handleNlpAnalysisResponse(message) {
         return;
     }
 
-    state.sessionMatchProfile = message.matchProfile;
-    state.currentMatchUUID = message.matchProfile.uuid;
+    // This is where we would set the real payload into the state
+    // For now, we're using mock data, but the structure is here.
+    // setNlpPayload(message.payload);
+
+    setState({
+        sessionMatchProfile: message.matchProfile,
+        currentMatchUUID: message.matchProfile.uuid,
+    });
 
     await loadAndApplySettings();
 
-    // The new NLP analysis response contains the geoContext, so we can update the UI directly
-    if (state.sessionMatchProfile.analysis?.geoContext) {
-        updateGeoContextDisplay(state.sessionMatchProfile.analysis.geoContext, state.sessionMatchProfile, state.sessionScrapedData);
-    } else {
-        // If it's not there, fall back to the old method for now.
-        await handleLocationChange();
-    }
+    // Render all the tabs with the new data
+    renderAllTabs(getNlpPayload());
 
-    displayConversationState();
-    showView(SELECTORS.mainView);
+    displayConversationState(); // This function will need to be updated
+    showView('main-view'); // Use string literal for now
 }
 
-function handleGeoCalculationsResponse(message) {
-    if (state.sessionMatchProfile) {
-        state.sessionMatchProfile.memory.geoContextData = message.geoContext || null;
-    }
-    updateGeoContextDisplay(message.geoContext, state.sessionMatchProfile, state.sessionScrapedData);
-}
-
-function handleFinalPayloadResponse(message) {
-    if (message.error) {
-        showErrorInResponseArea(message.error);
-        setUIGeneratingState(false);
-        return;
-    }
-    sendMessage({
-        action: "getAIResponse",
-        data: {
-            payload: message.payload,
-            generationId: Date.now(),
-            uuid: state.currentMatchUUID,
-            logData: message.logData
-        }
-    });
-}
+// The handleGeoCalculationsResponse and handleFinalPayloadResponse functions are no longer needed.
 
 async function handleLocationChange() {
     const select = document.getElementById(SELECTORS.userLocationSelect);
@@ -395,87 +339,28 @@ function syncUIWithState(generationState) {
 }
 
 async function handleGenerateClick() {
-    if (!state.sessionMatchProfile || !state.currentMatchUUID || !state.sessionMatchProfile.analysis) {
-        showErrorInResponseArea("Error: Conversation analysis is not complete. Please wait a moment and try again.");
+    const state = getState();
+    if (!state.nlpPayload) {
+        // showErrorInResponseArea is not defined yet, need to move it to the new ui.js
+        console.error("Error: NLP data is not available.");
         if (!state.isRefreshing) {
             refreshDataAndUI();
         }
         return;
     }
 
-    const dataForBackground = await gatherCoreDataForGeneration();
-    if (document.getElementById(SELECTORS.debugModeToggle).checked) {
-        const fullGenerationData = {
-            ...state.sessionScrapedData,
-            ...state.sessionMatchProfile.metadata,
-            myProfile: dataForBackground.myProfile,
-            conversationHistory: state.sessionMatchProfile.conversationHistory,
-            conversationAnalysis: state.sessionMatchProfile.analysis,
-            geoContextData: state.sessionMatchProfile.memory.geoContextData,
-            forceIncludeGeoContext: dataForBackground.forceIncludeGeoContext,
-            taskInstructions: dataForBackground.taskInstructions,
-        };
-        const debugCallbacks = {
-            sendFinalPayloadToAI: (payload) => {
-                sendMessage({
-                    action: "getAIResponse",
-                    data: {
-                        payload,
-                        generationId: Date.now(),
-                        uuid: state.currentMatchUUID,
-                        logData: {
-                            uuid: state.currentMatchUUID,
-                            analysis: state.sessionMatchProfile.analysis,
-                            payload: payload
-                        }
-                    }
-                });
-            },
-            setUIGeneratingState,
-            showErrorInResponseArea,
-            hideDebugModal,
-            startTimer,
-            stopTimer,
-            resetTimerDisplay
-        };
-        showNlpModal(fullGenerationData, debugCallbacks);
-    } else {
-        sendMessage({
-            action: "getFinalPayload",
-            data: dataForBackground
-        });
-    }
+    // The debug mode is now replaced by the Context tab, so we don't need the old logic.
+    // We just send the full payload to the background script.
+    sendMessage({
+        action: "getAIResponse",
+        data: {
+            nlpPayload: state.nlpPayload,
+            generationId: Date.now()
+        }
+    });
 }
 
-async function gatherCoreDataForGeneration() {
-    const settings = await chrome.storage.local.get('myProfile');
-    const myProfile = settings.myProfile || DEFAULTS.myProfile;
-    const myName = state.sessionScrapedData?.myName || DEFAULTS.myProfile.split(',')[0].trim();
-    const theirName = state.sessionMatchProfile?.metadata?.theirName || 'Match';
-
-    const taskInstructions = {
-        myName: myName,
-        theirName: theirName,
-        goal: document.getElementById(SELECTORS.customInstruction).value.trim(),
-        flirtyValue: Number(document.getElementById(SELECTORS.flirtySlider).value),
-        lengthValue: Number(document.getElementById(SELECTORS.lengthSlider).value),
-        linguisticStyle: document.getElementById(SELECTORS.linguisticStyleSelect).value,
-        emojiStrategy: document.getElementById(SELECTORS.emojiStrategySelect).value,
-        temperature: parseFloat(document.getElementById(SELECTORS.temperatureSlider).value),
-        top_p: parseFloat(document.getElementById(SELECTORS.topPSlider).value),
-        endWithQuestion: document.getElementById(SELECTORS.questionToggleCheckbox).checked,
-        strictGoalOverride: document.getElementById(SELECTORS.strictGoalToggle).checked,
-        forceNewTopic: document.getElementById(SELECTORS.newTopicToggle).checked,
-        local_model_name: document.getElementById(SELECTORS.localModelName).value,
-    };
-
-    return {
-        uuid: state.currentMatchUUID,
-        taskInstructions: taskInstructions,
-        myProfile: myProfile,
-        forceIncludeGeoContext: document.getElementById(SELECTORS.geoContextToggle).checked,
-    };
-}
+// The gatherCoreDataForGeneration function is no longer needed.
 
 function handleCancelClick() {
     if (state.currentMatchUUID) {
