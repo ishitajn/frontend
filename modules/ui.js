@@ -1,4 +1,3 @@
-import { LINGUISTIC_STYLES, getToneDescription, getLengthDescription, getEmojiInstruction, getStyleDescription } from '../conversationHelpers.js';
 import { EMOJI_STRATEGIES, USER_LOCATIONS } from './config.js';
 
 export const SELECTORS = {
@@ -530,8 +529,9 @@ export async function updateFinalTab(gatherFn) {
 }
 
 // Merged from eventListeners.js
-import { LINGUISTIC_STYLES as L_STYLES } from '../conversationHelpers.js';
 import { EMOJI_STRATEGIES as E_STRATEGIES, USER_LOCATIONS as U_LOCATIONS } from './config.js';
+
+const L_STYLES = ['auto', 'casual', 'charming', 'direct', 'intellectual', 'mysterious', 'playful', 'poetic', 'sarcastic', 'sexual', 'witty'].sort((a, b) => a === 'auto' ? -1 : b === 'auto' ? 1 : a.localeCompare(b));
 
 export function setupEventListeners(callbacks) {
     window.addEventListener('focus', callbacks.refreshDataAndUI);

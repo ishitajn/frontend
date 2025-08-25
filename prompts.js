@@ -5,7 +5,7 @@ import { buildContextPrompt } from './prompts/contextPrompt.js';
 import { buildTaskPrompt } from './prompts/taskPrompt.js';
 
 /**
- * @param {import('./conversationHelpers.js').GenerationData} data
+ * @param {object} data - The data for prompt generation.
  * @returns {{systemMessage: string, userMessage: string}}
  */
 export function generatePrompts(data) {

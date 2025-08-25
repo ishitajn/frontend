@@ -194,7 +194,7 @@ function buildFallbackTaskPrompt(instructions) {
 **FINAL COMMAND:** Write the next message for **${myName}**. Only return the message text.`;
 }
 
-// Helper functions moved from conversationHelpers.js
+// Helper functions for prompt construction
 function getToneDescription(value) {
     const levels = {
         100: 'Be explicitly sexual and daring.',
