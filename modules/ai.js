@@ -2,9 +2,20 @@ import { DEBUG } from './debug.js';
 import { performanceLogger } from './performanceLogger.js';
 import { generatePrompts } from '../prompts.js';
 import { getGenerationState, setGenerationState, DEFAULTS } from './state.js';
+import { apiClient } from './apiClient.js';
 
 const abortControllers = new Map();
 
+/**
+ * Handles a generic AI task, including state management, API calls, and error handling.
+ * @param {string} uuid - The unique identifier for the match/conversation.
+ * @param {number} generationId - The unique identifier for this specific generation request.
+ * @param {object} payload - The payload to send to the AI API.
+ * @param {chrome.runtime.Port} port - The port to communicate with the popup.
+ * @param {object} [options={}] - Optional parameters.
+ * @param {function(string): string} [options.onSuccess] - A function to process the raw AI response text.
+ * @param {object} [options.logData] - Additional data to log for performance tracking.
+ */
 async function handleAITask(uuid, generationId, payload, port, options = {}) {
     if (abortControllers.has(uuid)) {
         abortControllers.get(uuid).abort("A new generation request was started.");
@@ -65,16 +76,24 @@ async function handleAITask(uuid, generationId, payload, port, options = {}) {
     }
 }
 
+/**
+ * Fetches a response from the OpenAI API.
+ * @param {string} apiKey - The OpenAI API key.
+ * @param {object} payload - The request payload.
+ * @param {object} settings - The application settings.
+ * @param {AbortSignal} signal - The abort signal for the request.
+ * @returns {Promise<string>} The AI's response text.
+ */
 async function fetchOpenAIResponse(apiKey, payload, settings, signal) {
-    const { ai_model } = settings;
-    const responseData = await apiClient('https://api.openai.com/v1/chat/completions', 'POST', {
+    const { ai_model, openai_api_url } = settings;
+    const responseData = await apiClient(openai_api_url, 'POST', {
         model: ai_model,
         messages: payload.messages,
         temperature: payload.temperature,
         top_p: payload.top_p,
     }, {
         'Authorization': `Bearer ${apiKey}`
-    });
+    }, signal);
 
     if (!responseData.choices?.[0]?.message?.content) {
         throw new Error('OpenAI API returned an unexpected response format.');
@@ -83,18 +102,26 @@ async function fetchOpenAIResponse(apiKey, payload, settings, signal) {
     return responseData.choices[0].message.content.trim();
 }
 
+/**
+ * Fetches a response from the Anthropic API.
+ * @param {string} apiKey - The Anthropic API key.
+ * @param {object} payload - The request payload.
+ * @param {object} settings - The application settings.
+ * @param {AbortSignal} signal - The abort signal for the request.
+ * @returns {Promise<string>} The AI's response text.
+ */
 async function fetchAnthropicResponse(apiKey, payload, settings, signal) {
-    const { ai_model } = settings;
-    const responseData = await apiClient('https://api.anthropic.com/v1/messages', 'POST', {
+    const { ai_model, anthropic_api_url, anthropic_api_version, anthropic_max_tokens } = settings;
+    const responseData = await apiClient(anthropic_api_url, 'POST', {
         model: ai_model,
         messages: payload.messages,
         temperature: payload.temperature,
         top_p: payload.top_p,
-        max_tokens: 1024,
+        max_tokens: anthropic_max_tokens,
     }, {
         'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
-    });
+        'anthropic-version': anthropic_api_version
+    }, signal);
 
     if (!responseData.content?.[0]?.text) {
         throw new Error('Anthropic API returned an unexpected response format.');
@@ -103,6 +130,11 @@ async function fetchAnthropicResponse(apiKey, payload, settings, signal) {
     return responseData.content[0].text.trim();
 }
 
+/**
+ * Builds the final payload for the AI API call.
+ * @param {object} data - The data required to generate the prompts.
+ * @returns {object} The final payload object.
+ */
 function buildFinalPayload(data) {
     const { systemMessage, userMessage } = generatePrompts(data);
     return {
@@ -120,6 +152,11 @@ function buildFinalPayload(data) {
     };
 }
 
+/**
+ * Cleans the raw AI response by removing stop tokens.
+ * @param {string} rawResponse - The raw response text from the AI.
+ * @returns {string} The cleaned response text.
+ */
 function cleanAIResponse(rawResponse) {
     if (typeof rawResponse !== 'string' || !rawResponse)
         return '';
@@ -134,8 +171,14 @@ function cleanAIResponse(rawResponse) {
     return (earliestStopIndex !== -1 ? rawResponse.substring(0, earliestStopIndex) : rawResponse).trim();
 }
 
-import { apiClient } from './apiClient.js';
-
+/**
+ * Fetches a response from a local Llama-like API endpoint.
+ * @param {string} apiKey - The API key (optional).
+ * @param {object} payload - The payload to send to the API.
+ * @param {object} settings - The application settings.
+ * @param {AbortSignal} signal - The abort signal for the request.
+ * @returns {Promise<string>} The content of the AI's response.
+ */
 async function fetchLocalLlamaResponse(apiKey, payload, settings, signal) {
     const { local_llama_url } = settings;
     const headers = {};

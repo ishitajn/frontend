@@ -1,5 +1,4 @@
 // background.js
-import { runFullConversationAnalysis, determineConversationState, hasRecentGreeting } from './conversationHelpers.js';
 import spacetime from './lib/spacetime.min.js';
 import informal from './lib/spacetime-informal.min.js';
 import { DEBUG } from './modules/debug.js';
@@ -8,6 +7,7 @@ import { fetchTimezoneFromCoords, geocodeLocation } from './modules/geolocation.
 import { getGenerationState, setGenerationState, DEFAULTS } from './modules/state.js';
 import { handleAITask, buildFinalPayload } from './modules/ai.js';
 import { USER_LOCATIONS } from './modules/config.js';
+import { DATE_IDEA_SYSTEM_PROMPT } from './prompts/dateIdeaPrompt.js';
 import { apiClient } from './modules/apiClient.js';
 
 spacetime.extend(informal);
@@ -166,7 +166,9 @@ chrome.runtime.onConnect.addListener((port) => {
             }
 
             const { metadata, memory } = matchProfile;
-            const systemPrompt = `You are a creative and thoughtful date planner. Your goal is to generate a single, unique, and compelling date idea based on the provided context about two people. The idea should be specific, actionable, and tailored to their personalities and shared interests. You must return the response in a valid JSON object with three keys: "title" (a short, catchy name for the date), "description" (a 2-3 sentence explanation of the date), and "reasoning" (a 1-2 sentence explanation of why this is a good idea for them specifically).`;
+            const settings = await chrome.storage.local.get('date_idea_model');
+            const model = settings.date_idea_model || DEFAULTS.date_idea_model;
+
             const userPrompt = `Based on the following context, generate one unique date idea.
 
 - **Their Name:** ${metadata.theirName}
@@ -178,8 +180,8 @@ chrome.runtime.onConnect.addListener((port) => {
 Generate one date idea in the specified JSON format.`;
 
             const payload = {
-                model: "llama3:latest",
-                messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
+                model: model,
+                messages: [{ role: "system", content: DATE_IDEA_SYSTEM_PROMPT }, { role: "user", content: userPrompt }],
                 temperature: 0.8,
                 response_format: { type: "json_object" }
             };

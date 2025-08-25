@@ -1,6 +1,14 @@
 import { validatePromptInputs, sanitizeInputs } from './validator.js';
 import { ContentBuilder, CONTENT_PRIORITIES } from './contentPrioritizer.js';
 
+/**
+ * Generates the system prompt for the AI based on conversation analysis.
+ * It builds the prompt by combining a core directive, dynamic guidelines based on the last message,
+ * state-specific instructions, and general best practices.
+ * @param {object} conversationAnalysis - The analysis object for the conversation.
+ * @param {string} timeContext - A string describing the current time context (e.g., "weekday afternoon").
+ * @returns {string} The complete system prompt.
+ */
 export function getSystemPrompt(conversationAnalysis, timeContext) {
     try {
         validatePromptInputs({}, conversationAnalysis);
@@ -36,6 +44,10 @@ export function getSystemPrompt(conversationAnalysis, timeContext) {
     }
 }
 
+/**
+ * Builds the core, high-priority system prompt directives.
+ * @returns {string} The core system prompt text.
+ */
 function buildCorePrompt() {
     return `You are DateWing, an AI ghostwriter for dating app messages.
 
@@ -44,6 +56,12 @@ function buildCorePrompt() {
 2. **FOLLOW INSTRUCTIONS:** Strictly follow the user's instructions for **TONE**, **LENGTH**, and **STYLE** in the task.`;
 }
 
+/**
+ * Builds dynamic guidelines based on the analysis of the last message and conversation memory.
+ * @param {object} lastMessageAnalysis - The analysis of the last message from the match.
+ * @param {object} memory - The conversation memory object.
+ * @returns {string|null} A string of dynamic guidelines or null if none are applicable.
+ */
 function buildDynamicGuidelines(lastMessageAnalysis, memory) {
     const guidelines = [];
     
@@ -64,6 +82,12 @@ function buildDynamicGuidelines(lastMessageAnalysis, memory) {
 ${guidelines.join('\n')}` : null;
 }
 
+/**
+ * Builds state-specific content to guide the AI's focus and information priority.
+ * @param {string} state - The current conversation state (e.g., 'OPENER', 'ACTIVE_CONVO').
+ * @param {boolean} forceNewTopic - Whether to force a new topic.
+ * @returns {string} The state-specific section of the system prompt.
+ */
 function buildStateSpecificContent(state, forceNewTopic) {
     const stateConfig = {
         'OPENER': {
@@ -100,6 +124,12 @@ ${config.focus}
 ${config.hierarchy}`;
 }
 
+/**
+ * Builds the base guidelines for the AI's writing style.
+ * @param {boolean} forceNewTopic - Whether a new topic is being forced.
+ * @param {string} state - The current conversation state.
+ * @returns {string} The base guidelines section of the system prompt.
+ */
 function buildBaseGuidelines(forceNewTopic, state) {
     const guidelines = [
         '* **BE HUMAN:** Write like a real person, not a bot.',
@@ -115,6 +145,10 @@ function buildBaseGuidelines(forceNewTopic, state) {
 ${guidelines.join('\n')}`;
 }
 
+/**
+ * Builds a fallback system prompt to be used in case of an error.
+ * @returns {string} The fallback system prompt.
+ */
 function buildFallbackSystemPrompt() {
     return `You are DateWing, an AI ghostwriter for dating app messages.
 

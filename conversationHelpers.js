@@ -3,14 +3,29 @@ import nlp from './lib/compromise.js';
 export const LINGUISTIC_STYLES = ['auto', 'casual', 'charming', 'direct', 'intellectual', 'mysterious', 'playful', 'poetic', 'sarcastic', 'sexual', 'witty'].sort((a, b) => a === 'auto' ? -1 : b === 'auto' ? 1 : a.localeCompare(b));
 export const DATE_ARC_PHASES = ['rapport', 'escalation', 'planning'];
 
+/**
+ * Checks if a given text is related to geographical location.
+ * This function first uses compromise.js to check for named places,
+ * then falls back to a keyword search for common geo-related terms.
+ * The keyword list is stored in a Set for efficient lookups.
+ * @param {string} text The text to analyze.
+ * @returns {boolean} True if the text is deemed to be geo-related.
+ */
+const geoTriggers = new Set(['where', 'from', 'at', 'in', 'on', 'near', 'by', 'around', 'to', 'live', 'lives', 'living', 'reside', 'resides', 'residence', 'home', 'hometown', 'homeland', 'based', 'staying', 'grew up', 'born in', 'raised in', 'from', 'native', 'local', 'nationality', 'citizenship', 'roots', 'background', 'travel', 'traveling', 'traveled', 'visit', 'visiting', 'trip', 'vacation', 'holiday', 'journey', 'tour', 'expedition', 'voyage', 'pilgrimage', 'excursion', 'getaway', 'go', 'went', 'going', 'fly', 'flew', 'flying', 'drive', 'drove', 'driving', 'commute', 'commuting', 'relocate', 'relocating', 'move', 'moved', 'moving', 'emigrate', 'immigrate', 'abroad', 'overseas', 'destination', 'itinerary', 'route', 'path', 'country', 'nation', 'state', 'province', 'county', 'city', 'town', 'village', 'municipality', 'district', 'territory', 'capital', 'border', 'continent', 'region', 'area', 'zone', 'hemisphere', 'coast', 'island', 'peninsula', 'mountain', 'valley', 'desert', 'forest', 'jungle', 'ocean', 'sea', 'river', 'lake', 'located', 'location', 'place', 'spot', 'venue', 'site', 'address', 'building', 'office', 'campus', 'headquarters', 'hq', 'airport', 'station', 'port', 'hotel', 'resort', 'park', 'neighborhood', 'suburb', 'north', 'south', 'east', 'west', 'northern', 'southern', 'eastern', 'western', 'upstate', 'downstate', 'uptown', 'downtown', 'midtown', 'central', 'remote', 'nearby', 'local', 'distant', 'abroad', 'overseas', 'here', 'there', 'everywhere', 'somewhere', 'anywhere', 'nowhere', 'position', 'coordinates', 'latitude', 'longitude', 'lat', 'long', 'gps', 'map', 'atlas', 'globe', 'directions', 'geography', 'geolocation', 'geotag', 'geofence', 'locale', 'jurisdiction', 'branch', 'outlet', 'market', 'territory', 'shipping', 'delivery', 'origin', 'destination', 'address', 'street', 'road', 'avenue', 'boulevard', 'lane', 'drive', 'court', 'place', 'zip code', 'postal code', 'postcode', 'p.o. box', 'hood', 'neck of the woods', 'stomping grounds', 'turf', 'zone', 'ends', 'area code', 'the sticks', 'the burbs', 'back home']);
+
 export function isMessageGeoRelated(text) {
-    if (!text)
-        return false;
+    if (!text) return false;
     const doc = nlp(text.toLowerCase());
-    if (doc.places().found)
-        return true;
-    const geoTriggers = ['where', 'from', 'at', 'in', 'on', 'near', 'by', 'around', 'to', 'live', 'lives', 'living', 'reside', 'resides', 'residence', 'home', 'hometown', 'homeland', 'based', 'staying', 'grew up', 'born in', 'raised in', 'from', 'native', 'local', 'nationality', 'citizenship', 'roots', 'background', 'travel', 'traveling', 'traveled', 'visit', 'visiting', 'trip', 'vacation', 'holiday', 'journey', 'tour', 'expedition', 'voyage', 'pilgrimage', 'excursion', 'getaway', 'go', 'went', 'going', 'fly', 'flew', 'flying', 'drive', 'drove', 'driving', 'commute', 'commuting', 'relocate', 'relocating', 'move', 'moved', 'moving', 'emigrate', 'immigrate', 'abroad', 'overseas', 'destination', 'itinerary', 'route', 'path', 'country', 'nation', 'state', 'province', 'county', 'city', 'town', 'village', 'municipality', 'district', 'territory', 'capital', 'border', 'continent', 'region', 'area', 'zone', 'hemisphere', 'coast', 'island', 'peninsula', 'mountain', 'valley', 'desert', 'forest', 'jungle', 'ocean', 'sea', 'river', 'lake', 'located', 'location', 'place', 'spot', 'venue', 'site', 'address', 'building', 'office', 'campus', 'headquarters', 'hq', 'airport', 'station', 'port', 'hotel', 'resort', 'park', 'neighborhood', 'suburb', 'north', 'south', 'east', 'west', 'northern', 'southern', 'eastern', 'western', 'upstate', 'downstate', 'uptown', 'downtown', 'midtown', 'central', 'remote', 'nearby', 'local', 'distant', 'abroad', 'overseas', 'here', 'there', 'everywhere', 'somewhere', 'anywhere', 'nowhere', 'position', 'coordinates', 'latitude', 'longitude', 'lat', 'long', 'gps', 'map', 'atlas', 'globe', 'directions', 'geography', 'geolocation', 'geotag', 'geofence', 'locale', 'jurisdiction', 'branch', 'outlet', 'market', 'territory', 'shipping', 'delivery', 'origin', 'destination', 'address', 'street', 'road', 'avenue', 'boulevard', 'lane', 'drive', 'court', 'place', 'zip code', 'postal code', 'postcode', 'p.o. box', 'hood', 'neck of the woods', 'stomping grounds', 'turf', 'zone', 'ends', 'area code', 'the sticks', 'the burbs', 'back home', ];
-    return doc.has(geoTriggers);
+    if (doc.places().found) return true;
+
+    const words = text.toLowerCase().split(/\s+/);
+    for (const word of words) {
+        if (geoTriggers.has(word.replace(/[.,!?-]/g, ''))) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 export function getToneDescription(value) {

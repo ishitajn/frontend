@@ -21,8 +21,13 @@ export const DEFAULTS = {
     nlp_mode: 'offline',
     ai_provider: 'local_llama',
     ai_model: 'llama3:latest',
+    date_idea_model: 'llama3:latest',
     time_api_url: 'https://timeapi.io/api/time/current/coordinate',
     nominatim_api_url: 'https://nominatim.openstreetmap.org/search',
+    openai_api_url: 'https://api.openai.com/v1/chat/completions',
+    anthropic_api_url: 'https://api.anthropic.com/v1/messages',
+    anthropic_api_version: '2023-06-01',
+    anthropic_max_tokens: 1024,
 };
 
 export const MATCH_SPECIFIC_SETTINGS_KEYS = [
