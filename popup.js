@@ -741,8 +741,8 @@ sendMessage({
 }
 
 async function handleNlpAnalysisResponse(message) {
-    if (message.error) {
-        showError('NLP Analysis Failed', message.error);
+    if (message.error || !message.matchProfile) {
+        showError('NLP Analysis Failed', message.error || 'No match profile returned.');
         return;
     }
 
