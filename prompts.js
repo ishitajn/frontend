@@ -1,6 +1,5 @@
 // src/prompts.js (Corrected with Consistent Data Structuring)
 
-import { isMessageGeoRelated, getTimeContext } from './conversationHelpers.js';
 import { getSystemPrompt } from './prompts/systemPrompt.js';
 import { buildContextPrompt } from './prompts/contextPrompt.js';
 import { buildTaskPrompt } from './prompts/taskPrompt.js';
@@ -26,13 +25,9 @@ export function generatePrompts(data) {
 
     // Fallback to old logic
     const state = conversationAnalysis.conversationState;
-    const lastMessageFromMatch = conversationHistory?.filter(msg => msg.role === 'assistant').pop()?.content || '';
-    let includeGeoContext = false;
-    if (geoContextData) {
-        if (forceIncludeGeoContext || (geoContextData.distance.miles > 100 && (state === 'OPENER' || (state && state.startsWith('REENGAGING')) || (taskInstructions.goal && isMessageGeoRelated(taskInstructions.goal)) || (state !== 'OPENER' && isMessageGeoRelated(lastMessageFromMatch))))) {
-            includeGeoContext = true;
-        }
-    }
+
+    // Geo-context inclusion logic is now simplified to just the user's toggle.
+    const includeGeoContext = forceIncludeGeoContext;
 
     const timeContext = getTimeContext();
     const contextData = { ...data, includeGeoContext };
@@ -44,4 +39,18 @@ export function generatePrompts(data) {
     const userMessage = `${contextMessage}\n${taskMessage}`;
 
     return { systemMessage, userMessage };
+}
+
+function getTimeContext(now = new Date()) {
+    const day = now.getDay();
+    const hour = now.getHours();
+    const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][day];
+    let dayPeriod = hour < 5 ? 'late night' : hour < 8 ? 'early morning' : hour < 12 ? 'morning' : hour < 14 ? 'afternoon' : hour < 17 ? 'late afternoon' : hour < 19 ? 'evening' : hour < 22 ? 'late evening' : 'night';
+    if (day === 0 || day === 6 || (day === 5 && hour >= 17)) {
+        return `It's the weekend, ${dayName}(${dayPeriod}). You can use a more relaxed, fun-oriented greeting.`;
+    }
+    if (day >= 1 && day <= 5) {
+        return `It's a weekday, ${dayName} - ${dayPeriod}. A casual check-in about their day or a light greeting (e.g., "Happy ${dayName}!") is appropriate.`;
+    }
+    return null;
 }
