@@ -19,6 +19,7 @@ const MODELS = {
 };
 
 function updateModelDropdown() {
+    DEBUG.log('UI', 'updateModelDropdown: START');
     const provider = document.getElementById('ai-provider-select').value;
     const modelSelect = document.getElementById('ai-model-select');
     const currentModel = modelSelect.value;
@@ -33,9 +34,11 @@ function updateModelDropdown() {
         }
         modelSelect.appendChild(option);
     });
+    DEBUG.log('UI', 'updateModelDropdown: END');
 }
 
 function setupEventListeners() {
+    DEBUG.log('INIT', 'setupEventListeners: START');
     const listeners = {
         [SELECTORS.settingsBtn]: { 'click': () => showView(SELECTORS.settingsView) },
         [SELECTORS.backBtn]: { 'click': () => showView(SELECTORS.mainView) },
@@ -55,11 +58,14 @@ function setupEventListeners() {
             for (const event in listeners[selector]) {
                 element.addEventListener(event, listeners[selector][event]);
             }
+        } else {
+            DEBUG.error('INIT', `setupEventListeners: Element not found for selector '${selector}'`);
         }
     }
 
     document.body.addEventListener('input', handleSettingChange);
     document.body.addEventListener('change', handleSettingChange);
+    DEBUG.log('INIT', 'setupEventListeners: END');
 }
 
 document.addEventListener('DOMContentLoaded', initializePopup);
@@ -69,6 +75,7 @@ const debouncedRefreshDataAndUI = () => {
 };
 
 async function initializePopup() {
+    DEBUG.log('INIT', 'initializePopup: START');
     initializeTabs();
     setupEventListeners();
     renderAllTabs(getNlpPayload());
@@ -84,7 +91,10 @@ async function initializePopup() {
         'testConnectionResponse': handleTestConnectionResponse,
     });
     await loadAndApplySettings();
-    updateModelDropdown();
+    await updateModelDropdown();
+    DEBUG.log('INIT', 'initializePopup: END');
+    showView('main-view');
+    debouncedRefreshDataAndUI();
 }
 
 function handleTestApiConnection() {
@@ -116,21 +126,27 @@ function handleTestConnectionResponse(message) {
 }
 
 async function refreshDataAndUI() {
+    DEBUG.log('REFRESH', 'refreshDataAndUI: START');
     const state = getState();
-    if (state.isRefreshing)
+    if (state.isRefreshing) {
+        DEBUG.log('REFRESH', 'refreshDataAndUI: Already refreshing, exiting.');
         return;
+    }
 
     const generationState = await getGenerationState(state.currentMatchUUID);
 
     if (generationState.isGenerating) {
+        DEBUG.log('REFRESH', 'refreshDataAndUI: Generation in progress, syncing UI.');
         syncUIWithState(generationState);
         return;
     }
 
     setState({ isRefreshing: true });
     setUIRefreshingState(true);
+    DEBUG.log('REFRESH', 'refreshDataAndUI: Set state to refreshing.');
 
     try {
+        DEBUG.log('REFRESH', 'refreshDataAndUI: Inside TRY block');
         const [tab] = await chrome.tabs.query({
             active: true,
             currentWindow: true
@@ -146,6 +162,7 @@ async function refreshDataAndUI() {
         } else {
             throw new Error('Unsupported Site: Please navigate to a conversation on Tinder.com or Bumble.com.');
         }
+        DEBUG.log('REFRESH', 'refreshDataAndUI: Scraper function selected.');
 
         const results = await chrome.scripting.executeScript({
             target: {
@@ -153,12 +170,14 @@ async function refreshDataAndUI() {
             },
             function : scraperFn
         });
+        DEBUG.log('REFRESH', 'refreshDataAndUI: Scraper script executed.');
         const pageData = results[0]?.result;
         if (!pageData || pageData.error) {
             throw new Error(`Could not read page. ${pageData?.error || 'Please make sure a conversation is selected.'}`);
         }
 
         setState({ sessionScrapedData: pageData });
+        DEBUG.log('REFRESH', 'refreshDataAndUI: Sending getNlpAnalysis message to background.');
         sendMessage({
             action: "getNlpAnalysis",
             data: {
@@ -167,15 +186,17 @@ async function refreshDataAndUI() {
         });
 
     } catch (e) {
+        DEBUG.error('REFRESH', 'refreshDataAndUI: Inside CATCH block', e);
         showError('Initialization Failed', e.message);
-        DEBUG.error('INIT', 'Refresh failed', e);
     } finally {
+        DEBUG.log('REFRESH', 'refreshDataAndUI: Inside FINALLY block');
         setState({ isRefreshing: false });
         setUIRefreshingState(false);
     }
 }
 
 async function handleNlpAnalysisResponse(message) {
+    DEBUG.log('RESPONSE', 'handleNlpAnalysisResponse: RECEIVED', message);
     if (message.error) {
         showError('NLP Analysis Failed', message.error);
         return;
@@ -187,18 +208,18 @@ async function handleNlpAnalysisResponse(message) {
         return;
     }
 
-    // Set the new payload and the UUID into the state
+    DEBUG.log('RESPONSE', 'handleNlpAnalysisResponse: Setting state');
     setState({
         nlpPayload: nlpPayload,
         currentMatchUUID: nlpPayload.matchId,
     });
 
+    DEBUG.log('RESPONSE', 'handleNlpAnalysisResponse: Calling loadAndApplySettings');
     await loadAndApplySettings();
 
-    // Render all tabs with the new, real data
+    DEBUG.log('RESPONSE', 'handleNlpAnalysisResponse: Calling renderAllTabs');
     renderAllTabs(nlpPayload);
 
-    // Update the conversation status display directly
     const statusEl = document.getElementById('conversation-status-display');
     if (statusEl && nlpPayload.analysis.sentiment) {
         statusEl.textContent = `Status: ${nlpPayload.analysis.sentiment} | Engagement: ${nlpPayload.analysis.engagement}`;
@@ -206,6 +227,7 @@ async function handleNlpAnalysisResponse(message) {
         statusEl.textContent = 'Status: Unknown';
     }
 
+    DEBUG.log('RESPONSE', 'handleNlpAnalysisResponse: Calling showView');
     showView('main-view');
 }
 
@@ -256,7 +278,6 @@ async function handleSettingChange(event) {
         updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearInstructionBtn));
     } else if (el.id === SELECTORS.responseArea) {
         updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearResponseBtn));
-        // The 'refinementActions' element was part of the old UI.
     }
     const key = el.dataset.storageKey || (el.id === SELECTORS.responseArea ? 'lastResponse' : null);
     if (!key)
@@ -278,6 +299,7 @@ async function handleSettingChange(event) {
 }
 
 async function loadAndApplySettings() {
+    DEBUG.log('SETTINGS', 'loadAndApplySettings: START');
     const state = getState();
     const globalKeys = Object.keys(DEFAULTS);
     const globalSettings = {
@@ -308,8 +330,7 @@ async function loadAndApplySettings() {
     if (responseArea && finalSettings.lastResponse) {
         responseArea.textContent = finalSettings.lastResponse;
     }
-    // The rest of the UI elements controlled by this function were part of the old UI
-    // and have been removed. This function may be refactored further in the future.
+    DEBUG.log('SETTINGS', 'loadAndApplySettings: END');
 }
 
 async function handleMatchReset() {
@@ -436,9 +457,3 @@ async function autoType(text) {
         DEBUG.error('AUTOTYPE', 'Failed to auto-type', error);
     }
 }
-
-// The displayConversationState function is no longer needed as its logic
-// has been integrated into handleNlpAnalysisResponse.
-
-// The handleDateIdeaClick and handleRefinementClick functions are obsolete
-// as their corresponding UI elements have been removed in the new design.
