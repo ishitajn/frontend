@@ -2,19 +2,14 @@
 
 import { getToneDescription, getLengthDescription, getStyleDescription, getEmojiInstruction } from '../conversationHelpers.js';
 
-// FIX: Accept conversationAnalysis as the third parameter
-export function buildTaskPrompt(instructions, data, conversationAnalysis) {
-    // FIX: Destructure only what's needed from instructions
-    const { goal, flirtyValue, lengthValue, endWithQuestion, linguisticStyle, strictGoalOverride, forceNewTopic, myName, theirName, emojiStrategy, conversationBreakDetected } = instructions;
+export function buildTaskPrompt(instructions) {
+    // *** FIX 1: Expect the nested conversationAnalysis object and destructure from it. ***
+    const { goal, flirtyValue, lengthValue, endWithQuestion, linguisticStyle, strictGoalOverride, forceNewTopic, myName, theirName, emojiStrategy, conversationBreakDetected, conversationAnalysis } = instructions;
 
-    // FIX: Use the explicit conversationAnalysis parameter, providing a fallback.
+    // *** FIX 2: Safely destructure from the analysis object, providing a fallback. ***
     const { suppressGreeting, memory, lastMessageAnalysis } = conversationAnalysis || {};
 
-    const { theirProfile, myProfile, conversationHistory, isVerified, timeSinceLastMessageInHours, geoContextData, includeGeoContext,  } = data;
-
     const emojiInstruction = getEmojiInstruction(emojiStrategy, flirtyValue, linguisticStyle);
-
-	const lastMessageFromMatch = conversationHistory?.filter(msg => msg.role === 'assistant').pop()?.content || '';
 
     if (strictGoalOverride && goal) {
         const finalPrompt = `
@@ -33,7 +28,7 @@ ${emojiInstruction ? `- **EMOJI USAGE:** ${emojiInstruction}` : ''}
     }
 
     const memoryNotes = [];
-    // Use optional chaining ('?.') for maximum resilience against undefined data.
+    // *** FIX 3: Use optional chaining ('?.') for maximum resilience against undefined data. ***
     if (memory?.dateArcPhase === 'planning')
         memoryNotes.push('**STRATEGIC CONTEXT: PLANNING PHASE.** Focus on confidently solidifying a date.');
     else if (memory?.dateArcPhase === 'escalation')
@@ -62,9 +57,9 @@ ${emojiInstruction ? `- **EMOJI USAGE:** ${emojiInstruction}` : ''}
         if (lastMessageAnalysis.isSarcastic)
             strategicNotes.push('**CRITICAL PROTOCOL: SARCASM DETECTED.** Do not take their last statement literally. Respond to the underlying sentiment.');
         if (lastMessageAnalysis.intents?.includes('flirting_or_sexual'))
-            strategicNotes.push('**STRATEGIC NOTE: SEXUAL TENSION DETECTED.** Match their energy confidently. This is a green light for sexual escalation.');
+            strategicNotes.push('**STRATEGIC NOTE: SEXUAL TENSION DETECTED.** Match their energy confidently. This is a green light for escalation.');
         if (lastMessageAnalysis.intents?.includes('questioning'))
-            strategicNotes.push(`**CRITICAL PROTOCOL: ANSWER THE QUESTION.** The match asked a question: "${lastMessageFromMatch}". You MUST answer it.`);
+            strategicNotes.push('**CRITICAL PROTOCOL: ANSWER THE QUESTION.** The match asked a question. You MUST answer it.');
         if (lastMessageAnalysis.isAmbiguous)
             strategicNotes.push('**STRATEGIC NOTE: AMBIGUITY DETECTED.** Convert their vague positive response into a concrete plan.');
         if (lastMessageAnalysis.intents?.includes('planning'))
@@ -73,8 +68,6 @@ ${emojiInstruction ? `- **EMOJI USAGE:** ${emojiInstruction}` : ''}
             strategicNotes.push('**CRITICAL PROTOCOL: VULNERABILITY DETECTED.** Respond with warmth, validation, and support.');
         if (lastMessageAnalysis.valence < -0.5)
             strategicNotes.push('**CRITICAL PROTOCOL: NEGATIVE TONE DETECTED.** Adjust your tone to be more supportive and empathetic.');
-        if (lastMessageAnalysis.isLowEffort)
-            strategicNotes.push('**STRATEGIC NOTE: LOW-EFFORT REPLY DETECTED.** Their last message was short. Your reply needs to be more engaging to carry the conversation.');
     }
 
     const userGoal = goal?.trim() ? `- **ABSOLUTE PRIORITY – USER'S GOAL:** ${goal}` : '';

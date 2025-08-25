@@ -1,132 +1,106 @@
-import { TEMPLATES } from './templates.js';
-import { validatePromptInputs, sanitizeInputs } from './validator.js';
-import { ContentBuilder, CONTENT_PRIORITIES } from './contentPrioritizer.js';
+// src/prompts/contextPrompt.js
 
+/**
+ * Builds the contextual part of the user prompt.
+ * This version simplifies complex instructions for smaller models.
+ *
+ * @param {object} data - The dynamic data for the current request.
+ * @param {import('../conversationHelpers.js').ConversationAnalysis} conversationAnalysis - The full analysis of the conversation.
+ * @returns {string} The fully assembled context prompt.
+ */
 export function buildContextPrompt(data, conversationAnalysis) {
-    try {
-        validatePromptInputs(data, conversationAnalysis);
-        const { sanitizedData, sanitizedAnalysis } = sanitizeInputs(data, conversationAnalysis);
-        
-        const { conversationState, lastMessageAnalysis } = sanitizedAnalysis;
-        const { 
-            theirProfile, myProfile, conversationHistory, myName, theirName,
-            geoContextData, includeGeoContext 
-        } = sanitizedData;
-        
-        const builder = new ContentBuilder();
-        
-        // 1. Geo Context (lowest priority)
-        if (includeGeoContext && geoContextData) {
-            const geoContent = `${TEMPLATES.SECTION_HEADER('CONVERSATIONAL METADATA')}
-${TEMPLATES.GEO_CONTEXT(geoContextData)}`;
-            builder.addSection('geo_context', geoContent, CONTENT_PRIORITIES.GEO_CONTEXT);
-        }
-        
-        // 2. Conversation History (high priority for non-openers)
-        if (conversationState !== 'OPENER' && conversationHistory.length > 0) {
-            const historyContent = buildHistorySection(
-                conversationHistory, lastMessageAnalysis, conversationState, myName, theirName
-            );
-            builder.addSection('history', historyContent, CONTENT_PRIORITIES.RECENT_HISTORY);
-        }
-        
-        // 3. Profile Sections (priority varies by state)
-        const profileContent = buildProfileSection(conversationState, theirProfile, myProfile, myName, theirName);
-        const profilePriority = getProfilePriority(conversationState);
-        builder.addSection('profiles', profileContent, profilePriority);
-        
-        return builder.build();
-        
-    } catch (error) {
-        console.error('Error building context prompt:', error);
-        // Fallback to minimal context
-        return buildFallbackContext(data, conversationAnalysis);
-    }
-}
+    const { conversationState, lastMessageAnalysis } = conversationAnalysis;
+    const state = conversationState; // for brevity
 
-function buildHistorySection(history, lastMessageAnalysis, state, myName, theirName) {
-    const notices = [];
-    
-    // Add contextual notices based on analysis
-    if (lastMessageAnalysis?.isDirectQuestion) {
-        notices.push(TEMPLATES.CRITICAL_NOTICE("The match's last message contains a question. Answer it."));
-    }
-    if (lastMessageAnalysis?.isLowEffort) {
-        notices.push(TEMPLATES.CRITICAL_NOTICE("The match's last reply was very short. Your message needs to re-engage them."));
-    }
-    
-    // Add time gap notices
-    if (['REENGAGING_DAY', 'REENGAGING_WEEK', 'REENGAGING_MONTH'].includes(state)) {
-        notices.push(TEMPLATES.TIME_GAP_NOTICE(state));
-    }
-    
-    // Format messages efficiently
-    const formattedMessages = history
-        .map(msg => {
-            const sender = msg.role === 'assistant' ? theirName : myName;
-            return TEMPLATES.MESSAGE_FORMAT(msg.date, sender, msg.content);
-        })
-        .join('\n');
-    
-    const noticeText = notices.length > 0 ? notices.join('\n') + '\n' : '';
-    
-    return `${TEMPLATES.SECTION_HEADER('CONVERSATION HISTORY')}
-${noticeText}${formattedMessages}`;
-}
+    const { theirProfile, myProfile, conversationHistory, myName, theirName, isVerified, timeSinceLastMessageInHours, geoContextData, includeGeoContext,  } = data;
 
-function buildProfileSection(state, theirProfile, myProfile, myName, theirName) {
-    const sections = [];
-    
+    // --- 1. Metadata Generation (with simplified instruction) ---
+    const geoContext = (includeGeoContext && geoContextData) ? `
+- **GEO-TEMPORAL CONTEXT:** (Use this info for planning/travel topics only. Otherwise, ignore it.)
+  - Your (User's) Time of Day: ${geoContextData.userTimeOfDay} in ${geoContextData.userTimezone}
+  - Their (Match's) Time of Day: ${geoContextData.matchTimeOfDay} in ${geoContextData.matchTimeZoneName}
+  - Approximate Distance: ${geoContextData.distance.miles} miles (${geoContextData.distance.km} km)
+  ${geoContextData.timeZoneDifference !== null ? `- Time Difference: ${geoContextData.timeZoneDifference} hour(s)` : ''}
+  ${geoContextData.countryDifference ? `- Country Difference: ${geoContextData.countryDifference}` : ''}
+` : '';
+
+    const metadataSection = geoContext ? `
+--- CONVERSATIONAL METADATA ---${geoContext}
+` : '';
+
+    let historySection = '';
+    if (state !== 'OPENER') {
+        const formatHistoryForPrompt = (history) => {
+            // --- SCENARIO-BASED LOGIC: Add a contextual notice based on the last message ---
+            let contextualNotice = '';
+            if (lastMessageAnalysis?.isDirectQuestion) {
+                contextualNotice = `(NOTE: The match's last message contains a question. Answer it.)\n`;
+            } else if (lastMessageAnalysis?.isLowEffort) {
+                contextualNotice = `(NOTE: The match's last reply was very short. Your message needs to re-engage them.)\n`;
+            }
+
+            let timeGapNotice = '';
+            switch (state) {
+            case 'REENGAGING_DAY':
+                timeGapNotice = `(Note: 1-7 day gap. You are in SOFT RE-ENGAGEMENT mode.)\n`;
+                break;
+            case 'REENGAGING_WEEK':
+                timeGapNotice = `(Note: 1-4 week gap. You are in COLD RE-ENGAGEMENT mode.)\n`;
+                break;
+            case 'REENGAGING_MONTH':
+                timeGapNotice = `(Note: 1+ month gap. You are in RESURRECTION mode.)\n`;
+                break;
+            }
+
+            const formattedMessages = history.map(msg => {
+                const prefix = msg.role === 'assistant' ? `${theirName || 'Match'}:` : `${myName || 'You'}:`;
+                return `[${msg.date}] ${prefix} ${msg.content}`;
+            }).join('\n').trim();
+
+            return contextualNotice + timeGapNotice + formattedMessages;
+        };
+        historySection = `--- CONVERSATION HISTORY ---\n${formatHistoryForPrompt(conversationHistory)}`;
+    }
+
+    // --- 3. Conditional Profile Inclusion (Logic is solid, no changes needed) ---
+    let profileSection = '';
     switch (state) {
-        case 'OPENER':
-            sections.push(TEMPLATES.PROFILE_PRIMARY(theirName, theirProfile));
-            sections.push(TEMPLATES.PROFILE_CONTEXT(myName, myProfile));
-            return `${TEMPLATES.SECTION_HEADER('PROFILE CONTEXT')}
-${sections.join('\n\n')}`;
-            
-        case 'EARLY_CONVO':
-            sections.push(TEMPLATES.PROFILE_CONTEXT(myName, myProfile));
-            sections.push(TEMPLATES.PROFILE_CONTEXT(theirName, theirProfile));
-            return `${TEMPLATES.SECTION_HEADER('PROFILE CONTEXT (USE FOR COMMON GROUND)')}
-${sections.join('\n\n')}`;
-            
-        case 'REENGAGING_DAY':
-        case 'REENGAGING_WEEK':
-        case 'REENGAGING_MONTH':
-            return `${TEMPLATES.SECTION_HEADER('PROFILE CONTEXT')}
-${TEMPLATES.PROFILE_PRIMARY(theirName, theirProfile)}`;
-            
-        case 'ACTIVE_CONVO':
-            return `${TEMPLATES.SECTION_HEADER('PROFILE CONTEXT (SECONDARY - FOR NEW TOPICS ONLY)')}
-${TEMPLATES.PROFILE_SECONDARY(theirName, theirProfile)}`;
-            
-        default:
-            return `${TEMPLATES.SECTION_HEADER('PROFILE CONTEXT')}
-${TEMPLATES.PROFILE_CONTEXT(theirName, theirProfile)}`;
+    case 'OPENER':
+        profileSection = `
+--- THEIR PROFILE (PRIMARY SOURCE) ---
+- **MATCH'S PROFILE (${theirName || 'THE MATCH'}):** ${theirProfile || 'Not provided.'}
+
+--- MY PROFILE (FOR CONTEXT) ---
+- **MY PROFILE (${myName || 'THE USER'}):** ${myProfile || 'Not provided.'}
+`;
+        break;
+    case 'EARLY_CONVO':
+        profileSection = `
+--- PROFILE CONTEXT (USE FOR COMMON GROUND) ---
+- **MY PROFILE (${myName || 'THE USER'}):** ${myProfile || 'Not provided.'}
+- **MATCH'S PROFILE (${theirName || 'THE MATCH'}):** ${theirProfile || 'Not provided.'}
+`;
+        break;
+    case 'REENGAGING_DAY':
+    case 'REENGAGING_WEEK':
+    case 'REENGAGING_MONTH':
+        profileSection = `
+--- THEIR PROFILE (PRIMARY SOURCE FOR NEW TOPIC) ---
+- **MATCH'S PROFILE (${theirName || 'THE MATCH'}):** ${theirProfile || 'Not provided.'}
+`;
+        break;
+    case 'ACTIVE_CONVO':
+        profileSection = `
+--- PROFILE CONTEXT (SECONDARY - FOR NEW TOPICS ONLY) ---
+- **MATCH'S PROFILE (${theirName || 'THE MATCH'}):** ${theirProfile || 'Not provided.'}
+`;
+        break;
     }
+
+    // --- 4. Final Assembly ---
+    return [
+        metadataSection,
+        historySection,
+        profileSection
+    ].filter(Boolean).join('\n');
 }
-
-function getProfilePriority(state) {
-    switch (state) {
-        case 'OPENER':
-        case 'REENGAGING_DAY':
-        case 'REENGAGING_WEEK':
-        case 'REENGAGING_MONTH':
-            return CONTENT_PRIORITIES.PROFILE_PRIMARY;
-        case 'EARLY_CONVO':
-            return CONTENT_PRIORITIES.PROFILE_PRIMARY;
-        default:
-            return CONTENT_PRIORITIES.PROFILE_SECONDARY;
-    }
-}
-
-function buildFallbackContext(data, conversationAnalysis) {
-    const safeName = data?.theirName || 'Match';
-    const safeProfile = data?.theirProfile || 'Profile not available';
-    
-    return `${TEMPLATES.SECTION_HEADER('BASIC CONTEXT')}
-${TEMPLATES.PROFILE_CONTEXT(safeName, safeProfile)}
-
-${TEMPLATES.CRITICAL_NOTICE('Using fallback context due to data validation error')}`;
-}
-
