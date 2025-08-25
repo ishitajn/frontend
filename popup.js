@@ -1,10 +1,11 @@
 import { scrapeBumblePage, pasteTextIntoBumbleInput, scrapeTinderPage, pasteTextIntoTinderInput } from './content-scraper.js';
 import { determineConversationState, LINGUISTIC_STYLES } from './conversationHelpers.js';
-import { showNlpModal, hideDebugModal } from './debug-modal.js';
 import { initializePort, sendMessage, startHeartbeat, stopHeartbeat, getGenerationState } from './modules/portManager.js';
 import { DEFAULTS, MATCH_SPECIFIC_SETTINGS_KEYS, EMOJI_STRATEGIES, USER_LOCATIONS } from './modules/config.js';
 import { SELECTORS, showView, showError, showErrorInResponseArea, setUIRefreshingState, setUIGeneratingState, updateUIAfterGeneration, updateSliderLabels, updateSliderValueLabel, updateGeoContextDisplay, startTimer, stopTimer, resetTimerDisplay, populateSelect, updateClearButtonVisibility, updateConversationAnalysisDisplay, updateTopicsDisplay, updateSuggestionsDisplay } from './modules/ui.js';
 import { setupEventListeners } from './modules/eventListeners.js';
+import { renderContextTab } from './modules/contextTab.js';
+import { setupFinalTab, updateFinalTab } from './modules/finalTab.js';
 
 const DEBUG = {
     log: (category, message, data = null) => console.log(`[WINGMAN-POPUP-${category.toUpperCase()}] ${message}`, data ?? ''),
@@ -93,6 +94,7 @@ async function initializePopup() {
     });
     await loadAndApplySettings();
     updateModelDropdown();
+    setupFinalTab(state);
 }
 
 function handleTestApiConnection() {
@@ -202,7 +204,12 @@ async function handleNlpAnalysisResponse(message) {
 }
 
 function updateUIWithNlpData(analysis) {
-    if (!analysis) return;
+    if (!analysis) {
+        // Clear all dynamic tabs if no analysis
+        renderContextTab(null);
+        updateFinalTab(state);
+        return;
+    }
 
     // Update Geo Context
     if (analysis.geo_context) {
@@ -215,6 +222,10 @@ function updateUIWithNlpData(analysis) {
     // Update topics and suggestions
     updateTopicsDisplay(analysis);
     updateSuggestionsDisplay(analysis);
+
+    // Update context and final tabs
+    renderContextTab(analysis);
+    updateFinalTab(state);
 }
 
 function handleGeoCalculationsResponse(message) {
@@ -416,47 +427,10 @@ async function handleGenerateClick() {
     }
 
     const dataForBackground = await gatherCoreDataForGeneration();
-    if (document.getElementById(SELECTORS.debugModeToggle).checked) {
-        const fullGenerationData = {
-            ...state.sessionScrapedData,
-            ...state.sessionMatchProfile.metadata,
-            myProfile: dataForBackground.myProfile,
-            conversationHistory: state.sessionMatchProfile.conversationHistory,
-            conversationAnalysis: state.sessionMatchProfile.analysis,
-            geoContextData: state.sessionMatchProfile.memory.geoContextData,
-            forceIncludeGeoContext: dataForBackground.forceIncludeGeoContext,
-            taskInstructions: dataForBackground.taskInstructions,
-        };
-        const debugCallbacks = {
-            sendFinalPayloadToAI: (payload) => {
-                sendMessage({
-                    action: "getAIResponse",
-                    data: {
-                        payload,
-                        generationId: Date.now(),
-                        uuid: state.currentMatchUUID,
-                        logData: {
-                            uuid: state.currentMatchUUID,
-                            analysis: state.sessionMatchProfile.analysis,
-                            payload: payload
-                        }
-                    }
-                });
-            },
-            setUIGeneratingState,
-            showErrorInResponseArea,
-            hideDebugModal,
-            startTimer,
-            stopTimer,
-            resetTimerDisplay
-        };
-        showNlpModal(fullGenerationData, debugCallbacks);
-    } else {
-        sendMessage({
-            action: "getFinalPayload",
-            data: dataForBackground
-        });
-    }
+    sendMessage({
+        action: "getFinalPayload",
+        data: dataForBackground
+    });
 }
 
 async function gatherCoreDataForGeneration() {

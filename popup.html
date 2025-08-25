@@ -72,25 +72,22 @@
                             <button id="cancel-btn" class="icon-btn btn-danger hidden"><svg fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z"></path></svg></button>
                         </div>
                         <div id="response-timer" class="response-timer">00:00</div>
-                        <div class="debug-toggle-container">
-                            <label for="debug-mode-toggle">Debug</label>
-                            <input type="checkbox" id="debug-mode-toggle" data-storage-key="debugModeEnabled" class="debug-checkbox">
-                        </div>
                     </div>
                 </div>
             </section>
 
             <div class="tab-container">
                 <div class="tab-buttons">
-                    <button class="tab-button active" data-tab="tune-response-tab">Tune Response</button>
-                    <button class="tab-button" data-tab="geo-time-context-tab">Geo-Time Context</button>
+                    <button class="tab-button active" data-tab="tune-tab">Tune</button>
+                    <button class="tab-button" data-tab="analysis-tab">Analysis</button>
+                    <button class="tab-button" data-tab="geo-tab">Geo</button>
+                    <button class="tab-button" data-tab="context-tab">Context</button>
+                    <button class="tab-button" data-tab="final-tab">Final</button>
                 </div>
-                <div id="tune-response-tab" class="tab-content active">
+
+                <!-- Tune Tab -->
+                <div id="tune-tab" class="tab-content active">
                     <div class="card">
-                        <div class="info-display" id="conversation-status-display">Status: Analyzing...</div>
-                        <div id="conversation-analysis-display" class="info-display"></div>
-                        <div id="topics-display" class="info-display"></div>
-                        <div id="suggestions-display" class="info-display"></div>
                         <div class="card-content">
                             <details class="card" open>
                                 <summary class="card-header">Content & Goal</summary>
@@ -160,7 +157,19 @@
                         </div>
                     </div>
                 </div>
-                <div id="geo-time-context-tab" class="tab-content">
+
+                <!-- Analysis Tab -->
+                <div id="analysis-tab" class="tab-content">
+                    <div class="card">
+                        <div class="info-display" id="conversation-status-display">Status: Analyzing...</div>
+                        <div id="conversation-analysis-display" class="info-display"></div>
+                        <div id="topics-display" class="info-display"></div>
+                        <div id="suggestions-display" class="info-display"></div>
+                    </div>
+                </div>
+
+                <!-- Geo Tab -->
+                <div id="geo-tab" class="tab-content">
                     <div class="card">
                         <div class="card-content">
                             <table class="geo-table">
@@ -182,6 +191,26 @@
                                     <tr><td>Virtual Chat</td><td colspan="2" id="is-virtual">N/A</td></tr>
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Context Tab -->
+                <div id="context-tab" class="tab-content">
+                    <!-- Content will be dynamically generated -->
+                </div>
+
+                <!-- Final Tab -->
+                <div id="final-tab" class="tab-content">
+                    <div class="card">
+                        <div class="card-header">
+                            <span>Final JSON Payload</span>
+                            <button id="copy-final-json-btn" class="icon-btn" title="Copy JSON">
+                                <svg fill="currentColor" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"></path></svg>
+                            </button>
+                        </div>
+                        <div class="card-content">
+                            <pre id="final-json-display" class="raw-json-area"></pre>
                         </div>
                     </div>
                 </div>
@@ -263,7 +292,6 @@
         <footer>Wingman AI v1.0</footer>
     </div>
 
-    <div id="debug-modal-overlay" class="modal-overlay hidden"></div>
     <div id="info-tooltip" class="tooltip"></div>
 
     <script type="module" src="popup.js"></script>
