@@ -304,9 +304,10 @@ chrome.runtime.onConnect.addListener((port) => {
                     };
                 } else {
                     // External analysis
+                    let response;
                     try {
                         const requestBody = buildExternalAnalysisRequest(scrapedData, matchProfile, uiSettings);
-                        const response = await fetch(analysisUrl, {
+                        response = await fetch(analysisUrl, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(requestBody)
