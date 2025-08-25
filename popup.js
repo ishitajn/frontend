@@ -962,9 +962,8 @@ async function handleLocationChange() {
                 longitude: position.coords.longitude
             };
         } catch (error) {
-            showErrorInResponseArea(`Geolocation failed: ${error.message}`);
-            updateGeoContextDisplay(null);
-            return;
+            showErrorInResponseArea(`Auto-detect failed. Using fallback: Charlotte, NC.`);
+            messageData.userLocation = USER_LOCATIONS['charlotte'];
         }
     } else {
         messageData.userLocation = USER_LOCATIONS[choice];
