@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { getToneDescription, getLengthDescription } from '../conversationHelpers.js';
+import { getToneDescription, getLengthDescription, getTimeContext } from '../conversationHelpers.js';
 
 test('getToneDescription', (t) => {
   assert.strictEqual(getToneDescription(0), 'Be completely neutral and formal.');
@@ -28,4 +28,16 @@ test('getLengthDescription', (t) => {
     assert.strictEqual(getLengthDescription(80), 'Strictly 5–6 sentences (very long).');
     assert.strictEqual(getLengthDescription(90), 'Strictly 6–7 sentences (epic).');
     assert.strictEqual(getLengthDescription(100), 'Strictly 8+ sentences (a manifesto).');
+});
+
+test('getTimeContext', (t) => {
+    // Test for a weekday
+    const wednesday = new Date('2023-10-25T14:00:00.000Z'); // This is a Wednesday
+    const weekdayContext = getTimeContext(wednesday);
+    assert.strictEqual(weekdayContext.includes('It\'s a weekday, Wednesday - late afternoon.'), true, 'Should return correct context for a weekday');
+
+    // Test for a weekend
+    const saturday = new Date('2023-10-28T10:00:00.000Z'); // This is a Saturday
+    const weekendContext = getTimeContext(saturday);
+    assert.strictEqual(weekendContext.includes('It\'s the weekend, Saturday(morning).'), true, 'Should return correct context for a weekend');
 });
