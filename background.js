@@ -16,6 +16,8 @@ const DEFAULTS = {
     local_llama_url: 'http://localhost:8080/v1/chat/completions',
     local_model_name: 'llama3:latest',
     local_llama_api_key: '',
+    analysis_url: 'http://10.0.0.24:8000/analyze',
+    analysis_type: 'local',
 };
 
 const abortControllers = new Map();
