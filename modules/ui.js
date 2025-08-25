@@ -283,33 +283,22 @@ function getTooltipContent(tooltipId) {
 }
 
 export function updateGeoContextDisplay(geoContext, sessionMatchProfile, sessionScrapedData) {
-    if (!sessionMatchProfile || !sessionScrapedData) return;
-
-    const { myName } = sessionScrapedData;
-    const { theirName } = sessionMatchProfile.metadata;
-    const card = document.getElementById(SELECTORS.geoContextCard);
-
-    if (card) card.hidden = !geoContext;
-    if (!geoContext) return;
-
-    const { user_location, match_location, time_difference, distance, is_virtual } = geoContext;
-
     const dataMap = {
-        geoUserName: myName || 'User',
-        geoMatchName: theirName || 'Match',
-        userLocation: user_location?.city || 'Your Location',
-        matchLocation: match_location?.city || 'Their Location',
-        userTime: user_location?.time || 'N/A',
-        matchTime: match_location?.time || 'N/A',
-        userTimeOfDay: user_location?.time_of_day || 'N/A',
-        matchTimeOfDay: match_location?.time_of_day || 'N/A',
-        userTimezone: user_location?.time_zone || 'N/A',
-        matchTimezone: match_location?.time_zone || 'N/A',
-        userCountry: user_location?.country || 'N/A',
-        matchCountry: match_location?.country || 'N/A',
-        timeDifference: time_difference !== null ? `${time_difference} hour(s)` : 'N/A',
-        distanceInfo: distance !== null ? `${Math.round(distance)} miles` : 'N/A',
-        isVirtual: is_virtual ? 'Yes' : 'No'
+        geoUserName: sessionMatchProfile?.metadata?.myName ?? 'User',
+        geoMatchName: sessionMatchProfile?.metadata?.theirName ?? 'Match',
+        userLocation: geoContext?.user_location?.city ?? 'N/A',
+        matchLocation: geoContext?.match_location?.city ?? 'N/A',
+        userTime: geoContext?.user_location?.time ?? 'N/A',
+        matchTime: geoContext?.match_location?.time ?? 'N/A',
+        userTimeOfDay: geoContext?.user_location?.time_of_day ?? 'N/A',
+        matchTimeOfDay: geoContext?.match_location?.time_of_day ?? 'N/A',
+        userTimezone: geoContext?.user_location?.time_zone ?? 'N/A',
+        matchTimezone: geoContext?.match_location?.time_zone ?? 'N/A',
+        userCountry: geoContext?.user_location?.country ?? 'N/A',
+        matchCountry: geoContext?.match_location?.country ?? 'N/A',
+        timeDifference: geoContext?.time_difference !== null ? `${geoContext.time_difference} hour(s)` : 'N/A',
+        distanceInfo: geoContext?.distance !== null ? `${Math.round(geoContext.distance)} miles` : 'N/A',
+        isVirtual: geoContext?.is_virtual ? 'Yes' : 'No'
     };
 
     Object.entries(dataMap).forEach(([id, text]) => {
@@ -320,13 +309,13 @@ export function updateGeoContextDisplay(geoContext, sessionMatchProfile, session
 
 export function updateConversationAnalysisDisplay(analysis) {
     const displayEl = document.getElementById(SELECTORS.conversationAnalysisDisplay);
-    if (!displayEl || !analysis) {
-        if (displayEl) displayEl.innerHTML = '';
-        return;
-    }
+    if (!displayEl) return;
 
-    const { sentiment, flirtation_level, engagement, pace } = analysis;
     const parts = [];
+    const sentiment = analysis?.sentiment;
+    const flirtation_level = analysis?.flirtation_level;
+    const engagement = analysis?.engagement;
+    const pace = analysis?.pace;
 
     if (typeof sentiment === 'number') {
         const sentimentEmoji = sentiment > 0.5 ? '🟢' : sentiment < -0.5 ? '🔴' : '🟡';
@@ -353,12 +342,16 @@ export function updateConversationAnalysisDisplay(analysis) {
 
 export function updateTopicsDisplay(analysis) {
     const displayEl = document.getElementById(SELECTORS.topicsDisplay);
-    if (!displayEl || !analysis || !analysis.topics) {
-        if (displayEl) displayEl.innerHTML = '';
+    if (!displayEl) return;
+
+    const topics = analysis?.topics;
+    const recent_topics = analysis?.recent_topics;
+
+    if (!topics) {
+        displayEl.innerHTML = '';
         return;
     }
 
-    const { topics, recent_topics } = analysis;
     const topicCategories = ['focus', 'avoid', 'neutral', 'sensitive', 'romantic', 'fetish', 'sexual'];
 
     let html = '<strong>Topics:</strong> ';
@@ -386,8 +379,10 @@ export function updateTopicsDisplay(analysis) {
 
 export function updateSuggestionsDisplay(analysis) {
     const displayEl = document.getElementById(SELECTORS.suggestionsDisplay);
-    if (!displayEl || !analysis) {
-        if (displayEl) displayEl.innerHTML = '';
+    if (!displayEl) return;
+
+    if (!analysis) {
+        displayEl.innerHTML = '';
         return;
     }
 

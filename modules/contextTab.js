@@ -37,14 +37,14 @@ export function renderContextTab(analysis) {
     }
 
     let html = '<div class="card"><div class="card-content">';
-    html += createCollapsibleJSON('Geo Context', analysis.geo_context);
-    html += createCollapsibleJSON('Topics', analysis.topics);
+    html += createCollapsibleJSON('Geo Context', analysis?.geo_context);
+    html += createCollapsibleJSON('Topics', analysis?.topics);
     const suggestions = {
-        suggest_flirtation: analysis.suggest_flirtation,
-        suggest_topic_shift: analysis.suggest_topic_shift,
-        suggest_follow_up_question: analysis.suggest_follow_up_question,
-        suggest_greeting: analysis.suggest_greeting,
-        topic_shift_recommended: analysis.topic_shift_recommended,
+        suggest_flirtation: analysis?.suggest_flirtation ?? false,
+        suggest_topic_shift: analysis?.suggest_topic_shift ?? false,
+        suggest_follow_up_question: analysis?.suggest_follow_up_question ?? false,
+        suggest_greeting: analysis?.suggest_greeting ?? false,
+        topic_shift_recommended: analysis?.topic_shift_recommended ?? false,
     };
     html += createCollapsibleJSON('Suggestions', suggestions);
     html += createCollapsibleJSON('Full Analysis Object', analysis);

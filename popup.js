@@ -511,11 +511,18 @@ async function autoType(text) {
 }
 
 function displayConversationState() {
-    if (!state.sessionMatchProfile?.analysis)
+    const analysis = state.sessionMatchProfile?.analysis;
+    const statusEl = document.getElementById(SELECTORS.conversationStatusDisplay);
+    const dateIdeaBtn = document.getElementById(SELECTORS.dateIdeaBtn);
+
+    if (!analysis) {
+        if (statusEl) statusEl.textContent = 'Status: Unknown';
+        if (dateIdeaBtn) dateIdeaBtn.classList.add('hidden');
         return;
-    const analysis = state.sessionMatchProfile.analysis;
-    const convoState = analysis.conversation_dynamics?.stage;
-    const dateArcPhase = analysis.recommended_actions?.dateArcPhase;
+    }
+
+    const convoState = analysis.conversation_state;
+    const dateArcPhase = analysis.date_arc_phase;
 
     const stateDisplayMap = {
         'opener': 'Status: New Conversation (Opener)',
@@ -526,14 +533,15 @@ function displayConversationState() {
         'break_over_week': 'Status: Re-engaging (1-4 week pause)',
         'break_over_month': 'Status: Re-engaging (1+ month pause)'
     };
-    const statusEl = document.getElementById(SELECTORS.conversationStatusDisplay);
-    if (statusEl && convoState && typeof convoState === 'string') {
-        statusEl.textContent = stateDisplayMap[convoState.toLowerCase()] || `Status: ${convoState}`;
-    } else if (statusEl) {
-        statusEl.textContent = 'Status: Unknown';
+
+    if (statusEl) {
+        if (convoState && typeof convoState === 'string') {
+            statusEl.textContent = stateDisplayMap[convoState.toLowerCase()] || `Status: ${convoState}`;
+        } else {
+            statusEl.textContent = 'Status: Unknown';
+        }
     }
 
-    const dateIdeaBtn = document.getElementById(SELECTORS.dateIdeaBtn);
     if (dateIdeaBtn) {
         const showButton = dateArcPhase === 'escalation' || dateArcPhase === 'planning_meetup';
         dateIdeaBtn.classList.toggle('hidden', !showButton);

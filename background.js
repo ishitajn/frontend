@@ -68,11 +68,24 @@ chrome.runtime.onConnect.addListener((port) => {
                     const state = determineConversationState(scrapedData.conversationHistory);
                     const suppressGreeting = hasRecentGreeting(scrapedData.conversationHistory) && !state.startsWith('REENGAGING');
 
+                    // Restructure the analysis object to match the comprehensive payload format
                     const fullAnalysis = {
-                        conversationState: state,
-                        suppressGreeting: suppressGreeting,
-                        lastMessageAnalysis: lastMessageAnalysis,
-                        memory: matchProfile.memory,
+                        conversation_state: state,
+                        suppress_greeting: suppressGreeting,
+                        last_message_analysis: lastMessageAnalysis,
+                        geo_context: matchProfile.memory.geoContextData,
+                        topics: updatedMemory.topics,
+                        recent_topics: Object.keys(updatedMemory.topics || {}).sort((a, b) => updatedMemory.topics[b].lastMentionIndex - updatedMemory.topics[a].lastMentionIndex).slice(0, 5),
+                        sentiment: lastMessageAnalysis.valence,
+                        flirtation_level: lastMessageAnalysis.intents.includes('flirting_or_sexual') ? 0.8 : 0.2,
+                        engagement: (matchProfile.conversationHistory?.length || 0) / 10,
+                        pace: (matchProfile.conversationHistory?.length || 0) > 1 ? (new Date(matchProfile.conversationHistory[matchProfile.conversationHistory.length - 1].date) - new Date(matchProfile.conversationHistory[0].date)) / (1000 * 60 * 60 * (matchProfile.conversationHistory.length -1)) : 0,
+                        topic_shift_recommended: lastMessageAnalysis.isLowEffort,
+                        suggest_flirtation: updatedMemory.dateArcPhase === 'escalation',
+                        suggest_topic_shift: lastMessageAnalysis.isLowEffort,
+                        suggest_follow_up_question: !lastMessageAnalysis.isDirectQuestion,
+                        suggest_greeting: state.startsWith('REENGAGING'),
+                        // system_prompt and user_prompt can be added here if generated locally
                     };
 
                     matchProfile.analysis = fullAnalysis;
