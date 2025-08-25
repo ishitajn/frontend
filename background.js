@@ -323,6 +323,9 @@ chrome.runtime.onConnect.addListener((port) => {
                         throw e; // Re-throw other errors
                     }
                     const externalAnalysis = await response.json();
+                    if (externalAnalysis.memory) {
+                        matchProfile.memory = externalAnalysis.memory;
+                    }
                     matchProfile.analysis = transformExternalAnalysis(externalAnalysis);
                 }
 
