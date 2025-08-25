@@ -254,7 +254,7 @@ chrome.runtime.onConnect.addListener((port) => {
         "getNlpAnalysis": async(request) => {
             try {
                 DEBUG.log('NLP', 'Received getNlpAnalysis request', request.data);
-                const { scrapedData } = request.data;
+                const { scrapedData, uiSettings } = request.data;
                 if (!scrapedData)
                     throw new Error("getNlpAnalysis received no scrapedData.");
 
@@ -305,10 +305,11 @@ chrome.runtime.onConnect.addListener((port) => {
                 } else {
                     // External analysis
                     try {
+                        const requestBody = buildExternalAnalysisRequest(scrapedData, matchProfile, uiSettings);
                         const response = await fetch(analysisUrl, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(scrapedData)
+                            body: JSON.stringify(requestBody)
                         });
 
                         if (!response.ok) {
@@ -616,6 +617,25 @@ function cleanAIResponse(rawResponse) {
         }
     }
     return (earliestStopIndex !== -1 ? rawResponse.substring(0, earliestStopIndex) : rawResponse).trim();
+}
+
+function buildExternalAnalysisRequest(scrapedData, matchProfile, uiSettings) {
+    return {
+        matchId: matchProfile.uuid,
+        scraped_data: {
+            myName: scrapedData.myName,
+            theirName: scrapedData.theirName,
+            theirProfile: scrapedData.theirProfile,
+            theirLocationString: scrapedData.matchLocation,
+            conversationHistory: scrapedData.conversationHistory,
+        },
+        ui_settings: {
+            useEnhancedNlp: uiSettings.analysis_type === 'enhanced',
+            myLocation: uiSettings.userLocationChoice, // This will be the key, e.g., 'autodetect' or 'charlotte'
+            myProfile: uiSettings.myProfile,
+            local_model_name: uiSettings.local_model_name,
+        }
+    };
 }
 
 function transformExternalAnalysis(externalData) {

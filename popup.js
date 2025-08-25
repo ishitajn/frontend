@@ -803,10 +803,17 @@ if (!pageData || pageData.error) {
 }
 
 state.sessionScrapedData = pageData;
+const settings = await chrome.storage.local.get(['myProfile', 'userLocationChoice', 'local_model_name', 'analysis_type']);
 sendMessage({
     action: "getNlpAnalysis",
     data: {
-        scrapedData: pageData
+        scrapedData: pageData,
+        uiSettings: {
+            myProfile: settings.myProfile || DEFAULTS.myProfile,
+            userLocationChoice: settings.userLocationChoice || DEFAULTS.userLocationChoice,
+            local_model_name: settings.local_model_name || DEFAULTS.local_model_name,
+            analysis_type: settings.analysis_type || DEFAULTS.analysis_type,
+        }
     }
 });
 
