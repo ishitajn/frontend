@@ -301,7 +301,7 @@ chrome.runtime.onConnect.addListener((port) => {
                     let response;
                     try {
                         const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15-second timeout
+                        const timeoutId = setTimeout(() => controller.abort(), settings.analysisApiTimeout);
 
                         const requestBody = buildExternalAnalysisRequest(scrapedData, matchProfile, uiSettings);
                         response = await fetch(analysisUrl, {
@@ -333,11 +333,15 @@ chrome.runtime.onConnect.addListener((port) => {
                         }
 
                     } catch (e) {
-                        if (e.name === 'AbortError') {
-                            DEBUG.error('NLP', 'External analysis timed out. Falling back to local analysis.');
-                        } else {
-                            // For other errors, log them but still fall back.
-                            DEBUG.error('NLP', 'External analysis failed. Falling back to local analysis.', e);
+                        const fallbackError = e.name === 'AbortError' ? 'External analysis timed out.' : 'External analysis failed.';
+                        DEBUG.error('NLP', `${fallbackError} Falling back to local analysis.`, e);
+                        try {
+                            port.postMessage({
+                                action: 'analysisFallback',
+                                error: fallbackError
+                            });
+                        } catch (portError) {
+                            DEBUG.error('PORT', 'Failed to send fallback notification.', portError);
                         }
                     }
                 }
@@ -438,16 +442,16 @@ chrome.runtime.onConnect.addListener((port) => {
                 km: Math.round(distanceKm),
                 miles: Math.round(distanceKm * 0.621371)
             };
-            const userS = spacetime.now(userGeoData.timeZone);
+            const userSpacetime = spacetime.now(userGeoData.timeZone);
             const matchTimeData = await fetchTimezoneFromCoords(matchCoords.lat, matchCoords.lon);
             const matchTimeZoneName = matchTimeData?.timeZone || matchCoords.timeZone || (matchCoords.country_code ? spacetime(matchCoords.country_code)?.timezone()?.name : null);
-            const matchS = matchTimeZoneName ? spacetime.now(matchTimeZoneName) : null;
+            const matchSpacetime = matchTimeZoneName ? spacetime.now(matchTimeZoneName) : null;
             const getTimeOfDay = s => (h => h < 5 ? 'Late Night' : h < 8 ? 'Early Morning' : h < 12 ? 'Morning' : h < 14 ? 'Afternoon' : h < 17 ? 'Late Afternoon' : h < 19 ? 'Evening' : h < 22 ? 'Late Evening' : 'Night')(s.hour());
             const newGeoContext = {
                 distance,
-                userTimeOfDay: getTimeOfDay(userS),
-                matchTimeOfDay: matchS ? getTimeOfDay(matchS) : 'N/A',
-                timeZoneDifference: matchS ? Math.abs((userS.offset() - matchS.offset()) / 60) : null,
+                userTimeOfDay: getTimeOfDay(userSpacetime),
+                matchTimeOfDay: matchSpacetime ? getTimeOfDay(matchSpacetime) : 'N/A',
+                timeZoneDifference: matchSpacetime ? Math.abs((userSpacetime.offset() - matchSpacetime.offset()) / 60) : null,
                 countryDifference: (userGeoData.country && matchCoords.country && userGeoData.country !== matchCoords.country) ? `User: ${userGeoData.country}, Match: ${matchCoords.country}.` : null,
                 userCountry: userGeoData.country,
                 matchCountry: matchCoords.country || 'Unknown',

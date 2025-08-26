@@ -187,6 +187,34 @@ footer { padding: 8px 12px; font-size: 10px; color: var(--text-muted); text-alig
 .message-card-content textarea { border: none; border-top: 1px solid var(--border-color); border-radius: 0 0 6px 6px; min-height: 50px; }
 .add-message-btn { margin-top: 8px; width: auto; align-self: flex-start; }
 
+/* --- Toast Notification --- */
+.toast {
+    position: fixed;
+    bottom: -100px; /* Start off-screen */
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: var(--accent-primary);
+    color: var(--bg-primary);
+    padding: 10px 20px;
+    border-radius: var(--border-radius);
+    z-index: 2000;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.5s ease-in-out;
+    font-size: 13px;
+    font-weight: 600;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+}
+.toast.visible {
+    bottom: 20px;
+    opacity: 1;
+    visibility: visible;
+}
+.toast.error {
+    background-color: var(--danger-color);
+    color: var(--text-primary);
+}
+
 /* NEW: Refinement Buttons Styling */
 .refinement-actions {
   display: flex;

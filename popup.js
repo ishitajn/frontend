@@ -599,6 +599,9 @@ function setupPort() {
         case 'generationStateResponse':
             syncUIWithState(message.state);
             break;
+        case 'analysisFallback':
+            showToast(`Analysis failed: ${message.error} Using local results.`);
+            break;
         }
     });
 
@@ -1381,6 +1384,20 @@ function showErrorInResponseArea(message) {
             }));
         responseArea.classList.add('error');
     }
+}
+
+let toastTimer = null;
+function showToast(message, duration = 3000) {
+    const toast = document.getElementById('toast-notification');
+    if (!toast) return;
+
+    toast.textContent = message;
+    toast.classList.add('visible');
+
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+        toast.classList.remove('visible');
+    }, duration);
 }
 
 function displayConversationState() {

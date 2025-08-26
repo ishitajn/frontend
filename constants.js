@@ -37,6 +37,7 @@ export const PACE_OPTIONS = ['slow', 'steady', 'fast'];
 // ===================================================================================
 
 export const DEFAULTS = {
+    analysisApiTimeout: 15000,
     flirtyValue: 60,
     lengthValue: 30,
     linguisticStyle: 'auto',
