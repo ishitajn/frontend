@@ -307,12 +307,18 @@ chrome.runtime.onConnect.addListener((port) => {
                 if (analysisType !== 'local') {
                     let response;
                     try {
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15-second timeout
+
                         const requestBody = buildExternalAnalysisRequest(scrapedData, matchProfile, uiSettings);
                         response = await fetch(analysisUrl, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(requestBody)
+                            body: JSON.stringify(requestBody),
+                            signal: controller.signal
                         });
+
+                        clearTimeout(timeoutId); // Clear the timeout if the fetch completes
 
                         if (!response.ok) {
                             throw new Error(`External analysis service failed with status: ${response.status}`);
@@ -331,8 +337,12 @@ chrome.runtime.onConnect.addListener((port) => {
                         }
 
                     } catch (e) {
-                        // If external analysis fails, we can fall back to just using the local analysis.
-                        DEBUG.error('NLP', 'External analysis failed. Falling back to local analysis.', e);
+                        if (e.name === 'AbortError') {
+                            DEBUG.error('NLP', 'External analysis timed out. Falling back to local analysis.');
+                        } else {
+                            // For other errors, log them but still fall back.
+                            DEBUG.error('NLP', 'External analysis failed. Falling back to local analysis.', e);
+                        }
                     }
                 }
 
