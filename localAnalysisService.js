@@ -392,7 +392,7 @@ export function detectLogisticsSignal(doc) {
     return false;
 }
 
-function isMessageGeoRelated(text) {
+export function isMessageGeoRelated(text) {
     if (!text)
         return false;
     const doc = nlp(text.toLowerCase());
