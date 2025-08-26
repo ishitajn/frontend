@@ -289,21 +289,22 @@ chrome.runtime.onConnect.addListener((port) => {
                 matchProfile.metadata.theirProfile = scrapedData.theirProfile;
                 matchProfile.metadata.matchLocation = scrapedData.matchLocation;
 
-                if (analysisType === 'local') {
-                    const { updatedMemory, lastMessageAnalysis } = runFullConversationAnalysis(matchProfile.conversationHistory, matchProfile.memory);
-                    matchProfile.memory = updatedMemory;
+                // --- Step 1: Always run local analysis to get a baseline ---
+                const { updatedMemory, lastMessageAnalysis } = runFullConversationAnalysis(matchProfile.conversationHistory, matchProfile.memory);
+                matchProfile.memory = updatedMemory;
 
-                    const state = determineConversationState(scrapedData.conversationHistory);
-                    const suppressGreeting = hasRecentGreeting(scrapedData.conversationHistory) && !state.startsWith('REENGAGING');
+                const localState = determineConversationState(scrapedData.conversationHistory);
+                const localSuppressGreeting = hasRecentGreeting(scrapedData.conversationHistory) && !localState.startsWith('REENGAGING');
 
-                    matchProfile.analysis = {
-                        conversationState: state,
-                        suppressGreeting: suppressGreeting,
-                        lastMessageAnalysis: lastMessageAnalysis,
-                        memory: matchProfile.memory,
-                    };
-                } else {
-                    // External analysis
+                let finalAnalysis = {
+                    conversationState: localState,
+                    suppressGreeting: localSuppressGreeting,
+                    lastMessageAnalysis: lastMessageAnalysis,
+                    memory: updatedMemory,
+                };
+
+                // --- Step 2: If external analysis is enabled, fetch, transform, and merge ---
+                if (analysisType !== 'local') {
                     let response;
                     try {
                         const requestBody = buildExternalAnalysisRequest(scrapedData, matchProfile, uiSettings);
@@ -316,18 +317,25 @@ chrome.runtime.onConnect.addListener((port) => {
                         if (!response.ok) {
                             throw new Error(`External analysis service failed with status: ${response.status}`);
                         }
-                    } catch (e) {
-                        if (e.message.includes('Failed to fetch')) {
-                            throw new Error('Failed to fetch. This may be a CORS issue or the server may be unreachable. Please check the server configuration and network access.');
+
+                        const externalAnalysisRaw = await response.json();
+                        const externalAnalysisTransformed = transformExternalAnalysis(externalAnalysisRaw);
+
+                        finalAnalysis = mergeAnalyses(finalAnalysis, externalAnalysisTransformed);
+
+                        // Also update the top-level memory object from the backend
+                        if (externalAnalysisRaw.memory) {
+                            matchProfile.memory = externalAnalysisRaw.memory;
+                            finalAnalysis.memory = externalAnalysisRaw.memory; // Ensure merged analysis has latest memory
                         }
-                        throw e; // Re-throw other errors
+
+                    } catch (e) {
+                        // If external analysis fails, we can fall back to just using the local analysis.
+                        DEBUG.error('NLP', 'External analysis failed. Falling back to local analysis.', e);
                     }
-                    const externalAnalysis = await response.json();
-                    if (externalAnalysis.memory) {
-                        matchProfile.memory = externalAnalysis.memory;
-                    }
-                    matchProfile.analysis = transformExternalAnalysis(externalAnalysis);
                 }
+
+                matchProfile.analysis = finalAnalysis;
 
                 matchProfile.memory.lastCacheHash = newCacheHash;
                 matchProfile.metadata.lastUpdated = new Date().toISOString();
@@ -621,6 +629,21 @@ function cleanAIResponse(rawResponse) {
         }
     }
     return (earliestStopIndex !== -1 ? rawResponse.substring(0, earliestStopIndex) : rawResponse).trim();
+}
+
+function mergeAnalyses(local, external) {
+    const mergedLastMessage = {
+        ...local.lastMessageAnalysis,
+        ...external.lastMessageAnalysis,
+    };
+
+    const merged = {
+        ...local,
+        ...external,
+        lastMessageAnalysis: mergedLastMessage,
+    };
+
+    return merged;
 }
 
 function buildExternalAnalysisRequest(scrapedData, matchProfile, uiSettings) {
