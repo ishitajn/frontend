@@ -1,7 +1,7 @@
 // background.js (Re-architected for Manifest V3 Robustness with Heartbeat)
 import { generatePrompts } from './prompts.js';
-import { generatePrompts } from './prompts.js';
-import { runFullConversationAnalysis, determineConversationState, hasRecentGreeting } from './conversationHelpers.js';
+import { runFullConversationAnalysis, determineConversationState, hasRecentGreeting } from './localAnalysisService.js';
+import { getTimeContext } from './uiFormatters.js';
 import spacetime from './lib/spacetime.min.js';
 import informal from './lib/spacetime-informal.min.js';
 import { DEFAULTS } from './constants.js';

@@ -1,6 +1,7 @@
 // popup.js (Re-architected for Manifest V3 Robustness with Heartbeat)
 import { scrapeBumblePage, pasteTextIntoBumbleInput, scrapeTinderPage, pasteTextIntoTinderInput } from './content-scraper.js';
-import { getToneDescription, getLengthDescription, getEmojiInstruction, getStyleDescription, determineConversationState } from './conversationHelpers.js';
+import { getToneDescription, getLengthDescription, getEmojiInstruction, getStyleDescription } from './uiFormatters.js';
+import { determineConversationState } from './localAnalysisService.js';
 import { generatePrompts } from './prompts.js';
 import {
     LINGUISTIC_STYLES, EMOJI_STRATEGIES, USER_LOCATIONS,
