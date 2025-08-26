@@ -76,7 +76,7 @@ function handleTabClick(event) {
     document.getElementById(tabName).classList.add('active');
 
     // Render content if it's a debug tab
-    if (['analysis', 'memory', 'context', 'final-payload'].includes(tabName)) {
+    if (['analysis', 'topic-analysis', 'conv-analysis'].includes(tabName)) {
         renderDebugView(tabName);
     }
 }
