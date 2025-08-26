@@ -1,9 +1,9 @@
 import nlp from './lib/compromise.js';
+import { LINGUISTIC_STYLES } from './analysisConstants.js';
+
 const DEBUG = {
     log: (category, message, data = null) => console.log(`[WINGMAN-HELPER-${category.toUpperCase()}] ${message}`, data ?? ''),
 };
-export const LINGUISTIC_STYLES = ['auto', 'casual', 'charming', 'direct', 'intellectual', 'mysterious', 'playful', 'poetic', 'sarcastic', 'sexual', 'witty'].sort((a, b) => a === 'auto' ? -1 : b === 'auto' ? 1 : a.localeCompare(b));
-export const DATE_ARC_PHASES = ['rapport', 'escalation', 'planning'];
 
 // ===================================================================================
 // SECTION 1: CORE STATE & SUBTEXT ANALYSIS

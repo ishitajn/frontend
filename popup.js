@@ -1,7 +1,8 @@
 // popup.js (Re-architected for Manifest V3 Robustness with Heartbeat)
 import { scrapeBumblePage, pasteTextIntoBumbleInput, scrapeTinderPage, pasteTextIntoTinderInput } from './content-scraper.js';
-import { getToneDescription, getLengthDescription, getEmojiInstruction, getStyleDescription, determineConversationState, LINGUISTIC_STYLES } from './conversationHelpers.js';
+import { getToneDescription, getLengthDescription, getEmojiInstruction, getStyleDescription, determineConversationState } from './conversationHelpers.js';
 import { generatePrompts } from './prompts.js';
+import { LINGUISTIC_STYLES, EMOJI_STRATEGIES, USER_LOCATIONS, DATE_ARC_PHASES, CONVERSATION_STATES, INTENT_OPTIONS, FLIRT_LEVEL_OPTIONS, PACE_OPTIONS } from './analysisConstants.js';
 
 const DEBUG = {
     log: (category, message, data = null) => console.log(`[WINGMAN-POPUP-${category.toUpperCase()}] ${message}`, data ?? ''),
@@ -36,54 +37,6 @@ const MATCH_SPECIFIC_SETTINGS_KEYS = [
     'endWithQuestion', 'strictGoalOverride', 'geoContextToggle', 'newTopic',
     'customInstruction', 'lastResponse'
 ];
-
-const EMOJI_STRATEGIES = {
-    'auto': 'Auto (Recommended)',
-    'friendly': 'Friendly',
-    'playful': 'Playful',
-    'bold': 'Bold',
-    'no_emoji': 'No Emoji'
-};
-const USER_LOCATIONS = {
-    'autodetect': {
-        name: 'Auto-Detect Location'
-    },
-    'charlotte': {
-        name: 'Charlotte, NC, USA',
-        lat: 35.2271,
-        lon: -80.8431,
-        timeZone: 'America/New_York',
-        country: 'United States'
-    },
-    'nyc': {
-        name: 'New York, NY, USA',
-        lat: 40.7128,
-        lon: -74.0060,
-        timeZone: 'America/New_York',
-        country: 'United States'
-    },
-    'la': {
-        name: 'Los Angeles, CA, USA',
-        lat: 34.0522,
-        lon: -118.2437,
-        timeZone: 'America/Los_Angeles',
-        country: 'United States'
-    },
-    'london': {
-        name: 'London, UK',
-        lat: 51.5072,
-        lon: -0.1276,
-        timeZone: 'Europe/London',
-        country: 'United Kingdom'
-    },
-    'sydney': {
-        name: 'Sydney, Australia',
-        lat: -33.8688,
-        lon: 151.2093,
-        timeZone: 'Australia/Sydney',
-        country: 'Australia'
-    },
-};
 
 const SELECTORS = {
     loadingView: 'loading-view',
@@ -258,9 +211,6 @@ async function handleTestApiClick(urlInputId) {
 
 // --- Debug View Rendering (from debug-modal.js) ---
 // Stubs and constants needed for the moved code
-const DATE_ARC_PHASES = ['opener', 'early_convo', 'active_convo', 'reengaging_day', 'reengaging_week', 'reengaging_month', 'escalation', 'planning', 'post_date', 'fading'];
-const CONVERSATION_STATES = ['OPENER', 'EARLY_CONVO', 'ACTIVE_CONVO', 'REENGAGING_DAY', 'REENGAGING_WEEK', 'REENGAGING_MONTH'];
-const INTENT_OPTIONS = ['questioning', 'planning', 'reacting_to_humor', 'storytelling', 'flirting_or_sexual'];
 let modalState = {}; // Using this name to minimize code changes from debug-modal
 
 function setNestedValue(obj, path, value) {
@@ -497,10 +447,6 @@ function renderAnalysisView() {
     const valenceLabels = { '-1': 'Very Negative', '-0.5': 'Negative', '-0.1': 'Neutral', '0.5': 'Positive', '1': 'Very Positive' };
     const arousalLabels = { '-1': 'Bored/Calm', '-0.5': 'Low Energy', '-0.1': 'Neutral', '0.5': 'Excited', '1': 'Agitated' };
 
-    // Options for new dropdowns, inferred from schema
-    const flirtLvlOptions = ['none', 'low', 'medium', 'high', 'very high'];
-    const paceOptions = ['slow', 'steady', 'fast'];
-
     return `
         <h3>Conversation Analysis</h3>
         <table class="payload-table">
@@ -518,8 +464,8 @@ function renderAnalysisView() {
             <tr><td colspan="2" style="text-align:center; background:#333;"><strong>Overall Analysis (Backend)</strong></td></tr>
             <tr><td>Valence (Sentiment)</td><td>${createSlider('backend-valence', 'analysis.lastMessageAnalysis.valence', lastMessageAnalysis.valence, -1, 1, 0.1, valenceLabels)}</td></tr>
             <tr><td>Arousal (Engagement)</td><td>${createSlider('backend-arousal', 'analysis.lastMessageAnalysis.arousal', lastMessageAnalysis.arousal, -1, 1, 0.1, arousalLabels)}</td></tr>
-            <tr><td>Flirtation Level</td><td>${createSelect('backend-flirt-lvl', 'analysis.flirtation_level', flirtLvlOptions, analysis.flirtation_level)}</td></tr>
-            <tr><td>Pace</td><td>${createSelect('backend-pace', 'analysis.pace', paceOptions, analysis.pace)}</td></tr>
+            <tr><td>Flirtation Level</td><td>${createSelect('backend-flirt-lvl', 'analysis.flirtation_level', FLIRT_LEVEL_OPTIONS, analysis.flirtation_level)}</td></tr>
+            <tr><td>Pace</td><td>${createSelect('backend-pace', 'analysis.pace', PACE_OPTIONS, analysis.pace)}</td></tr>
 
             <tr><td colspan="2" style="text-align:center; background:#333;"><strong>Power Dynamics (Backend)</strong></td></tr>
             <tr><td>Summary</td><td>${createInput('power-summary', 'analysis.power_dynamics.summary', analysis.power_dynamics?.summary || '')}</td></tr>
