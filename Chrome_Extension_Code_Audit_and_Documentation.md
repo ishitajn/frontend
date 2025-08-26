@@ -167,7 +167,560 @@ This section provides a summary of each file in the project, its purpose, and it
 
 ## Section 3: Line-by-Line Explanations
 
-*This section will provide granular explanations for lines of code within each file.*
+This section provides a granular, line-by-line code analysis for each file in the project.
+
+### 3.1 `manifest.json`
+
+```json
+{
+  "manifest_version": 3,
+```
+*   **L2 `manifest_version`**: Declares the use of Manifest V3, the current standard for Chrome extensions, which enforces a more secure architecture and requires a service worker for background tasks.
+
+```json
+  "name": "AI Assistant",
+  "version": "10.4",
+  "description": "On-demand AI assistant",
+```
+*   **L3-5 `name`, `version`, `description`**: Standard metadata fields that identify the extension in the browser's UI and the Chrome Web Store.
+
+```json
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "geolocation"
+  ],
+```
+*   **L6 `permissions`**: An array listing the Chrome APIs the extension needs to access.
+*   **L7 `storage`**: Grants access to the `chrome.storage` API, used for persisting user settings and match data.
+*   **L8 `activeTab`**: A privacy-preserving permission that grants temporary access to the currently active tab when the user invokes the extension. It's used in conjunction with `scripting`.
+*   **L9 `scripting`**: Grants access to the `chrome.scripting` API, which is necessary to programmatically inject the content scraper (`content-scraper.js`) into web pages.
+*   **L10 `geolocation`**: Grants access to the `navigator.geolocation` API to determine the user's physical location for the geo-temporal context feature.
+
+```json
+  "host_permissions": [
+    "*://*.bumble.com/*",
+    "*://*.tinder.com/*",
+    "https://nominatim.openstreetmap.org/*",
+    "https://timeapi.io/*",
+    "http://localhost:*/*",
+    "http://10.0.0.24:8000/*"
+  ],
+```
+*   **L12 `host_permissions`**: An array of URL patterns that the extension is allowed to make cross-origin requests to. This is also used to grant injection permissions for the `scripting` API.
+*   **L13-14**: Allows script injection and API requests to the target dating sites.
+*   **L15-16**: Allows API requests to the external services for geocoding and timezone lookup.
+*   **L17-18**: Allows API requests to local servers for development and testing of the LLM and analysis backends.
+
+```json
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+```
+*   **L20 `background`**: Defines the background script configuration.
+*   **L21 `service_worker`**: Specifies `background.js` as the extension's service worker.
+*   **L22 `type`**: Defines the script as an `ES Module`, enabling the use of `import`/`export` syntax.
+
+```json
+  "action": {
+    "default_popup": "popup.html"
+  },
+```
+*   **L24 `action`**: Configures the extension's icon in the browser toolbar.
+*   **L25 `default_popup`**: Specifies that `popup.html` should be opened when the user clicks the toolbar icon.
+
+```json
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "lib/compromise.js",
+        "lib/spacetime.min.js",
+        "lib/spacetime-informal.min.js"
+      ],
+      "matches": [
+        "*://*.bumble.com/*",
+        "*://*.tinder.com/*"
+      ]
+    }
+  ],
+```
+*   **L28 `web_accessible_resources`**: Defines files within the extension package that can be accessed by web pages.
+*   **L30 `resources`**: Lists the specific third-party libraries that need to be accessible.
+*   **L35 `matches`**: Restricts which websites can access these resources, correctly scoped to the target dating sites where the content scripts will run.
+
+```json
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+B",
+        "mac": "Command+Shift+B"
+      },
+      "description": "Open Wingman"
+    }
+  },
+```
+*   **L43 `commands`**: Defines keyboard shortcuts.
+*   **L44 `_execute_action`**: A special command that simulates a click on the extension's toolbar icon, opening the popup.
+
+```json
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
+```
+*   **L52 `icons`**: Specifies the different sizes for the extension's icon to be used in various parts of the Chrome UI.
+
+### 3.2 `popup.js`
+
+This analysis is broken down into logical sections of the file.
+
+**Part 1: Imports and Global State**
+
+```javascript
+// popup.js (Re-architected for Manifest V3 Robustness with Heartbeat)
+import { scrapeBumblePage, pasteTextIntoBumbleInput, scrapeTinderPage, pasteTextIntoTinderInput } from './content-scraper.js';
+import { getToneDescription, getLengthDescription, getEmojiInstruction, getStyleDescription } from './uiFormatters.js';
+import { determineConversationState } from './localAnalysisService.js';
+import { generatePrompts } from './prompts.js';
+import {
+    LINGUISTIC_STYLES, EMOJI_STRATEGIES, USER_LOCATIONS,
+    DATE_ARC_PHASES, CONVERSATION_STATES, INTENT_OPTIONS,
+    FLIRT_LEVEL_OPTIONS, PACE_OPTIONS, DEFAULTS,
+    MATCH_SPECIFIC_SETTINGS_KEYS, SELECTORS,
+    ANALYSIS_VIEW_SCHEMA, TOPIC_ANALYSIS_VIEW_SCHEMA, CONV_ANALYSIS_VIEW_SCHEMA
+} from './constants.js';
+```
+*   **L2-14 `import`**: Imports all necessary functions, constants, and schemas from other modules. This large, centralized import demonstrates a heavy reliance on shared code, which is good for consistency.
+    *   **Scrapers:** Imports the scraper and paster functions from `content-scraper.js`.
+    *   **Formatters & Services:** Imports functions from `uiFormatters.js` and `localAnalysisService.js`. Note: `determineConversationState` is imported but appears to be unused in this file, which is a minor code smell.
+    *   **Constants:** Imports a large number of constants from `constants.js`, including UI selectors, default values, and the data schemas for the analysis tabs.
+
+```javascript
+const state = {
+    currentMatchUUID: null,
+    currentViewId: SELECTORS.loadingView,
+    pasterFn: null,
+    isRefreshing: false,
+    sessionMatchProfile: null,
+    sessionScrapedData: null,
+};
+```
+*   **L21-29 `state`**: A global (module-level) object that holds the session's state.
+    *   **Lifecycle:** This object is not persisted. It is reset every time the popup is opened. It holds data relevant only to the current "session" of the popup being open, such as the ID of the currently viewed match (`currentMatchUUID`) and the most recently scraped data (`sessionScrapedData`, `sessionMatchProfile`).
+
+```javascript
+let port;
+let tooltipTimeout, timerInterval = null, timerStartTime = 0;
+let heartbeatInterval = null;
+```
+*   **L31-33**: Declaration of several module-level `let` variables, which are used to manage timers and the communication port.
+    *   `port`: Holds the `chrome.runtime.Port` object for communicating with the background script.
+    *   `...Timeout`, `...Interval`: Used to hold IDs returned from `setTimeout` and `setInterval` so they can be cleared later.
+
+**Part 2: Core UI Logic (Tabs, Modals, Rendering)**
+
+```javascript
+function handleTabClick(event) {
+    // ...
+    if (['analysis', 'topic-analysis', 'conv-analysis'].includes(tabName)) {
+        renderDebugView(tabName);
+    }
+}
+```
+*   **L64-79 `handleTabClick`**: The event listener for the main tab interface.
+*   **L68 `tabName = target.dataset.tab`**: Retrieves the name of the tab to activate from the `data-tab` attribute on the clicked button element.
+*   **L71-72**: Removes the `.active` class from all tab links and content divs to reset the UI state.
+*   **L75-76**: Adds the `.active` class to the specific tab that was clicked and its corresponding content `div` (which has an `id` matching the `tabName`).
+*   **L78-80**: This conditional logic is the bridge to the data-driven rendering. If the clicked tab is one of the analysis tabs, it calls `renderDebugView` to populate it with content.
+
+```javascript
+function renderDebugView(viewName) {
+    // ...
+    const schema = schemaMap[viewName];
+    if (schema) {
+        html = renderViewFromSchema(schema, modalState);
+    }
+    // ...
+}
+```
+*   **L121-137 `renderDebugView`**: Renders content for the three analysis tabs.
+*   **L125 `schemaMap`**: A map that associates the tab's `viewName` (e.g., "topic-analysis") with the corresponding schema variable imported from `constants.js` (e.g., `TOPIC_ANALYSIS_VIEW_SCHEMA`).
+*   **L131 `html = renderViewFromSchema(schema, modalState)`**: This is the key call. It passes the appropriate schema and the global `modalState` object (which contains all the analysis data) to the rendering engine.
+
+```javascript
+function renderViewFromSchema(schema, state) {
+    // ...
+    const getValue = (path) => path.split('.').reduce((o, k) => o?.[k], state);
+    const value = getValue(item.path);
+    // ...
+}
+```
+*   **L202-237 `renderViewFromSchema`**: The core data-driven UI rendering function.
+*   **L209 `getValue`**: A helper function to safely access nested properties in the `state` object (`modalState`) using a string path like `"conversationAnalysis.memory.dateArcPhase"`. The optional chaining (`?.`) prevents errors if an intermediate property is null or undefined.
+*   **L210 `value = getValue(item.path)`**: Retrieves the specific piece of data from the `modalState` that corresponds to the current control being rendered. If this returns `undefined`, the control will render with a default/empty value.
+*   **L215-234 `switch (item.type)`**: This block determines which type of HTML control to create (e.g., a `<select>`, `<input type="range">`) based on the `type` specified in the schema item.
+
+```javascript
+function showDebugModal(generationData) { /* ... */ }
+function hideDebugModal() { /* ... */ }
+```
+*   **L286-340**: These functions manage the debug modal, which appears when the user clicks "Generate" with the debug toggle enabled. `showDebugModal` dynamically creates the modal's HTML, injects it into the DOM, and attaches event listeners. `hideDebugModal` removes it. The logic is self-contained within these functions.
+
+**Part 3: Communication and Initialization**
+
+```javascript
+function setupPort() {
+    port = chrome.runtime.connect({ name: "wingman-popup" });
+
+    port.onMessage.addListener((message) => {
+        // ...
+        switch (message.action) {
+            case 'nlpAnalysisResponse':
+                handleNlpAnalysisResponse(message);
+                break;
+            // ... other cases
+        }
+    });
+
+    port.onDisconnect.addListener(() => {
+        // ...
+    });
+}
+```
+*   **L565-594 `setupPort`**: This function initializes the connection to the service worker.
+*   **L566 `port = chrome.runtime.connect(...)`**: This is the Chrome API call that opens a long-lived communication channel to the background script. The `name` is used by the background script to identify the connection type.
+*   **L568 `port.onMessage.addListener`**: This is the central listener for all messages coming *from* the background script *to* this specific popup instance.
+*   **L570 `switch (message.action)`**: A router that calls the appropriate handler function based on the `action` string in the message. This is how the background script tells the popup what to do (e.g., "here is the analysis data," "here is the final AI response").
+
+```javascript
+async function initializePopup() {
+    setupEventListeners();
+    setupPort();
+    await loadAndApplySettings();
+    await refreshDataAndUI();
+}
+```
+*   **L596-602 `initializePopup`**: The main startup function for the popup.
+*   **L597 `setupEventListeners`**: This function (defined later) finds all the interactive elements in `popup.html` and attaches the correct JavaScript event listeners (e.g., `click`, `input`).
+*   **L598 `setupPort`**: Establishes the communication channel.
+*   **L599 `await loadAndApplySettings()`**: Asynchronously loads all user settings from `chrome.storage.local` and updates the UI elements (sliders, toggles, etc.) to reflect the stored values.
+*   **L600 `await refreshDataAndUI()`**: Kicks off the main data-gathering process by injecting the content scraper.
+
+```javascript
+async function refreshDataAndUI() {
+    // ...
+    const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        function: scraperFn
+    });
+    const pageData = results[0]?.result;
+    // ...
+    sendMessage({
+        action: "getNlpAnalysis",
+        data: { /* ... */ }
+    });
+    // ...
+}
+```
+*   **L604-651 `refreshDataAndUI`**: The core function for getting data from the web page.
+*   **L624 `const [tab] = await chrome.tabs.query(...)`**: Gets a reference to the currently active tab.
+*   **L628-634**: Determines which scraper function (`scrapeTinderPage` or `scrapeBumblePage`) to use based on the active tab's URL.
+*   **L636 `const results = await chrome.scripting.executeScript(...)`**: This is the key Chrome API call for programmatic injection. It tells Chrome to execute the specified `scraperFn` in the context of the active tab.
+*   **L641 `pageData = results[0]?.result`**: The return value from the injected `scraperFn` is wrapped in an array. This line extracts the actual data object.
+*   **L647 `sendMessage({ action: "getNlpAnalysis", ... })`**: After successfully scraping the data, it sends the data to the background script with the action `getNlpAnalysis` to begin the processing pipeline.
+
+### 3.2 `background.js`
+
+This analysis is broken down into logical sections of the file.
+
+**Part 1: Imports and Global Scope**
+
+```javascript
+// background.js (Re-architected for Manifest V3 Robustness with Heartbeat)
+import { generatePrompts } from './prompts.js';
+import { runFullConversationAnalysis, determineConversationState, hasRecentGreeting } from './localAnalysisService.js';
+import { getTimeContext } from './uiFormatters.js';
+import spacetime from './lib/spacetime.min.js';
+import informal from './lib/spacetime-informal.min.js';
+import { DEFAULTS } from './constants.js';
+```
+*   **L2-7 `import`**: These lines use ES Module syntax to import functions, objects, and classes from other files (both local modules and third-party libraries). This static import structure allows the browser to build a dependency tree before executing the code.
+    *   `generatePrompts`: The primary function for building LLM prompts, imported from `./prompts.js`.
+    *   `runFullConversationAnalysis`, `determineConversationState`, `hasRecentGreeting`: Core analysis functions from the local NLP service, imported from `./localAnalysisService.js`.
+    *   `getTimeContext`: A UI formatting utility, imported from `./uiFormatters.js`.
+    *   `spacetime`, `informal`: Third-party libraries for date/time manipulation, imported from the `lib` directory.
+    *   `DEFAULTS`: The object containing default settings, imported from the constants module.
+
+```javascript
+spacetime.extend(informal);
+```
+*   **L9 `spacetime.extend`**: This line initializes the `spacetime` library with the `informal` plugin.
+*   **Side Effect:** It modifies the imported `spacetime` object in place, enabling it to parse human-readable date strings (e.g., "yesterday"). This is a one-time setup action.
+
+```javascript
+const DEBUG = {
+    log: (category, message, data = null) => console.log(`[WINGMAN-BG-${category.toUpperCase()}] ${message}`, data ?? ''),
+    error: (category, message, error = null) => console.error(`[WINGMAN-BG-${category.toUpperCase()}-ERROR] ${message}`, error ?? ''),
+};
+```
+*   **L11-14 `DEBUG`**: A constant object containing two arrow functions for logging. This provides a simple, namespaced logging utility. The `?? ''` nullish coalescing operator ensures that if `data` or `error` is null/undefined, an empty string is logged instead of `null`.
+
+```javascript
+const abortControllers = new Map();
+```
+*   **L16 `abortControllers`**: Initializes a global `Map` object.
+*   **Lifecycle:** This map stores `AbortController` instances, with a match's `uuid` as the key. It is used to cancel in-flight `fetch` requests if the user starts a new generation for the same match or closes the popup. Entries are added in `handleAITask` and removed when the task completes or the popup disconnects.
+
+**Part 2: Classes and State/Cache Management**
+
+```javascript
+// --- NEW: Performance Logger ---
+class PerformanceLogger {
+    async log(logData) {
+        try {
+            const timestamp = new Date().toISOString();
+            const logEntry = {
+                timestamp,
+                ...logData
+            };
+            const key = `perflog_${timestamp}`;
+            await chrome.storage.local.set({
+                [key]: logEntry
+            });
+            DEBUG.log('PERFLOG', 'Performance log saved.', key);
+        } catch (e) {
+            DEBUG.error('PERFLOG', 'Failed to save performance log.', e);
+        }
+    }
+}
+const performanceLogger = new PerformanceLogger();
+```
+*   **L19-37 `PerformanceLogger`**: A class to handle logging of performance-related data.
+*   **L20 `async log(logData)`**: An asynchronous method that takes a `logData` object.
+*   **L22 `timestamp`**: Creates an ISO 8601 formatted timestamp string for the log entry.
+*   **L23-26 `logEntry`**: Creates the final log object by spreading the incoming `logData` and prepending the `timestamp`.
+*   **L27 `key`**: Creates a unique key for storage using a "perflog_" prefix and the timestamp. This ensures no two logs will overwrite each other.
+*   **L28 `await chrome.storage.local.set`**: Asynchronously saves the log entry to the local storage API. The key is dynamically computed.
+*   **L36 `performanceLogger`**: Creates a single, global instance of the `PerformanceLogger` class.
+
+```javascript
+async function generateCacheHash(history, profile) {
+    if ((!history || history.length === 0) && !profile)
+        return 'empty';
+    const combinedString = JSON.stringify(history) + JSON.stringify(profile);
+    const encoder = new TextEncoder();
+    const data = encoder.encode(combinedString);
+    const hashBuffer = await crypto.subtle.digest('SHA-1', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+```
+*   **L39-47 `generateCacheHash`**: An `async` utility function to create a cache key.
+*   **L40-41**: Handles the edge case of empty inputs, returning a static string "empty".
+*   **L42 `combinedString`**: The history and profile are stringified and concatenated into a single string. This is the data that will be hashed.
+*   **L43-44 `encoder`, `data`**: The string is converted into a `Uint8Array` buffer, which is the required format for the `crypto.subtle` API.
+*   **L45 `hashBuffer`**: The core hashing operation. It asynchronously computes the SHA-1 hash of the data buffer.
+*   **L46-47**: The resulting `ArrayBuffer` is converted into a hexadecimal string representation, which is a common format for hash digests.
+
+```javascript
+const getGenerationStateKey = (uuid) => `generationState_${uuid}`;
+
+async function getGenerationState(uuid) {
+    // ...
+}
+
+async function setGenerationState(uuid, newState, port) {
+    // ...
+}
+```
+*   **L49 `getGenerationStateKey`**: A simple helper function to create a consistent storage key for a given `uuid`.
+*   **L51-67 `getGenerationState`**: An `async` function that retrieves the generation state object for a given `uuid` from `chrome.storage.local`. It provides a default "neutral" state object if no `uuid` is given or if no state is found in storage.
+*   **L69-89 `setGenerationState`**: An `async` function that updates the generation state.
+    *   **L73 `currentState`**: It first retrieves the current state to ensure no fields are lost.
+    *   **L74-77 `updatedState`**: It creates the new state object by spreading the current state and then overwriting it with fields from the `newState` object.
+    *   **L78 `await chrome.storage.local.set`**: Persists the newly updated state object.
+    *   **L81-87 `if (port && port.postMessage)`**: If a valid `port` to the popup is provided, it sends a `generationUpdate` message containing the new state. This is the mechanism that keeps the UI in sync with the background process in real-time. The `try...catch` block handles cases where the port might have disconnected just before the message was sent.
+
+```javascript
+class MatchMemory {
+    async _getMatchUUID(name, profile) {
+        // ...
+    }
+    async getMatchProfile(uuid) {
+        // ...
+    }
+    async saveMatchProfile(uuid, profileData) {
+        // ...
+    }
+    createInitialProfile(scrapedData) {
+        // ...
+    }
+}
+const memoryManager = new MatchMemory();
+```
+*   **L91-137 `MatchMemory`**: A class that encapsulates all logic for handling match-specific data persistence.
+*   **L92 `_getMatchUUID`**: A private-by-convention method that uses the same hashing technique as `generateCacheHash` to create a stable, unique ID from a match's name and profile, ensuring the same match is always identified by the same `uuid`.
+*   **L102 `getMatchProfile` & L107 `saveMatchProfile`**: Asynchronous wrappers around the `chrome.storage.local` API, providing a clean interface for getting and setting match data.
+*   **L112 `createInitialProfile`**: A factory method that returns a structured, default object for a newly encountered match. This ensures a consistent data shape for all profiles.
+*   **L138 `memoryManager`**: Creates a single, global instance of the `MatchMemory` class for the service worker to use.
+
+**Part 3: API Utilities and Core Task Handler**
+
+```javascript
+async function fetchTimezoneFromCoords(lat, lon) {
+    const url = `https://timeapi.io/api/time/current/coordinate?latitude=${lat}&longitude=${lon}`;
+    try {
+        const response = await fetch(url);
+        if (!response.ok)
+            throw new Error(`timeapi.io failed: ${response.status}`);
+        const data = await response.json();
+        return {
+            timeZone: data?.timeZone || null,
+            country: data?.countryName || null,
+        };
+    } catch (error) {
+        DEBUG.error('TIMEAPI', 'Failed to fetch timezone', error);
+        return null;
+    }
+}
+```
+*   **L140-156 `fetchTimezoneFromCoords`**: An `async` utility function that fetches timezone and country data from `timeapi.io` based on latitude and longitude.
+*   **L141 `url`**: Constructs the request URL using template literals.
+*   **L142-155 `try...catch`**: Wraps the network request in error handling.
+*   **L143 `response = await fetch(url)`**: Makes the network request.
+*   **L144-145**: Checks if the HTTP response was successful (status 200-299). If not, it throws an error which is caught by the `catch` block.
+*   **L146 `data = await response.json()`**: Parses the JSON body of the response.
+*   **L147-150**: Returns a structured object, using optional chaining (`?.`) and the nullish coalescing operator (`||`) to gracefully handle cases where the API response is missing expected fields.
+*   **L153 `return null`**: In case of any error (network, parsing, etc.), the function returns `null` to the caller.
+
+```javascript
+async function geocodeLocation(locationString) {
+    // ... similar structure to fetchTimezoneFromCoords ...
+}
+```
+*   **L158-181 `geocodeLocation`**: An `async` utility function, structurally identical to the one above, that fetches geocoding data from `nominatim.openstreetmap.org`. It converts a location string (e.g., "Paris, France") into coordinates.
+
+```javascript
+async function handleAITask(uuid, generationId, payload, port, options = {}) {
+    if (abortControllers.has(uuid)) {
+        abortControllers.get(uuid).abort("A new generation request was started.");
+    }
+    const controller = new AbortController();
+    abortControllers.set(uuid, controller);
+
+    await setGenerationState(uuid, { isGenerating: true, response: null, error: null, generationId, generationStartTime: Date.now() }, port);
+
+    try {
+        const storedSettings = await chrome.storage.local.get(Object.keys(DEFAULTS));
+        const settings = { ...DEFAULTS, ...storedSettings };
+
+        const responseText = await fetchLocalLlamaResponse(settings.local_llama_api_key, payload, settings, controller.signal);
+
+        const currentState = await getGenerationState(uuid);
+        if (currentState.generationId !== generationId) {
+            DEBUG.log('AI', `Stale generation response ignored for ${uuid}.`);
+            return;
+        }
+
+        const finalResponse = options.onSuccess ? options.onSuccess(responseText) : cleanAIResponse(responseText);
+
+        await setGenerationState(uuid, { isGenerating: false, response: finalResponse, generationStartTime: null }, port);
+        if (options.logData) {
+            await performanceLogger.log({ ...options.logData, response: finalResponse });
+        }
+
+    } catch (error) {
+        const currentState = await getGenerationState(uuid);
+        if (currentState.generationId !== generationId) {
+            DEBUG.log('AI', `Stale generation error ignored for ${uuid}.`);
+            return;
+        }
+
+        if (error.name === 'AbortError') {
+            DEBUG.log('AI', `Task for ${uuid} was cancelled by disconnect or new request. State already handled.`);
+            return;
+        }
+
+        DEBUG.error('AI-TASK', `Task failed for ${uuid}`, error);
+        await setGenerationState(uuid, { isGenerating: false, error: error.message, generationStartTime: null }, port);
+
+    } finally {
+        if (abortControllers.get(uuid) === controller) {
+            abortControllers.delete(uuid);
+        }
+    }
+}
+```
+*   **L183-229 `handleAITask`**: This is the core logic for managing an AI generation lifecycle.
+*   **L184-186**: Checks if there's an existing `AbortController` for this `uuid`. If so, it aborts the previous `fetch` request. This prevents multiple requests for the same match from running simultaneously.
+*   **L187-188**: Creates a new `AbortController` for the current task and stores it in the global map.
+*   **L190**: Immediately updates the state to `isGenerating: true` and notifies the popup, so the UI can show a loading state.
+*   **L193 `storedSettings`**: Fetches all settings from `chrome.storage.local`.
+*   **L194 `settings`**: Merges the stored settings with the `DEFAULTS` object to ensure all settings have a value.
+*   **L196 `responseText`**: Calls the `fetch` wrapper for the LLM, passing the `AbortController`'s `signal` to the request. This is what allows the `fetch` to be cancelled.
+*   **L198-201**: **Stale Response Check:** After the `fetch` completes, it re-checks the current generation state. If the `generationId` has changed (meaning the user started a *newer* request while this one was in flight), it discards the result and exits. This prevents race conditions.
+*   **L203 `finalResponse`**: Processes the raw text, either with a custom success handler or the default `cleanAIResponse` utility.
+*   **L205**: Sets the final state with the response and notifies the popup.
+*   **L212-221 `catch (error)`**: The error handling block. It also performs a stale check. It distinguishes `AbortError` (which is an expected cancellation) from other errors.
+*   **L223-227 `finally`**: This block *always* runs, regardless of success or error. It cleans up the `AbortController` from the global map if it's the one that belongs to the current task.
+
+**Part 4: Main Connection Listener and Message Router**
+
+```javascript
+chrome.runtime.onConnect.addListener((port) => {
+    if (port.name !== "wingman-popup")
+        return;
+
+    DEBUG.log('PORT', 'Popup connected');
+
+    const messageHandlers = {
+        // ... all message handlers ...
+    };
+
+    port.onMessage.addListener((request) => {
+        DEBUG.log('PORT', 'Message received from popup', request);
+        const handler = messageHandlers[request.action];
+        if (handler) {
+            handler(request);
+        } else {
+            DEBUG.error('PORT', 'No handler found for action', request.action);
+        }
+    });
+
+    port.onDisconnect.addListener(() => {
+        // ... cleanup logic ...
+    });
+});
+```
+*   **L231 `chrome.runtime.onConnect.addListener`**: This is the primary event listener for the service worker. It fires whenever a part of the extension (in this case, `popup.js`) establishes a long-lived connection.
+*   **L232-233**: A guard clause that ensures the script only handles connections from a port named "wingman-popup", ignoring any other potential connections.
+*   **L237 `messageHandlers`**: An object literal that serves as a router or dispatch table. The keys are `action` strings (e.g., "getNlpAnalysis"), and the values are the `async` functions that handle those actions. This is a clean and scalable pattern for managing incoming messages.
+*   **L241 `port.onMessage.addListener`**: Attaches a listener to the newly created port. This function will be executed every time the popup sends a message through this specific port.
+*   **L243 `handler = messageHandlers[request.action]`**: Retrieves the appropriate handler function from the `messageHandlers` object based on the `action` property of the incoming message.
+*   **L244-248**: If a handler is found, it's executed. If not, an error is logged.
+*   **L251 `port.onDisconnect.addListener`**: Attaches a listener that fires when the popup closes (or the port is otherwise terminated). This is critical for cleanup. It iterates through the `abortControllers` map and cancels any pending `fetch` requests to prevent them from running in the background without a UI to report back to.
+
+**Part 5: Data Transformation and Utility Functions**
+
+```javascript
+function buildFinalPayload(data) { /* ... */ }
+function cleanAIResponse(rawResponse) { /* ... */ }
+function mergeAnalyses(local, external) { /* ... */ }
+function transformExternalGeo(geo) { /* ... */ }
+function buildExternalAnalysisRequest(scrapedData, matchProfile, uiSettings) { /* ... */ }
+function transformExternalAnalysis(externalData) { /* ... */ }
+async function fetchLocalLlamaResponse(apiKey, payload, settings, signal) { /* ... */ }
+```
+*   **L583-761**: This block contains a series of helper functions.
+    *   **`buildFinalPayload`**: Takes all processed data and constructs the final JSON object to be sent to the LLM, based on the prompt structure defined in the `prompts.js` module.
+    *   **`cleanAIResponse`**: A simple string manipulation function to remove common stop tokens that LLMs sometimes include in their responses.
+    *   **`mergeAnalyses`**: A key function that takes the `local` and `external` analysis results and merges them. It uses the object spread syntax (`...`) to ensure that properties from the `external` object overwrite those from the `local` one, while preserving any properties that only exist in the local analysis.
+    *   **`transform...` & `build...` functions**: This suite of functions acts as an "Adapter" layer. They are responsible for translating data structures between the extension's internal format and the specific JSON schemas expected by the external analysis backend. This is excellent practice, as it decouples the extension's logic from the specific implementation details of the external API.
+    *   **`fetchLocalLlamaResponse`**: A dedicated `async` wrapper for the `fetch` call to the LLM API. It handles setting the authorization header and parsing both successful and error responses from the server.
 
 ## Section 4: Function & Parameter Map
 
