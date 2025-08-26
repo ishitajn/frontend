@@ -533,3 +533,14 @@ export function getTimeContext() {
     }
     return null;
 }
+
+export {
+    runFullConversationAnalysis,
+    determineConversationState,
+    hasRecentGreeting,
+    isMessageGeoRelated,
+    isLowEffortReply,
+    analyzeMessageSubtext,
+    analyzeLastMessageForSubtext,
+    updateMemoryFromHistory
+};
