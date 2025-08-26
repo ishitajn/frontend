@@ -325,8 +325,9 @@ chrome.runtime.onConnect.addListener((port) => {
 
                         // Also update the top-level memory object from the backend
                         if (externalAnalysisRaw.memory) {
-                            matchProfile.memory = externalAnalysisRaw.memory;
-                            finalAnalysis.memory = externalAnalysisRaw.memory; // Ensure merged analysis has latest memory
+                            // Merge memory objects, prioritizing external data but preserving local-only fields
+                            matchProfile.memory = { ...matchProfile.memory, ...externalAnalysisRaw.memory };
+                            finalAnalysis.memory = matchProfile.memory; // Ensure merged analysis has latest memory
                         }
 
                     } catch (e) {

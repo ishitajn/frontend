@@ -523,7 +523,6 @@ function renderContextView() {
             <tr><td>Their Name</td><td>${createInput('context-theirName', 'theirName', modalState.theirName)}</td></tr>
             <tr><td>My Profile</td><td>${createTextarea('context-myProfile', 'myProfile', modalState.myProfile)}</td></tr>
             <tr><td>Their Profile</td><td>${createTextarea('context-theirProfile', 'theirProfile', modalState.theirProfile)}</td></tr>
-            <tr><td>Force Geo-Context?</td><td>${createCheckbox('context-forceIncludeGeoContext', 'forceIncludeGeoContext', modalState.forceIncludeGeoContext)}</td></tr>
         </table>
         <h4>Conversation History</h4>
         <div class="messages-container">${historyHtml}</div>
