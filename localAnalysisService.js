@@ -13,7 +13,7 @@ const DEBUG = {
  * @param {object} doc - A compromise.js document object.
  * @returns {Omit<LastMessageAnalysis, 'isDirectQuestion' | 'isLowEffort' | 'isGeoRelated' | 'suggestedResponseStyle' | 'questionInfo'>} A structured object containing detailed subtext analysis.
  */
-function analyzeMessageSubtext(doc) {
+export function analyzeMessageSubtext(doc) {
     const subtext = {
         valence: 0.0,
         arousal: 0.0,
@@ -86,7 +86,7 @@ function analyzeMessageSubtext(doc) {
  * @param {Message[]} conversationHistory
  * @returns {LastMessageAnalysis} A structured subtext object or a default neutral object.
  */
-function analyzeLastMessageForSubtext(conversationHistory) {
+export function analyzeLastMessageForSubtext(conversationHistory) {
     const lastMessageFromMatch = conversationHistory?.filter(msg => msg.role === 'assistant').pop();
     if (!lastMessageFromMatch?.content) {
         return {
@@ -137,7 +137,7 @@ function analyzeLastMessageForSubtext(conversationHistory) {
  * @param {MatchMemory} storedMemory
  * @returns {MatchMemory} The updated memory object.
  */
-function updateMemoryFromHistory(conversationHistory, storedMemory) {
+export function updateMemoryFromHistory(conversationHistory, storedMemory) {
     let memory = JSON.parse(JSON.stringify(storedMemory || {
                 topics: {},
                 insideJokes: [],
@@ -326,7 +326,7 @@ function calculateStaleConversationGap(conversationHistory) {
  * @param {object} doc
  * @returns {{isQuestion: boolean, count: number, type: string}}
  */
-function analyzeQuestion(doc) {
+export function analyzeQuestion(doc) {
     const sentences = doc.sentences();
     if (!sentences.found)
         return {
@@ -381,7 +381,7 @@ function analyzeQuestion(doc) {
     };
 }
 
-function detectLogisticsSignal(doc) {
+export function detectLogisticsSignal(doc) {
     const logisticsVerbs = ['get', 'grab', 'meet', 'hang out', 'do', 'go', 'have', 'catch', 'make', 'take', 'share', 'join', 'come by', 'come over', 'come through', 'drop by', 'stop by', 'swing by', 'head to', 'head over', 'roll through', 'pop in', 'show up', 'make it', 'get to', 'arrive', 'be at', 'get together', 'link up', 'meet up', 'catch up', 'kick it', 'chill', 'vibe', 'connect', 'hit up', 'hit', 'scoop', 'slide', 'post up', 'arrange', 'schedule', 'organize', 'coordinate', 'convene', 'assemble', 'attend', 'gather', 'fuck with', 'mess with', ];
     const logisticsNouns = ['drink', 'drinks', 'coffee', 'dinner', 'lunch', 'brunch', 'breakfast', 'food', 'a meal', 'a bite', 'something to eat', 'tea', 'a beer', 'beers', 'cocktails', 'a round', 'apps', 'a movie', 'the movies', 'a game', 'the game', 'a show', 'a concert', 'a party', 'the party', 'the event', 'the function', 'the move', 'the spot', 'a walk', 'a hike', 'a workout', 'sometime', 'soon', 'later', 'some point', 'at some point', 'one day', 'one of these days', 'in a bit', 'in the future', 'eventually', 'down the road', 'whenever', 'weekend', 'the weekend', 'this weekend', 'next weekend', 'friday', 'saturday', 'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'fri', 'sat', 'sun', 'mon', 'tues', 'weds', 'thurs', 'tonight', 'tn', 'tomorrow', 'tmrw', 'today', 'the morning', 'morning', 'am', 'the afternoon', 'afternoon', 'pm', 'the evening', 'evening', 'night', 'the night', 'this week', 'next week', 'the week', 'a weekday', 'this month', 'next month', 'the holiday', 'the break', 'later on', 'in an hour', 'my place', 'your place', 'my spot', 'your spot', 'mine', 'yours', 'the bar', 'the cafe', 'the restaurant', 'the club', 'downtown', 'town', ];
     const logisticsQuestions = ['are you free', 'when are you free', 'are you available', 'what\'s your availability', 'you free', 'u free', 'got time', 'got a minute', 'got a sec', 'have time', 'free on', 'free this', 'free for', 'availability?', 'what are you up to', 'busy this week', 'what you up to', 'what are your plans', 'what\'s your plan', 'any plans', 'got plans', 'what you got going on', 'what\'s the plan', 'what\'s your schedule like', 'how\'s your week looking', 'what\'s happening', 'wanna get', 'wanna grab', 'wanna go', 'do you want to', 'want to', 'down for', 'down to', 'up for', 'up to', 'feel like', 'how about', 'what about', 'should we', 'are we getting', 'we still on for', 'care to join', 'wyd', 'wuu2', 'what we doing', 'what we on', 'what\'s good', 'what\'s goodie', 'what\'s the move', 'what\'s the motive', 'you tryna', 'you down', 'u down', 'you with it', 'so, what\'s the plan', 'what the fuck are you up to', 'what the fuck is the plan', 'where the fuck are you', 'where the hell are you', 'what the fuck are we doing', 'are you fucking busy', 'when the fuck are you free', ];
@@ -392,7 +392,7 @@ function detectLogisticsSignal(doc) {
     return false;
 }
 
-export function isMessageGeoRelated(text) {
+function isMessageGeoRelated(text) {
     if (!text)
         return false;
     const doc = nlp(text.toLowerCase());
@@ -402,7 +402,7 @@ export function isMessageGeoRelated(text) {
     return doc.has(geoTriggers);
 }
 
-export function isLowEffortReply(text) {
+function isLowEffortReply(text) {
     if (!text)
         return true;
     const cleanedText = text.trim().toLowerCase();
@@ -533,14 +533,3 @@ export function getTimeContext() {
     }
     return null;
 }
-
-export {
-    runFullConversationAnalysis,
-    determineConversationState,
-    hasRecentGreeting,
-    isMessageGeoRelated,
-    isLowEffortReply,
-    analyzeMessageSubtext,
-    analyzeLastMessageForSubtext,
-    updateMemoryFromHistory
-};

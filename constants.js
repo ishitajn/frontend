@@ -131,6 +131,7 @@ export const SELECTORS = {
     matchCountry: 'match-country',
     timeDifference: 'time-difference',
     distanceInfo: 'distance-info',
+    countryDifference: 'country-difference',
     refinementActions: 'refinement-actions',
 };
 
