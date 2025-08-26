@@ -207,48 +207,77 @@ function createCollapsibleJSON(title, dataObject, isEditable = true) {
     `;
 }
 
+function renderViewFromSchema(schema, state) {
+    let tableRows = '';
+    for (const item of schema) {
+        if (item.type === 'divider') {
+            tableRows += `<tr><td colspan="2" style="text-align:center; background:#333;"><strong>${item.label}</strong></td></tr>`;
+            continue;
+        }
+
+        // Helper to get a nested value from the state object using a path string
+        const getValue = (path) => path.split('.').reduce((o, k) => o?.[k], state);
+        const value = getValue(item.path);
+
+        let controlHtml = '';
+        const id = item.path.replace(/\./g, '-');
+
+        switch (item.type) {
+            case 'select':
+                controlHtml = createSelect(id, item.path, item.options(), value);
+                break;
+            case 'multiselect':
+                controlHtml = createMultiSelect(id, item.path, item.options(), value);
+                break;
+            case 'checkbox':
+                controlHtml = createCheckbox(id, item.path, value);
+                break;
+            case 'slider':
+                controlHtml = createSlider(id, item.path, value, item.min, item.max, item.step, item.labels);
+                break;
+            case 'textarea':
+                // For array textareas, join with newline
+                const areaValue = Array.isArray(value) ? value.join('\n') : value;
+                controlHtml = createTextarea(id, item.path, areaValue);
+                break;
+            case 'text':
+                controlHtml = createInput(id, item.path, value);
+                break;
+            case 'dynamic_table':
+                const data = getValue(item.path);
+                if (data) {
+                    for (const [key, val] of Object.entries(data)) {
+                        const displayVal = typeof val === 'boolean' ? `<input type="checkbox" ${val ? 'checked' : ''} disabled>` : `<span>${val || 'N/A'}</span>`;
+                        tableRows += `<tr><td>${key.replace(/_/g, ' ')}</td><td>${displayVal}</td></tr>`;
+                    }
+                }
+                continue; // Skip the standard row rendering
+        }
+        tableRows += `<tr><td>${item.label}</td><td>${controlHtml}</td></tr>`;
+    }
+    return `<table class="payload-table">${tableRows}</table>`;
+}
+
 function renderDebugView(viewName) {
     const contentEl = document.getElementById(viewName);
     if (!contentEl) return;
 
     let html = '';
-    switch (viewName) {
-        case 'analysis': html = renderAnalysisView(); break;
-        case 'topic-analysis': html = renderMemoryView(); break;
-        case 'conv-analysis': html = renderConvAnalysisView(); break;
+    const schemaMap = {
+        'analysis': ANALYSIS_VIEW_SCHEMA,
+        'topic-analysis': TOPIC_ANALYSIS_VIEW_SCHEMA,
+        'conv-analysis': CONV_ANALYSIS_VIEW_SCHEMA,
+    };
+
+    const schema = schemaMap[viewName];
+    if (schema) {
+        html = renderViewFromSchema(schema, modalState);
+    } else {
+        html = `<p>No view schema defined for ${viewName}.</p>`;
     }
+
     contentEl.innerHTML = `<div class="card-content">${html}</div>`;
     attachDebugEventListeners(contentEl);
-}
-
-function renderConvAnalysisView() {
-    // This view depends on the merged analysis object, which has the backend data
-    const { analysis } = modalState;
-    if (!analysis || !analysis.conversation_analysis) { // Check for the nested object
-        return '<p>Backend conversation analysis data not available. Run analysis with a non-local type.</p>';
-    }
-
-    const { conversation_analysis } = analysis;
-
-    // Create a simple table to display the key-value pairs
-    let tableRows = '';
-    for (const [key, value] of Object.entries(conversation_analysis)) {
-        let displayValue;
-        if (typeof value === 'boolean') {
-            // For now, using a disabled checkbox (switch) for display
-            displayValue = `<input type="checkbox" ${value ? 'checked' : ''} disabled>`;
-        } else {
-            displayValue = `<span>${value || 'N/A'}</span>`;
-        }
-        tableRows += `<tr><td>${key.replace(/_/g, ' ')}</td><td>${displayValue}</td></tr>`;
-    }
-
-    return `
-        <h3>Backend Conversation Analysis</h3>
-        <table class="payload-table">
-            ${tableRows}
-        </table>
-    `;
 }
 
 // --- Modal Logic (re-implementing multi-view modal) ---
@@ -350,57 +379,6 @@ function hideDebugModal() {
         overlay.classList.add('hidden');
         overlay.innerHTML = '';
     }
-}
-
-function renderAnalysisView() {
-    const { analysis } = modalState;
-    if (!analysis) return '<p>Analysis data not available.</p>';
-
-    const { lastMessageAnalysis, conversationState, suppressGreeting } = analysis;
-    const valenceLabels = { '-1': 'Very Negative', '-0.5': 'Negative', '-0.1': 'Neutral', '0.5': 'Positive', '1': 'Very Positive' };
-    const arousalLabels = { '-1': 'Bored/Calm', '-0.5': 'Low Energy', '-0.1': 'Neutral', '0.5': 'Excited', '1': 'Agitated' };
-
-    return `
-        <h3>Conversation Analysis</h3>
-        <table class="payload-table">
-            <tr><td>Conversation State</td><td>${createSelect('analysis-state', 'analysis.conversationState', CONVERSATION_STATES, conversationState)}</td></tr>
-            <tr><td>Suppress Greeting?</td><td>${createCheckbox('analysis-suppressGreeting', 'analysis.suppressGreeting', suppressGreeting)}</td></tr>
-
-            <tr><td colspan="2" style="text-align:center; background:#333;"><strong>Last Message Subtext (Local)</strong></td></tr>
-            <tr><td>Is Direct Question?</td><td>${createCheckbox('subtext-isDirectQuestion', 'analysis.lastMessageAnalysis.isDirectQuestion', lastMessageAnalysis.isDirectQuestion)}</td></tr>
-            <tr><td>Is Low Effort?</td><td>${createCheckbox('subtext-isLowEffort', 'analysis.lastMessageAnalysis.isLowEffort', lastMessageAnalysis.isLowEffort)}</td></tr>
-            <tr><td>Is Sarcastic?</td><td>${createCheckbox('subtext-isSarcastic', 'analysis.lastMessageAnalysis.isSarcastic', lastMessageAnalysis.isSarcastic)}</td></tr>
-            <tr><td>Is Ambiguous?</td><td>${createCheckbox('subtext-isAmbiguous', 'analysis.lastMessageAnalysis.isAmbiguous', lastMessageAnalysis.isAmbiguous)}</td></tr>
-            <tr><td>Is Vulnerable?</td><td>${createCheckbox('subtext-isVulnerable', 'analysis.lastMessageAnalysis.isVulnerable', lastMessageAnalysis.isVulnerable)}</td></tr>
-            <tr><td>Intents</td><td>${createMultiSelect('subtext-intents', 'analysis.lastMessageAnalysis.intents', INTENT_OPTIONS, lastMessageAnalysis.intents)}</td></tr>
-
-            <tr><td colspan="2" style="text-align:center; background:#333;"><strong>Overall Analysis (Backend)</strong></td></tr>
-            <tr><td>Valence (Sentiment)</td><td>${createSlider('backend-valence', 'analysis.lastMessageAnalysis.valence', lastMessageAnalysis.valence, -1, 1, 0.1, valenceLabels)}</td></tr>
-            <tr><td>Arousal (Engagement)</td><td>${createSlider('backend-arousal', 'analysis.lastMessageAnalysis.arousal', lastMessageAnalysis.arousal, -1, 1, 0.1, arousalLabels)}</td></tr>
-            <tr><td>Flirtation Level</td><td>${createSelect('backend-flirt-lvl', 'analysis.flirtation_level', FLIRT_LEVEL_OPTIONS, analysis.flirtation_level)}</td></tr>
-            <tr><td>Pace</td><td>${createSelect('backend-pace', 'analysis.pace', PACE_OPTIONS, analysis.pace)}</td></tr>
-
-            <tr><td colspan="2" style="text-align:center; background:#333;"><strong>Power Dynamics (Backend)</strong></td></tr>
-            <tr><td>Summary</td><td>${createInput('power-summary', 'analysis.power_dynamics.summary', analysis.power_dynamics?.summary || '')}</td></tr>
-            <tr><td>User Is Leading?</td><td>${createCheckbox('power-user-leading', 'analysis.power_dynamics.user_is_leading', analysis.power_dynamics?.user_is_leading)}</td></tr>
-        </table>
-        ${createCollapsibleJSON('View/Edit Raw Analysis Object', analysis)}
-    `;
-}
-
-function renderMemoryView() {
-    if (!modalState.conversationAnalysis || !modalState.conversationAnalysis.memory) return '<p>Memory data not available.</p>';
-    const { memory } = modalState.conversationAnalysis;
-    return `
-        <h3>Match Memory</h3>
-        <table class="payload-table">
-            <tr><td>Date Arc Phase</td><td>${createSelect('memory-dateArcPhase', 'conversationAnalysis.memory.dateArcPhase', DATE_ARC_PHASES, memory.dateArcPhase)}</td></tr>
-            <tr><td>Inside Jokes (one per line)</td><td>${createTextarea('memory-insideJokes', 'conversationAnalysis.memory.insideJokes', (memory.insideJokes || []).join('\\n'))}</td></tr>
-            <tr><td>Avoided Topics (one per line)</td><td>${createTextarea('memory-avoidedTopics', 'conversationAnalysis.memory.avoidedTopics', (memory.avoidedTopics || []).join('\\n'))}</td></tr>
-            <tr><td>Question History (one per line)</td><td>${createTextarea('memory-questionHistory', 'conversationAnalysis.memory.questionHistory', (memory.questionHistory || []).join('\\n'))}</td></tr>
-        </table>
-        ${createCollapsibleJSON('View/Edit Raw Memory Object', memory)}
-    `;
 }
 
 function renderContextView() {
