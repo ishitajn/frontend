@@ -329,11 +329,14 @@ chrome.runtime.onConnect.addListener((port) => {
 
                         finalAnalysis = mergeAnalyses(finalAnalysis, externalAnalysisTransformed);
 
-                        // Also update the top-level memory object from the backend
+                        // Also update the top-level memory and geo objects from the backend
                         if (externalAnalysisRaw.memory) {
                             // Merge memory objects, prioritizing external data but preserving local-only fields
                             matchProfile.memory = { ...matchProfile.memory, ...externalAnalysisRaw.memory };
                             finalAnalysis.memory = matchProfile.memory; // Ensure merged analysis has latest memory
+                        }
+                        if (externalAnalysisRaw.geo) {
+                            matchProfile.memory.geoContextData = transformExternalGeo(externalAnalysisRaw.geo);
                         }
 
                     } catch (e) {
@@ -655,6 +658,25 @@ function mergeAnalyses(local, external) {
     };
 
     return merged;
+}
+
+function transformExternalGeo(geo) {
+    if (!geo) return null;
+    return {
+        distance: {
+            km: geo.distance_km,
+            miles: geo.distance_miles,
+        },
+        userTimeOfDay: geo.userLocation?.time_of_day,
+        matchTimeOfDay: geo.matchLocation?.time_of_day,
+        timeZoneDifference: geo.time_difference_hours,
+        countryDifference: (geo.userLocation?.country && geo.matchLocation?.country && geo.userLocation.country !== geo.matchLocation.country)
+            ? `User: ${geo.userLocation.country}, Match: ${geo.matchLocation.country}.`
+            : null,
+        userCountry: geo.userLocation?.country,
+        matchCountry: geo.matchLocation?.country,
+        cachedAt: new Date().toISOString(),
+    };
 }
 
 function buildExternalAnalysisRequest(scrapedData, matchProfile, uiSettings) {

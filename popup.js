@@ -351,14 +351,46 @@ function renderDebugView(viewName) {
     let html = '';
     switch (viewName) {
         case 'analysis': html = renderAnalysisView(); break;
+        case 'topic-analysis': html = renderMemoryView(); break;
+        case 'conv-analysis': html = renderConvAnalysisView(); break;
     }
     contentEl.innerHTML = `<div class="card-content">${html}</div>`;
     attachDebugEventListeners(contentEl);
 }
 
+function renderConvAnalysisView() {
+    // This view depends on the merged analysis object, which has the backend data
+    const { analysis } = modalState;
+    if (!analysis || !analysis.conversation_analysis) { // Check for the nested object
+        return '<p>Backend conversation analysis data not available. Run analysis with a non-local type.</p>';
+    }
+
+    const { conversation_analysis } = analysis;
+
+    // Create a simple table to display the key-value pairs
+    let tableRows = '';
+    for (const [key, value] of Object.entries(conversation_analysis)) {
+        let displayValue;
+        if (typeof value === 'boolean') {
+            // For now, using a disabled checkbox (switch) for display
+            displayValue = `<input type="checkbox" ${value ? 'checked' : ''} disabled>`;
+        } else {
+            displayValue = `<span>${value || 'N/A'}</span>`;
+        }
+        tableRows += `<tr><td>${key.replace(/_/g, ' ')}</td><td>${displayValue}</td></tr>`;
+    }
+
+    return `
+        <h3>Backend Conversation Analysis</h3>
+        <table class="payload-table">
+            ${tableRows}
+        </table>
+    `;
+}
+
 // --- Modal Logic (re-implementing multi-view modal) ---
-const MODAL_VIEWS = ['memory', 'context', 'final-payload'];
-let currentModalView = 'memory';
+const MODAL_VIEWS = ['context', 'final-payload'];
+let currentModalView = 'context';
 
 function renderModalView() {
     const contentEl = document.getElementById('debug-modal-content');
@@ -366,7 +398,6 @@ function renderModalView() {
 
     let html = '';
     switch (currentModalView) {
-        case 'memory': html = renderMemoryView(); break;
         case 'context': html = renderContextView(); break;
         case 'final-payload': html = renderFinalPayloadView(); break;
     }
@@ -394,7 +425,7 @@ function updateModalNavButtons() {
 
 function showDebugModal(generationData) {
     modalState = JSON.parse(JSON.stringify(generationData)); // Deep copy to avoid side-effects
-    currentModalView = 'memory';
+    currentModalView = 'context';
 
     const overlay = document.getElementById('debug-modal-overlay');
     overlay.innerHTML = `
@@ -459,28 +490,42 @@ function hideDebugModal() {
 }
 
 function renderAnalysisView() {
-    const { conversationAnalysis } = modalState;
-    if (!conversationAnalysis) return '<p>Analysis data not available.</p>';
-    const { lastMessageAnalysis } = conversationAnalysis;
+    const { analysis } = modalState;
+    if (!analysis) return '<p>Analysis data not available.</p>';
+
+    const { lastMessageAnalysis, conversationState, suppressGreeting } = analysis;
     const valenceLabels = { '-1': 'Very Negative', '-0.5': 'Negative', '-0.1': 'Neutral', '0.5': 'Positive', '1': 'Very Positive' };
     const arousalLabels = { '-1': 'Bored/Calm', '-0.5': 'Low Energy', '-0.1': 'Neutral', '0.5': 'Excited', '1': 'Agitated' };
+
+    // Options for new dropdowns, inferred from schema
+    const flirtLvlOptions = ['none', 'low', 'medium', 'high', 'very high'];
+    const paceOptions = ['slow', 'steady', 'fast'];
 
     return `
         <h3>Conversation Analysis</h3>
         <table class="payload-table">
-            <tr><td>Conversation State</td><td>${createSelect('analysis-state', 'conversationAnalysis.conversationState', CONVERSATION_STATES, conversationAnalysis.conversationState)}</td></tr>
-            <tr><td>Suppress Greeting?</td><td>${createCheckbox('analysis-suppressGreeting', 'conversationAnalysis.suppressGreeting', conversationAnalysis.suppressGreeting)}</td></tr>
-            <tr><td colspan="2" style="text-align:center; background:#333;"><strong>Last Message Subtext</strong></td></tr>
-            <tr><td>Is Direct Question?</td><td>${createCheckbox('subtext-isDirectQuestion', 'conversationAnalysis.lastMessageAnalysis.isDirectQuestion', lastMessageAnalysis.isDirectQuestion)}</td></tr>
-            <tr><td>Is Low Effort?</td><td>${createCheckbox('subtext-isLowEffort', 'conversationAnalysis.lastMessageAnalysis.isLowEffort', lastMessageAnalysis.isLowEffort)}</td></tr>
-            <tr><td>Is Sarcastic?</td><td>${createCheckbox('subtext-isSarcastic', 'conversationAnalysis.lastMessageAnalysis.isSarcastic', lastMessageAnalysis.isSarcastic)}</td></tr>
-            <tr><td>Is Ambiguous?</td><td>${createCheckbox('subtext-isAmbiguous', 'conversationAnalysis.lastMessageAnalysis.isAmbiguous', lastMessageAnalysis.isAmbiguous)}</td></tr>
-            <tr><td>Is Vulnerable?</td><td>${createCheckbox('subtext-isVulnerable', 'conversationAnalysis.lastMessageAnalysis.isVulnerable', lastMessageAnalysis.isVulnerable)}</td></tr>
-            <tr><td>Valence</td><td>${createSlider('subtext-valence', 'conversationAnalysis.lastMessageAnalysis.valence', lastMessageAnalysis.valence, -1, 1, 0.1, valenceLabels)}</td></tr>
-            <tr><td>Arousal</td><td>${createSlider('subtext-arousal', 'conversationAnalysis.lastMessageAnalysis.arousal', lastMessageAnalysis.arousal, -1, 1, 0.1, arousalLabels)}</td></tr>
-            <tr><td>Intents</td><td>${createMultiSelect('subtext-intents', 'conversationAnalysis.lastMessageAnalysis.intents', INTENT_OPTIONS, lastMessageAnalysis.intents)}</td></tr>
+            <tr><td>Conversation State</td><td>${createSelect('analysis-state', 'analysis.conversationState', CONVERSATION_STATES, conversationState)}</td></tr>
+            <tr><td>Suppress Greeting?</td><td>${createCheckbox('analysis-suppressGreeting', 'analysis.suppressGreeting', suppressGreeting)}</td></tr>
+
+            <tr><td colspan="2" style="text-align:center; background:#333;"><strong>Last Message Subtext (Local)</strong></td></tr>
+            <tr><td>Is Direct Question?</td><td>${createCheckbox('subtext-isDirectQuestion', 'analysis.lastMessageAnalysis.isDirectQuestion', lastMessageAnalysis.isDirectQuestion)}</td></tr>
+            <tr><td>Is Low Effort?</td><td>${createCheckbox('subtext-isLowEffort', 'analysis.lastMessageAnalysis.isLowEffort', lastMessageAnalysis.isLowEffort)}</td></tr>
+            <tr><td>Is Sarcastic?</td><td>${createCheckbox('subtext-isSarcastic', 'analysis.lastMessageAnalysis.isSarcastic', lastMessageAnalysis.isSarcastic)}</td></tr>
+            <tr><td>Is Ambiguous?</td><td>${createCheckbox('subtext-isAmbiguous', 'analysis.lastMessageAnalysis.isAmbiguous', lastMessageAnalysis.isAmbiguous)}</td></tr>
+            <tr><td>Is Vulnerable?</td><td>${createCheckbox('subtext-isVulnerable', 'analysis.lastMessageAnalysis.isVulnerable', lastMessageAnalysis.isVulnerable)}</td></tr>
+            <tr><td>Intents</td><td>${createMultiSelect('subtext-intents', 'analysis.lastMessageAnalysis.intents', INTENT_OPTIONS, lastMessageAnalysis.intents)}</td></tr>
+
+            <tr><td colspan="2" style="text-align:center; background:#333;"><strong>Overall Analysis (Backend)</strong></td></tr>
+            <tr><td>Valence (Sentiment)</td><td>${createSlider('backend-valence', 'analysis.lastMessageAnalysis.valence', lastMessageAnalysis.valence, -1, 1, 0.1, valenceLabels)}</td></tr>
+            <tr><td>Arousal (Engagement)</td><td>${createSlider('backend-arousal', 'analysis.lastMessageAnalysis.arousal', lastMessageAnalysis.arousal, -1, 1, 0.1, arousalLabels)}</td></tr>
+            <tr><td>Flirtation Level</td><td>${createSelect('backend-flirt-lvl', 'analysis.flirtation_level', flirtLvlOptions, analysis.flirtation_level)}</td></tr>
+            <tr><td>Pace</td><td>${createSelect('backend-pace', 'analysis.pace', paceOptions, analysis.pace)}</td></tr>
+
+            <tr><td colspan="2" style="text-align:center; background:#333;"><strong>Power Dynamics (Backend)</strong></td></tr>
+            <tr><td>Summary</td><td>${createInput('power-summary', 'analysis.power_dynamics.summary', analysis.power_dynamics?.summary || '')}</td></tr>
+            <tr><td>User Is Leading?</td><td>${createCheckbox('power-user-leading', 'analysis.power_dynamics.user_is_leading', analysis.power_dynamics?.user_is_leading)}</td></tr>
         </table>
-        ${createCollapsibleJSON('View/Edit Raw Analysis Object', conversationAnalysis)}
+        ${createCollapsibleJSON('View/Edit Raw Analysis Object', analysis)}
     `;
 }
 
@@ -847,7 +892,12 @@ async function handleNlpAnalysisResponse(message) {
 
 
     await loadAndApplySettings();
-    await handleLocationChange();
+    // Only run local geo-calculation if the backend didn't provide it
+    if (!state.sessionMatchProfile.memory.geoContextData) {
+        await handleLocationChange();
+    } else {
+        updateGeoContextDisplay(state.sessionMatchProfile.memory.geoContextData);
+    }
 
     displayConversationState();
     showView(SELECTORS.mainView);
