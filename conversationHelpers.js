@@ -1,5 +1,5 @@
 import nlp from './lib/compromise.js';
-import { LINGUISTIC_STYLES } from './analysisConstants.js';
+import { LINGUISTIC_STYLES } from './constants.js';
 
 const DEBUG = {
     log: (category, message, data = null) => console.log(`[WINGMAN-HELPER-${category.toUpperCase()}] ${message}`, data ?? ''),

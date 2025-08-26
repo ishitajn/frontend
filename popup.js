@@ -2,104 +2,16 @@
 import { scrapeBumblePage, pasteTextIntoBumbleInput, scrapeTinderPage, pasteTextIntoTinderInput } from './content-scraper.js';
 import { getToneDescription, getLengthDescription, getEmojiInstruction, getStyleDescription, determineConversationState } from './conversationHelpers.js';
 import { generatePrompts } from './prompts.js';
-import { LINGUISTIC_STYLES, EMOJI_STRATEGIES, USER_LOCATIONS, DATE_ARC_PHASES, CONVERSATION_STATES, INTENT_OPTIONS, FLIRT_LEVEL_OPTIONS, PACE_OPTIONS } from './analysisConstants.js';
+import {
+    LINGUISTIC_STYLES, EMOJI_STRATEGIES, USER_LOCATIONS,
+    DATE_ARC_PHASES, CONVERSATION_STATES, INTENT_OPTIONS,
+    FLIRT_LEVEL_OPTIONS, PACE_OPTIONS, DEFAULTS,
+    MATCH_SPECIFIC_SETTINGS_KEYS, SELECTORS
+} from './constants.js';
 
 const DEBUG = {
     log: (category, message, data = null) => console.log(`[WINGMAN-POPUP-${category.toUpperCase()}] ${message}`, data ?? ''),
     error: (category, message, error = null) => console.error(`[WINGMAN-POPUP-${category.toUpperCase()}-ERROR] ${message}`, error ?? ''),
-};
-
-const DEFAULTS = {
-    flirtyValue: 60,
-    lengthValue: 30,
-    linguisticStyle: 'auto',
-    emojiStrategy: 'no_emoji',
-    modelTemperature: 0.5,
-    topPValue: 1.0,
-    endWithQuestion: false,
-    strictGoalOverride: false,
-    geoContextToggle: true,
-    newTopic: false,
-    debugModeEnabled: false,
-    userLocationChoice: 'autodetect',
-    customInstruction: '',
-    lastResponse: '',
-    myProfile: `Jay, 35 – 6'0", Vice President at a financial institution, graduate degree from Illinois State University. Driven and grounded, with a strong career focus but a playful side—loves trying new cuisines and cooking for others. Enjoys occasional adventure, meaningful conversations, and believes in making a difference through small actions. Social drinker, non-smoker, exercises sometimes. Prefers genuine connection and meeting in person over endless chatting.`,
-    local_llama_url: 'http://localhost:8080/v1/chat/completions',
-    local_model_name: 'llama3:latest',
-    local_llama_api_key: '',
-    analysis_url: 'http://10.0.0.24:8000/analyze',
-    analysis_type: 'local',
-};
-
-const MATCH_SPECIFIC_SETTINGS_KEYS = [
-    'flirtyValue', 'lengthValue', 'linguisticStyle', 'emojiStrategy',
-    'endWithQuestion', 'strictGoalOverride', 'geoContextToggle', 'newTopic',
-    'customInstruction', 'lastResponse'
-];
-
-const SELECTORS = {
-    loadingView: 'loading-view',
-    mainView: 'main-view',
-    settingsView: 'settings-view',
-    errorView: 'error-view',
-    errorTitle: 'error-title',
-    errorMessage: 'error-message',
-    responseArea: 'response-area',
-    generateBtn: 'generate-btn',
-    copyBtn: 'copy-btn',
-    cancelBtn: 'cancel-btn',
-    customInstruction: 'custom-instruction',
-    clearResponseBtn: 'clear-response-btn',
-    clearInstructionBtn: 'clear-instruction-btn',
-    flirtySlider: 'flirty-slider',
-    flirtyValueLabel: 'flirty-value-label',
-    lengthSlider: 'length-slider',
-    lengthValueLabel: 'length-value-label',
-    emojiStrategySelect: 'emoji-strategy-select',
-    conversationStatusDisplay: 'conversation-status-display',
-    questionToggleCheckbox: 'question-toggle-checkbox',
-    strictGoalToggle: 'strict-goal-toggle',
-    geoContextToggle: 'geo-context-toggle',
-    newTopicToggle: 'new-topic-toggle',
-    settingsBtn: 'settings-btn',
-    backBtn: 'back-btn',
-    masterResetBtn: 'master-reset-btn',
-    resetMatchBtn: 'reset-match-btn',
-    temperatureSlider: 'temperature-slider',
-    temperatureValueLabel: 'temperature-value-label',
-    topPSlider: 'top-p-slider',
-    topPValueLabel: 'top-p-value-label',
-    linguisticStyleSelect: 'linguistic-style-select',
-    debugModeToggle: 'debug-mode-toggle',
-    localLlamaUrl: 'localLlamaUrl',
-    localLlamaApiKey: 'localLlamaApiKey',
-    localModelName: 'localModelName',
-    analysisUrl: 'analysisUrl',
-    analysisType: 'analysisType',
-    testApiBtn: 'test-api-btn',
-    testAnalysisBtn: 'test-analysis-btn',
-    tabsContainer: 'tabs',
-    userLocationSelect: 'user-location-select',
-    myProfileSetting: 'my-profile-setting',
-    infoTooltip: 'info-tooltip',
-    responseTimer: 'response-timer',
-    geoContextCard: 'geo-context-card',
-    geoUserName: 'geo-user-name',
-    geoMatchName: 'geo-match-name',
-    userLocation: 'user-location',
-    matchLocation: 'match-location',
-    userTime: 'user-time',
-    matchTime: 'match-time',
-    userTimeOfDay: 'user-time-of-day',
-    matchTimeOfDay: 'match-time-of-day',
-    userTimezone: 'user-timezone',
-    matchTimezone: 'match-timezone',
-    userCountry: 'user-country',
-    matchCountry: 'match-country',
-    timeDifference: 'time-difference',
-    distanceInfo: 'distance-info',
-    refinementActions: 'refinement-actions',
 };
 
 const state = {

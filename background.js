@@ -1,23 +1,16 @@
 // background.js (Re-architected for Manifest V3 Robustness with Heartbeat)
 import { generatePrompts } from './prompts.js';
+import { generatePrompts } from './prompts.js';
 import { runFullConversationAnalysis, determineConversationState, hasRecentGreeting } from './conversationHelpers.js';
 import spacetime from './lib/spacetime.min.js';
 import informal from './lib/spacetime-informal.min.js';
+import { DEFAULTS } from './constants.js';
 
 spacetime.extend(informal);
 
 const DEBUG = {
     log: (category, message, data = null) => console.log(`[WINGMAN-BG-${category.toUpperCase()}] ${message}`, data ?? ''),
     error: (category, message, error = null) => console.error(`[WINGMAN-BG-${category.toUpperCase()}-ERROR] ${message}`, error ?? ''),
-};
-
-// --- NEW: Default configuration to prevent undefined settings ---
-const DEFAULTS = {
-    local_llama_url: 'http://localhost:8080/v1/chat/completions',
-    local_model_name: 'llama3:latest',
-    local_llama_api_key: '',
-    analysis_url: 'http://10.0.0.24:8000/analyze',
-    analysis_type: 'local',
 };
 
 const abortControllers = new Map();
