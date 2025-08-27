@@ -333,7 +333,13 @@ chrome.runtime.onConnect.addListener((port) => {
                         }
 
                     } catch (e) {
-                        const fallbackError = e.name === 'AbortError' ? 'External analysis timed out.' : 'External analysis failed.';
+                        let fallbackError;
+                        if (e.name === 'AbortError') {
+                            fallbackError = 'External analysis timed out.';
+                        } else {
+                            // Provide a more specific error for other fetch-related issues (e.g., network, CORS)
+                            fallbackError = `External analysis failed: ${e.message}.`;
+                        }
                         DEBUG.error('NLP', `${fallbackError} Falling back to local analysis.`, e);
                         try {
                             port.postMessage({
