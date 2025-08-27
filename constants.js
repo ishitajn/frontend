@@ -31,6 +31,8 @@ export const FLIRT_LEVEL_OPTIONS = ['none', 'low', 'medium', 'high', 'very high'
 
 export const PACE_OPTIONS = ['slow', 'steady', 'fast'];
 
+export const ENGAGEMENT_SCORE_OPTIONS = ['unknown', 'low', 'medium', 'high', 'very high'];
+
 
 // ===================================================================================
 // SECTION 2: STORAGE AND SETTINGS KEYS
@@ -145,7 +147,6 @@ export const ANALYSIS_VIEW_SCHEMA = [
     { label: 'Suppress Greeting?', path: 'conversationAnalysis.suppressGreeting', type: 'checkbox' },
     { type: 'divider', label: 'Last Message Subtext (Local)' },
     { label: 'Is Direct Question?', path: 'conversationAnalysis.lastMessageAnalysis.isDirectQuestion', type: 'checkbox' },
-    { label: 'Is Low Effort?', path: 'conversationAnalysis.lastMessageAnalysis.isLowEffort', type: 'checkbox' },
     { label: 'Is Sarcastic?', path: 'conversationAnalysis.lastMessageAnalysis.isSarcastic', type: 'checkbox' },
     { label: 'Is Ambiguous?', path: 'conversationAnalysis.lastMessageAnalysis.isAmbiguous', type: 'checkbox' },
     { label: 'Is Vulnerable?', path: 'conversationAnalysis.lastMessageAnalysis.isVulnerable', type: 'checkbox' },
@@ -153,6 +154,7 @@ export const ANALYSIS_VIEW_SCHEMA = [
     { type: 'divider', label: 'Overall Analysis (Backend)' },
     { label: 'Valence (Sentiment)', path: 'conversationAnalysis.lastMessageAnalysis.valence', type: 'slider', min: -1, max: 1, step: 0.1, labels: { '-1': 'Very Negative', '-0.5': 'Negative', '-0.1': 'Neutral', '0.5': 'Positive', '1': 'Very Positive' } },
     { label: 'Arousal (Engagement)', path: 'conversationAnalysis.lastMessageAnalysis.arousal', type: 'slider', min: -1, max: 1, step: 0.1, labels: { '-1': 'Bored/Calm', '-0.5': 'Low Energy', '-0.1': 'Neutral', '0.5': 'Excited', '1': 'Agitated' } },
+    { label: 'Engagement Score', path: 'conversationAnalysis.lastMessageAnalysis.recent_engagement_score', type: 'select', options: () => ENGAGEMENT_SCORE_OPTIONS },
     { label: 'Flirtation Level', path: 'conversationAnalysis.flirtation_level', type: 'select', options: () => FLIRT_LEVEL_OPTIONS },
     { label: 'Pace', path: 'conversationAnalysis.pace', type: 'select', options: () => PACE_OPTIONS },
     { type: 'divider', label: 'Power Dynamics (Backend)' },

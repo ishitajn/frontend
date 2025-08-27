@@ -729,44 +729,46 @@ function transformExternalAnalysis(externalData) {
 
     // Helper to map sentiment string to a numeric valence score (-1 to 1)
     const getValence = (sentiment) => {
-        const sentimentMap = {
-            'very positive': 0.8,
-            'positive': 0.5,
-            'neutral': 0.0,
-            'negative': -0.5,
-            'very negative': -0.8
-        };
+        const sentimentMap = { 'very positive': 0.8, 'positive': 0.5, 'neutral': 0.0, 'negative': -0.5, 'very negative': -0.8 };
         return sentimentMap[sentiment?.toLowerCase()] ?? 0.0;
     };
 
     // Helper to map engagement string to a numeric arousal score (-1 to 1)
     const getArousal = (engagement) => {
-        const arousalMap = {
-            'very high': 0.8,
-            'high': 0.5,
-            'medium': 0.0,
-            'low': -0.5,
-            'very low': -0.8
-        };
+        const arousalMap = { 'very high': 0.8, 'high': 0.5, 'medium': 0.0, 'low': -0.5, 'very low': -0.8 };
         return arousalMap[engagement?.toLowerCase()] ?? 0.0;
     };
 
     const transformed = {
         conversationState: conversation_analysis?.Last_message_day || 'UNKNOWN',
-        suppressGreeting: conversation_analysis?.greeting_detected === false,
+        suppressGreeting: conversation_analysis?.greeting_detected === false, // Note the inversion
         lastMessageAnalysis: {
             isDirectQuestion: conversation_analysis?.match_last_message_has_question === true,
-            isLowEffort: conversation_analysis?.recent_engagement_score === 'low',
-            isSarcastic: false, // Not provided in external payload
-            isAmbiguous: false, // Not provided
-            isVulnerable: false, // Not provided
+            recent_engagement_score: conversation_analysis?.recent_engagement_score || 'unknown',
+            // isLowEffort is now deprecated in favor of recent_engagement_score
+            isSarcastic: false,
+            isAmbiguous: false,
+            isVulnerable: false,
             valence: getValence(analysis?.sentiment),
             arousal: getArousal(analysis?.engagement),
-            intents: [], // Not provided, default to empty
+            intents: [],
         },
-        memory: memory || {}, // Assume memory structure is compatible or provided as is
-        conversation_analysis: conversation_analysis || {} // Pass this through for the UI tab
+        memory: memory || {},
+        conversation_analysis: conversation_analysis || {}
     };
+
+    // De-duplicate: Remove keys from the raw object that have been mapped to canonical fields
+    if (transformed.conversation_analysis) {
+        delete transformed.conversation_analysis.Last_message_day;
+        delete transformed.conversation_analysis.greeting_detected;
+        delete transformed.conversation_analysis.match_last_message_has_question;
+        delete transformed.conversation_analysis.recent_engagement_score;
+    }
+     if (transformed.analysis) {
+        delete transformed.analysis.sentiment;
+        delete transformed.analysis.engagement;
+    }
+
 
     return transformed;
 }
