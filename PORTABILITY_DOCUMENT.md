@@ -1,4 +1,4 @@
-# Portability Document: AI Assistant Extension (v4.0 FINAL)
+# Portability Document: AI Assistant Extension (v5.0 FINAL)
 
 This document provides a complete technical specification for the "AI Assistant" Chrome Extension. It is designed to be detailed enough for a developer or another AI to recreate the extension with 100% fidelity without access to the original source code.
 
@@ -39,15 +39,11 @@ The AI Assistant (internally branded "Wingman AI") is a sophisticated browser ex
 *   `prompts/`: Directory for prompt-building modules (system, context, task).
 
 ## 5. File-by-File Breakdown (Enhanced Detail)
-
-(This section contains the detailed pseudo-code and natural language explanations for each file, as composed in previous steps. It is omitted here for brevity but is present in the final file.)
+(This section contains the detailed pseudo-code and natural language explanations for each file, as composed in previous steps.)
 
 ## 6. Visual Representations
 
 ### 6.1. UI Layout Wireframe
-
-This wireframe shows the basic visual structure of the popup's main view.
-
 ```
 +------------------------------------------+
 | [Logo] Wingman AI         [Reset][⚙]     |
@@ -77,9 +73,6 @@ This wireframe shows the basic visual structure of the popup's main view.
 ```
 
 ### 6.2. Component Architecture
-
-This diagram illustrates the primary components and their relationships.
-
 ```
 +-------------------+      Port      +---------------------+
 |    Popup UI       |<--------------->|  Background Script  |
@@ -96,42 +89,104 @@ executeScript() |                                       | (fetch)
 ```
 
 ### 6.3. Core Data Flow
-
-This diagram shows the sequential flow of data during a standard generation request.
-
 ```
 1. [User] -> Opens Popup
-
 2. [Popup] -> Injects content-scraper.js into Active Tab
-
 3. [Content Scraper] -> Reads DOM, returns structured {scrapedData}
-
 4. [Popup] -> Sends {scrapedData} to Background Script (action: "getNlpAnalysis")
-
 5. [Background] -> Receives data, performs local analysis, updates match memory, saves to storage.
-
 6. [Background] -> Sends back {matchProfile} with analysis to Popup.
-
 7. [Popup] -> User adjusts UI controls and clicks "Generate".
-
 8. [Popup] -> Sends {taskInstructions} to Background Script (action: "getFinalPayload")
-
 9. [Background] -> Generates final System and User prompts using all available data.
-
 10. [Background] -> Sends prompts to AI Model API (fetch).
-
 11. [AI Model API] -> Returns response text.
-
 12. [Background] -> Sends final response text to Popup (action: "generationUpdate").
-
 13. [Popup] -> Displays response text in the UI and pastes it into the web page.
 ```
 
 ## 7. UI/UX Description (Final, Detailed Version)
-(This section contains the detailed breakdown of the UI layout, components, settings view, and debug modal, as composed in previous steps. It is omitted here for brevity but is present in the final file.)
+
+The user interface and experience are designed to feel powerful yet intuitive, giving the user a sense of being a "mission controller" for their AI co-pilot.
+
+*   **UI Layout and Visual Flow**: The UI is a single-page application within a fixed-width popup. The layout is vertical, guiding the user's eye from top to bottom. It begins with the output (`#response-area`), moves to the primary action (`#generate-btn`), then to secondary inputs (`#custom-instruction` and toggles), and finally to the fine-tuning controls in the tabbed section. This hierarchy places the most important elements in the most accessible locations. The use of `card` containers visually groups related controls, creating a clean, organized, and uncluttered workspace.
+
+*   **Theme & Styling**: A modern dark theme with a dark grey background (`#1a1a1a`), slightly lighter cards (`#242424`), and a bright amber-yellow accent (`#ffc107`). The aesthetic is functional and tech-oriented, prioritizing clarity and reducing eye strain.
+
+*   **Views**: The UI is composed of four distinct views:
+    *   `#loading-view`: A simple view with a spinner and "Reading page..." text.
+    *   `#error-view`: Displays an error title and message.
+    *   `#main-view`: The primary user interface.
+    *   `#settings-view`: A separate screen for global configuration.
+
+### Main View Element Breakdown
+
+*   **Header (`.app-header`)**:
+    *   `#reset-match-btn`: **Reset Icon.** Clears settings for the current match.
+    *   `#settings-btn`: **Gear Icon.** Switches the display to the `#settings-view`.
+
+*   **Response Area (`#response-area`)**:
+    *   **Purpose**: An editable `div` where the final AI-generated message is displayed.
+    *   **States**: `loading` class adds a blinking ellipsis; `error` class turns text red.
+
+*   **Refinement Actions (`#refinement-actions`)**:
+    *   **Purpose**: A container for `.btn-refine` buttons ("Make it Funnier", etc.) that appear after a message is generated.
+    *   **Action**: Sends a "refineAIResponse" message to `background.js`.
+
+*   **Custom Instructions (`#custom-instruction`)**: A `textarea` for the user to type a specific goal for the AI.
+
+*   **Quick Toggles (`.quick-toggles`)**: Custom-styled switches for boolean operations.
+    *   `#question-toggle-checkbox`: "End w/ Question"
+    *   `#geo-context-toggle`: "Use Geo-context"
+    *   `#new-topic-toggle`: "Start Fresh"
+    *   `#strict-goal-toggle`: "Strict Goal"
+
+*   **Generate Actions (`.generate-actions`)**:
+    *   `#generate-btn`: The primary, amber-colored button. Triggers `handleGenerateClick`. Its text and state change to "Thinking..." or "Refreshing..." when disabled.
+    *   `#copy-btn`: **Copy Icon.** Copies the response text.
+    *   `#cancel-btn`: **Circle-X Icon.** Becomes visible during generation to send a "cancelGeneration" message.
+
+*   **Tuning Tabs (`.tabs` & `.tab-content`)**:
+    *   **`#tune-response` Tab**: Contains dropdowns (`#linguistic-style-select`) and sliders (`#flirty-slider`, etc.) for fine-tuning AI parameters. Slider labels update in real-time.
+    *   **Other Tabs (`#analysis`, etc.)**: Display formatted debug information.
+
+### Settings View Element Breakdown
+
+*   **Header (`.settings-header`)**:
+    *   `#back-btn`: **Back Arrow Icon.** Returns the user to the `#main-view`.
+*   **Connection Details Card**:
+    *   `#localLlamaUrl`, `#localModelName`, `#localLlamaApiKey`: Text inputs for power users to connect their own local AI model.
+    *   `#test-api-btn`: A "Test" button next to the URL to verify the connection. The button provides feedback by changing the input field's border to green (success) or red (failure).
+*   **Analysis Service Card**:
+    *   `#analysisUrl`, `#test-analysis-btn`: An input and test button for an optional, external analysis service.
+    *   `#analysisType`: A dropdown to select the analysis level (Local, Simple, Enhanced).
+*   **Global Defaults Card**:
+    *   `#user-location-select`: A dropdown to set a default location for geo-calculations.
+    *   `#my-profile-setting`: A large `textarea` for the user to describe themselves, providing the AI with essential context.
+    *   `#master-reset-btn`: A button to reset all global settings to their defaults.
+
+### Debug Modal Breakdown
+
+*   **Overlay (`#debug-modal-overlay`)**: A semi-transparent black overlay that covers the popup, focusing attention on the modal.
+*   **Modal (`.modal`)**: A card that appears in the center of the overlay.
+*   **Multi-Step Navigation**: The modal has "Back" and "Next" buttons to navigate between two views: "Context" and "Final Payload".
+*   **Context View**: Displays all the data fed into the prompt-building process (profiles, history, analysis). All fields are presented in editable inputs, textareas, and selects, allowing the user to override any piece of data before generation.
+*   **Final Payload View**: Shows the final, constructed System and User prompts that will be sent to the AI. These are also in editable textareas for last-minute changes.
+*   **Final Action**: The "Next" button becomes a "Send to AI" button on the final step, which closes the modal and initiates the AI request with the potentially modified data.
 
 ## 8. User Workflows (Enhanced UX Focus)
-(This section contains the narrative, UX-focused descriptions of the standard, refinement, and debug workflows, as composed in previous steps. It is omitted here for brevity but is present in the final file.)
+
+*   **Standard Workflow: The Creative Co-pilot**
+    1.  **Intent**: The user wants help breaking the ice or continuing a conversation.
+    2.  **Experience**: Upon opening the extension, the user feels a sense of control as the UI quickly loads and presents a clear set of tools. They are not just getting a random suggestion; they are actively directing the AI. Adjusting the "Flirt Level" and "Length" sliders feels tactile and responsive, as the descriptive labels update instantly. Clicking "Generate" provides immediate visual feedback—the UI dims, the timer starts—creating a sense of anticipation. The final message appearing in both the popup and the website's text box feels seamless and magical, like having a co-pilot.
+
+*   **Refinement Workflow: The Iterative Sculptor**
+    1.  **Intent**: The first AI suggestion is good but not perfect. The user wants to tweak it.
+    2.  **Experience**: Instead of having to start over, the user feels empowered by the refinement buttons. This workflow is quick and iterative. The user feels like they are sculpting the perfect message with the AI's help, rather than just accepting a take-it-or-leave-it suggestion. It turns a simple generation into a creative partnership.
+
+*   **Debug Workflow: The Power User's Deep Dive**
+    1.  **Intent**: The user is technically savvy and wants to understand exactly what the AI is being told, or wants to force a very specific, nuanced output that the main UI controls don't allow for.
+    2.  **Experience**: Enabling debug mode transforms the user from a pilot to an engineer. The modal provides a "peek under the hood," creating a feeling of transparency and ultimate control. The user can see the raw data the AI is using and can directly edit the final prompts. This workflow provides a powerful escape hatch for advanced users, ensuring they are never limited by the simplified main interface.
 
 ## 9. Installation and Usage Instructions
 
