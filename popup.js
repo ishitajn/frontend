@@ -803,7 +803,6 @@ function stopHeartbeat() {
 }
 
 function setupEventListeners() {
-    window.addEventListener('focus', refreshDataAndUI);
     document.getElementById(SELECTORS.generateBtn)?.addEventListener('click', handleGenerateClick);
     document.getElementById(SELECTORS.copyBtn)?.addEventListener('click', handleCopyClick);
     document.getElementById(SELECTORS.cancelBtn)?.addEventListener('click', handleCancelClick);
