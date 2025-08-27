@@ -736,6 +736,7 @@ function transformExternalAnalysis(externalData) {
             intents: [], // Not provided, default to empty
         },
         memory: memory || {}, // Assume memory structure is compatible or provided as is
+        conversation_analysis: conversation_analysis || {} // Pass this through for the UI tab
     };
 
     return transformed;

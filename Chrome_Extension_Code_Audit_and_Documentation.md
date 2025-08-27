@@ -892,6 +892,109 @@ async function fetchLocalLlamaResponse(apiKey, payload, settings, signal) { /* .
 *   **Dependencies:** Relies on the selector `textarea[data-qa-role="message-input"]`, which is a robust, test-id based selector. This is good practice.
 *   **Side Effects:** Modifies the value of a DOM element and dispatches an `input` event.
 
+### 4.2 Functions in `popup.js`
+
+#### `initializePopup()`
+*   **Purpose:** The main entry point for the popup's execution, triggered by the `DOMContentLoaded` event.
+*   **Flow:**
+    1.  Calls `setupEventListeners()` to attach listeners to all interactive UI elements.
+    2.  Calls `setupPort()` to establish the connection with the background script.
+    3.  Calls `loadAndApplySettings()` to populate the UI with stored user preferences.
+    4.  Calls `refreshDataAndUI()` to initiate the page scraping and analysis workflow.
+*   **Dependencies:** `setupEventListeners`, `setupPort`, `loadAndApplySettings`, `refreshDataAndUI`.
+
+#### `sendMessage(message)`
+*   **Purpose:** A robust wrapper for `port.postMessage` that handles cases where the connection to the service worker may have been terminated.
+*   **Flow:**
+    1.  Checks if the `port` object is active.
+    2.  If not, it calls `setupPort()` to reconnect and then attempts to send the message after a 100ms delay.
+    3.  If the port is active but the send fails (a common scenario if the service worker just went inactive), it nullifies the port and recursively calls itself to trigger the reconnection logic.
+*   **Dependencies:** `setupPort`, `chrome.runtime.Port`.
+
+#### `handleTabClick(event)`
+*   **Purpose:** Manages the UI logic for the main tabbed interface.
+*   **Flow:**
+    1.  Deactivates all tabs and content panels.
+    2.  Activates the clicked tab and its corresponding content panel.
+    3.  If the clicked tab is one of the analysis tabs (`analysis`, `topic-analysis`, `conv-analysis`), it calls `renderDebugView` to dynamically render its content.
+*   **Dependencies:** `renderDebugView`.
+
+#### `renderDebugView(viewName)`
+*   **Purpose:** Renders the content for the data-driven analysis tabs.
+*   **Flow:**
+    1.  Uses the `viewName` to look up the corresponding schema (`ANALYSIS_VIEW_SCHEMA`, etc.) from a map.
+    2.  Calls `renderViewFromSchema`, passing it the correct schema and the global `modalState` object.
+    3.  Injects the generated HTML into the appropriate tab content `div`.
+*   **Dependencies:** `renderViewFromSchema`, `constants.js` (for schemas), `modalState` (global variable).
+
+#### `renderViewFromSchema(schema, state)`
+*   **Purpose:** A generic function that generates an HTML table of controls based on a schema definition.
+*   **Flow:**
+    1.  Iterates through a `schema` array.
+    2.  For each item in the schema, it gets the corresponding value from the `state` object using a dot-notation path (e.g., `conversationAnalysis.memory.dateArcPhase`).
+    3.  It calls a `create*` helper function (e.g., `createSelect`, `createSlider`) to generate the HTML for the control.
+    4.  Returns the complete HTML string for the table.
+*   **Dependencies:** `create*` helper functions.
+
+#### Message Handlers (`handleNlpAnalysisResponse`, `handleGeoCalculationsResponse`, etc.)
+*   **Purpose:** These functions are called from the main `port.onMessage` listener. Each one handles a specific `action` from the background script.
+*   **`handleNlpAnalysisResponse(message)`:** This is a critical handler.
+    1.  Receives the complete `matchProfile` from the background.
+    2.  Stores the profile and scraped data in the local `state` object.
+    3.  **Crucially, it populates the `modalState` object**, which is the data source for all the dynamic analysis tabs and the debug modal.
+    4.  Triggers other UI updates like loading settings and displaying the conversation status.
+*   **`handleFinalPayloadResponse(message)`:** Receives the fully-built prompt from the background and immediately sends it back in a `getAIResponse` message to be executed.
+
+#### Settings Management (`handleSettingChange`, `loadAndApplySettings`, `handleMasterReset`, etc.)
+*   **Purpose:** A group of functions for persisting UI control values to `chrome.storage.local` and loading them back into the UI.
+*   **`handleSettingChange(event)`:** An event listener that fires on `input` or `change`. It reads a `data-storage-key` attribute from the target element and saves its value to storage. It correctly handles both global settings and match-specific settings (if a `currentMatchUUID` is present).
+*   **`loadAndApplySettings()`:** Retrieves all settings from storage (global and match-specific) and populates the values of all UI elements that have a `data-storage-key` attribute.
+
+#### `refreshDataAndUI()`
+*   **Purpose:** The main function to initiate the data gathering and analysis process.
+*   **Flow:**
+    1.  Checks if a generation is already in progress; if so, it just syncs the UI and exits.
+    2.  Identifies the current website (Tinder/Bumble) to determine which scraper function to use.
+    3.  Uses `chrome.scripting.executeScript` to inject `content-scraper.js` and run the appropriate scraper function.
+    4.  On receiving the scraped data, it sends a `getNlpAnalysis` message to the background script to start the analysis pipeline.
+*   **Dependencies:** `chrome.tabs.query`, `chrome.scripting.executeScript`, `content-scraper.js` functions.
+
+### 4.3 Functions in `content-scraper.js`
+
+#### `scrapeTinderPage()`
+*   **Purpose:** To extract all relevant information from a Tinder chat page. This function is designed to be injected directly into the page's context.
+*   **Parameters:** None.
+*   **Dependencies:** Relies entirely on the Tinder page's DOM structure. It uses query selectors that are highly specific and likely to break if Tinder updates its class names.
+*   **Returns:** `Object` - A structured object containing all scraped data, or an object with an `error` key if scraping fails.
+*   **Break/Risk Detection (High):**
+    *   The selectors are obfuscated (e.g., `.Typs\\(display-3-strong\\)`) and not based on stable attributes like `data-testid`. This makes the scraper extremely fragile and prone to breaking with any minor UI update from Tinder.
+    *   The date parsing logic is complex and relies on string matching ("today", "yesterday") and specific date formats (`MM/DD/YY`), which could fail in different locales or if the format changes.
+    *   Error handling is a single `try...catch` block around the entire function. A failure in one part (e.g., parsing the profile) will cause the entire scrape to fail.
+
+#### `pasteTextIntoTinderInput(textToPaste)`
+*   **Purpose:** To programmatically paste the generated message into the Tinder message input field.
+*   **Parameters:**
+    *   `textToPaste`: `String` - The text to insert.
+*   **Dependencies:** Relies on the selector `textarea[placeholder="Type a message"]`, which is reasonably stable but could change.
+*   **Side Effects:** Modifies the value of a DOM element on the page and dispatches an `input` event to ensure the web application recognizes the change.
+
+#### `scrapeBumblePage()`
+*   **Purpose:** To extract all relevant information from a Bumble chat page.
+*   **Parameters:** None.
+*   **Dependencies:** Relies on Bumble's DOM structure, using `data-qa-role` attributes where possible (e.g., `[data-qa-role="message-list"]`), which is more robust than class-based selectors.
+*   **Returns:** `Object` - A structured object with scraped data or an error.
+*   **Break/Risk Detection (Medium):**
+    *   While it uses some `data-qa-role` selectors which are good, it also falls back to class-based selectors (`.profile__name`, `.message-bubble__text`) which are less stable.
+    *   The date parsing logic is complex and has to handle multiple formats, including relative ones ("8 hours ago"), which it currently ignores in favor of the last known absolute date. This could lead to incorrect timestamps for very recent messages.
+    *   The logic to group consecutive messages from the same user is a good feature but adds complexity and a potential point of failure.
+
+#### `pasteTextIntoBumbleInput(textToPaste)`
+*   **Purpose:** To programmatically paste the generated message into the Bumble message input field.
+*   **Parameters:**
+    *   `textToPaste`: `String` - The text to insert.
+*   **Dependencies:** Relies on the selector `textarea[data-qa-role="message-input"]`, which is a robust, test-id based selector. This is good practice.
+*   **Side Effects:** Modifies the value of a DOM element and dispatches an `input` event.
+
 ## Section 5: Execution Flow Graphs
 
 *This section visualizes the primary execution flows of the extension using text-based diagrams.*
