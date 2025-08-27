@@ -262,9 +262,14 @@ chrome.runtime.onConnect.addListener((port) => {
 
                 const newCacheHash = await generateCacheHash(scrapedData.conversationHistory, scrapedData.theirProfile);
 
-                const settings = await chrome.storage.local.get(['analysis_type', 'analysis_url']);
+                const settings = await chrome.storage.local.get(['analysis_type', 'analysis_url', 'analysisApiTimeout']);
                 const analysisType = settings.analysis_type || 'local';
                 const analysisUrl = settings.analysis_url || DEFAULTS.analysis_url;
+
+                // Defensively set a minimum timeout to avoid issues with stale stored settings.
+                if (!settings.analysisApiTimeout || settings.analysisApiTimeout < 600000) {
+                    settings.analysisApiTimeout = 600000;
+                }
 
                 // Bypass cache if using a non-local analysis for now
                 if (analysisType === 'local' && matchProfile.memory?.lastCacheHash === newCacheHash && matchProfile.analysis) {
