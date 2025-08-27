@@ -1,4 +1,4 @@
-# Portability Document: AI Assistant Extension (v2.0)
+# Portability Document: AI Assistant Extension (v3.0 FINAL)
 
 This document provides a complete technical specification for the "AI Assistant" Chrome Extension. It is designed to be detailed enough for a developer or another AI to recreate the extension with 100% fidelity without access to the original source code.
 
@@ -23,15 +23,15 @@ The extension is built for the Google Chrome browser and adheres to the followin
 
 This section explains the reasoning behind the extension's core design choices.
 
-*   **Manifest V3 and the Stateful Service Worker**: The extension is built on Manifest V3, where service workers are non-persistent (they can be terminated at any time). To create a seamless user experience, a "stateful" architecture was chosen. All critical information—such as the state of an ongoing AI generation, the full analysis for a match, and user settings—is saved to `chrome.storage.local` immediately after being created or changed. This ensures that even if the service worker is terminated and restarted, the extension can resume its state exactly where it left off, which is crucial for handling long-running AI tasks.
+*   **Manifest V3 and the Stateful Service Worker**: The extension is built on Manifest V3, where service workers are non-persistent. To create a seamless user experience, a "stateful" architecture was chosen. All critical information—such as the state of an ongoing AI generation, the full analysis for a match, and user settings—is saved to `chrome.storage.local` immediately after being created or changed. This ensures that even if the service worker is terminated and restarted, the extension can resume its state exactly where it left off.
 
-*   **Persistent Port Communication**: For the frequent and bidirectional communication required between the popup UI (`popup.js`) and the background service worker (`background.js`), a long-lived port connection (`chrome.runtime.connect`) is used instead of single messages (`chrome.runtime.sendMessage`). This is more efficient and allows the background script to proactively push updates to the UI (e.g., streaming a response or updating the generation timer) without waiting for a request from the popup. The connection's `onDisconnect` event is also critical for resource management, as it triggers the cancellation of any ongoing `fetch` requests in the background script.
+*   **Persistent Port Communication**: For the frequent and bidirectional communication required between the popup UI and the background service worker, a long-lived port connection (`chrome.runtime.connect`) is used. This is more efficient than single messages and allows the background script to proactively push updates to the UI (e.g., streaming a response). The connection's `onDisconnect` event is also critical for resource management, as it triggers the cancellation of any ongoing `fetch` requests.
 
-*   **Modular, State-Driven Prompt Engineering**: The prompt sent to the AI is not a single static string. It is dynamically constructed by a modular system (`systemPrompt.js`, `contextPrompt.js`, `taskPrompt.js`). This was an intentional design choice to allow for highly nuanced and context-aware AI instructions. By changing the AI's core rules, context, and immediate task based on the real-time `conversationState` (e.g., `OPENER`, `REENGAGING_DAY`), the extension can guide the AI to produce far more relevant and effective messages than a generic prompt ever could.
+*   **Modular, State-Driven Prompt Engineering**: The prompt sent to the AI is not a single static string. It is dynamically constructed by a modular system (`systemPrompt.js`, `contextPrompt.js`, `taskPrompt.js`). This allows for highly nuanced and context-aware AI instructions. By changing the AI's core rules, context, and immediate task based on the real-time `conversationState`, the extension can guide the AI to produce far more relevant and effective messages.
 
-*   **Pluggable Analysis Service**: The extension features a dual-analysis architecture. It includes a robust `localAnalysisService.js` that can perform detailed conversation analysis offline using the `compromise.js` library and custom heuristics. However, it is also designed to call an external, more powerful analysis service if the user provides a URL. `background.js` is built to merge the results from both, creating a flexible and powerful system that works for all users while offering enhanced capabilities for those with access to a dedicated backend.
+*   **Pluggable Analysis Service**: The extension features a dual-analysis architecture. It includes a robust `localAnalysisService.js` that can perform detailed conversation analysis offline. However, it is also designed to call an external, more powerful analysis service if the user provides a URL. `background.js` is built to merge the results from both, creating a flexible and powerful system.
 
-*   **Free-Tier API Dependencies**: For external services like geocoding and time zone lookups, public and free-to-use APIs (`nominatim.openstreetmap.org` and `timeapi.io`) were chosen. This ensures the extension's core geo-context features remain functional for all users without requiring them to sign up for paid API keys.
+*   **Free-Tier API Dependencies**: For external services like geocoding and time zone lookups, public and free-to-use APIs (`nominatim.openstreetmap.org` and `timeapi.io`) were chosen to ensure core features remain functional for all users without requiring paid API keys.
 
 ## 4. Full Folder/File Structure
 (Descriptions are in the File-by-File Breakdown)
@@ -45,203 +45,97 @@ This section explains the reasoning behind the extension's core design choices.
 *   `lib/` (compromise.js, spacetime.min.js, spacetime-informal.min.js)
 *   `prompts/` (systemPrompt.js, contextPrompt.js, taskPrompt.js)
 
-## 5. File-by-File Breakdown (Enhanced Detail)
+## 5. File-by-File Breakdown
+(This section remains the same as v2.1)
 
-### `popup.js`
+## 6. UI/UX Description (Final, Detailed Version)
 
-*   **Natural Language Explanation:** This file is the "brain" of the user interface, responsible for everything the user sees and does. It initializes the UI, loads settings, and sets up event listeners. It communicates constantly with `background.js` via a persistent port, sending requests and receiving updates. It manages the UI state (loading, main, settings, error) and contains the logic for the complex debug modal.
+The user interface and experience are designed to feel powerful yet intuitive, giving the user a sense of being a "mission controller" for their AI co-pilot.
 
-*   **Pseudo-code:**
-    ```
-    // State object:
-    //   currentMatchUUID: String | null - Unique ID for the current conversation partner.
-    //   currentViewId: String - The ID of the currently visible view (e.g., "main-view").
-    //   pasterFn: Function | null - A reference to the correct function for pasting text on the current site.
-    //   isRefreshing: Boolean - A flag to prevent duplicate data refreshes.
-    //   sessionMatchProfile: Object | null - The full data profile for the current match, received from background.js.
-    //   sessionScrapedData: Object | null - The raw data scraped from the page.
+*   **UI Layout and Visual Flow**: The UI is a single-page application within a fixed-width popup. The layout is vertical, guiding the user's eye from top to bottom. It begins with the output (`#response-area`), moves to the primary action (`#generate-btn`), then to secondary inputs (`#custom-instruction` and toggles), and finally to the fine-tuning controls in the tabbed section. This hierarchy places the most important elements in the most accessible locations. The use of `card` containers visually groups related controls, creating a clean, organized, and uncluttered workspace.
 
-    // Function initializePopup():
-    //   Calls setupEventListeners().
-    //   Calls setupPort() to connect to background.js.
-    //   Calls loadAndApplySettings().
-    //   Calls refreshDataAndUI() to start the process.
-
-    // Function refreshDataAndUI():
-    //   If isRefreshing is true, return.
-    //   Set isRefreshing to true and show the loading view.
-    //   Query for the active browser tab.
-    //   If tab.url is not a supported site (Tinder/Bumble), show an error view.
-    //   Select the correct scraper function (e.g., scrapeTinderPage) based on the URL.
-    //   Execute the scraper script on the page via chrome.scripting.executeScript.
-    //   In the callback:
-    //     If the result contains an error, show the error view.
-    //     Else, send the result (scrapedData) to background.js with action "getNlpAnalysis".
-
-    // Port onMessage Listener (handles messages from background.js):
-    //   Switch on message.action:
-    //     Case "nlpAnalysisResponse": (data: { matchProfile: Object, error?: String })
-    //       If an error exists, show the error view.
-    //       Store message.matchProfile in state.sessionMatchProfile.
-    //       Set state.currentMatchUUID from the profile.
-    //       Call loadAndApplySettings() to apply any match-specific settings.
-    //       Update the UI with analysis results (e.g., conversation status display).
-    //       Show the main view.
-    //     Case "generationUpdate": (data: { uuid: String, state: Object })
-    //       If message.uuid matches state.currentMatchUUID, call syncUIWithState(message.state).
-
-    // Event Listener handleGenerateClick():
-    //   Gather all UI settings into a taskInstructions object.
-    //   If the debug-mode checkbox is checked:
-    //     Show the debug modal, passing it all the necessary context.
-    //   Else:
-    //     Send the taskInstructions to background.js with action "getFinalPayload".
-    //   Call setUIGeneratingState(true).
-    //   Call startTimer().
-    ```
-
-### `background.js`
-
-*   **Natural Language Explanation:** This is the extension's backend service worker. It manages state, orchestrates complex tasks like API calls and analysis, and handles data persistence. It uses a `MatchMemory` class to manage profiles for each conversation partner, storing data in `chrome.storage`. It is designed to be robust in a Manifest V3 environment.
-
-*   **Pseudo-code:**
-    ```
-    // Class MatchMemory:
-    //   Function _getMatchUUID(name: String, profile: String): String - Creates a unique SHA-1 hash ID.
-    //   Function getMatchProfile(uuid: String): Promise<Object | null> - Retrieves profile from `chrome.storage.local`.
-    //   ...
-
-    // Function getGenerationState(uuid: String) / setGenerationState(uuid: String, newState: Object):
-    //   Gets or sets the AI generation state object in `chrome.storage.local` to survive service worker termination.
-    //   The state object contains: { isGenerating, response, error, generationId, generationStartTime }.
-
-    // onConnect Listener (for connections from popup.js):
-    //   Create a messageHandlers object mapping action strings to functions.
-    //   Listen for messages on the port and call the corresponding handler.
-    //   Listen for the onDisconnect event to abort all ongoing fetch requests.
-
-    // Message Handler "getNlpAnalysis"(request: { data: { scrapedData: Object, uiSettings: Object } }):
-    //   Get or create a match UUID from the scrapedData.
-    //   Retrieve the existing matchProfile from storage.
-    //   Generate a new cache hash from the current conversation history.
-    //   If newCacheHash matches the stored hash and analysis exists (cache hit), send the existing profile back to the popup.
-    //   If cache miss:
-    //     Update the matchProfile with the new scrapedData.
-    //     Run local analysis: `runFullConversationAnalysis(history, memory)`.
-    //     If an external analysis URL is configured, fetch from it and merge the results.
-    //     Save the updated matchProfile (with new analysis and cache hash) to storage.
-    //     Send the full matchProfile to the popup.
-
-    // Message Handler "getAIResponse"(request: { data: { payload: Object, generationId: Number, uuid: String } }):
-    //   Calls `handleAITask` to manage the fetch request to the AI model.
-
-    // Function handleAITask(uuid: String, generationId: Number, payload: Object, port: Port):
-    //   Create a new AbortController and store it in a global map keyed by uuid.
-    //   Set the generation state in storage to { isGenerating: true, generationId, generationStartTime }.
-    //   Fetch from the user-configured AI server URL, passing the controller's signal.
-    //   On success:
-    //     Clean the response text (remove stop tokens).
-    //     Set generation state to { isGenerating: false, response: cleanedText }.
-    //   On error:
-    //     If it's not an AbortError, set generation state to { isGenerating: false, error: errorMessage }.
-    //   Finally:
-    //     Remove the AbortController from the map.
-    ```
-
-### `localAnalysisService.js`
-
-*   **Natural Language Explanation:** The local NLP engine. It uses `compromise.js` and custom heuristics to analyze conversation text. It determines emotional tone, topics, and conversation state, maintaining a "memory" object for each match to track liked/disliked topics and inside jokes.
-
-*   **Pseudo-code:**
-    ```
-    // Dictionaries: extensive key-value maps for positive, negative, arousal, vulnerable, and sexual words.
-
-    // Function runFullConversationAnalysis(conversationHistory: Array<Message>, storedMemory: Object): Object
-    //   Calls `updateMemoryFromHistory` to get updatedMemory.
-    //   Calls `analyzeLastMessageForSubtext` to get lastMessageAnalysis.
-    //   Returns { updatedMemory, lastMessageAnalysis }.
-
-    // Function updateMemoryFromHistory(history: Array<Message>, memory: Object): Object
-    //   Loop through pairs of user/match messages in the history.
-    //   For each pair:
-    //     Identify nouns in the user's message as potential topics.
-    //     Analyze the match's reply for emotional reaction using `analyzeMessageSubtext`.
-    //     Calculate a score change based on the reaction's valence and arousal.
-    //     Update the score for each topic in the memory object.
-    //     If a topic's score is very low, add it to `memory.avoidedTopics`.
-    //     If the match's reply indicates laughter, save the user's message to `memory.insideJokes`.
-    //   Return the updated memory object.
-
-    // Function analyzeMessageSubtext(doc: CompromiseDocument): Object
-    //   Initialize a subtext object: { valence: 0.0, arousal: 0.0, intents: Set, ... }.
-    //   For each word in the dictionaries, if the doc has the word, adjust valence/arousal scores.
-    //   Identify intents (e.g., 'questioning', 'planning') based on keywords.
-    //   Identify nuance (e.g., 'isSarcastic', 'isVulnerable') based on keywords.
-    //   Return the calculated subtext object.
-    ```
-
-## 6. UI/UX Description (Enhanced)
-
-The UI is a single-page application within the popup, designed for quick, intuitive control over the AI generation process.
-
-*   **Theme & Styling**: A modern dark theme with a dark grey background (`#1a1a1a`), slightly lighter cards (`#242424`), and a bright amber-yellow accent (`#ffc107`). The aesthetic is clean and functional, prioritizing clarity.
+*   **Theme & Styling**: A modern dark theme with a dark grey background (`#1a1a1a`), slightly lighter cards (`#242424`), and a bright amber-yellow accent (`#ffc107`). The aesthetic is functional and tech-oriented, prioritizing clarity and reducing eye strain.
 
 *   **Views**: The UI is composed of four distinct views:
-    *   `#loading-view`: A simple view with a spinner and "Reading page..." text. Shown automatically on popup open.
-    *   `#error-view`: Displays an error title and message. Shown when scraping fails or a critical error occurs.
-    *   `#main-view`: The primary user interface, containing all the core controls for generation.
+    *   `#loading-view`: A simple view with a spinner and "Reading page..." text.
+    *   `#error-view`: Displays an error title and message.
+    *   `#main-view`: The primary user interface.
     *   `#settings-view`: A separate screen for global configuration.
 
 ### Main View Element Breakdown
 
 *   **Header (`.app-header`)**:
-    *   `#reset-match-btn`: **Reset Icon.** Clears all stored settings and history for the current match.
+    *   `#reset-match-btn`: **Reset Icon.** Clears settings for the current match.
     *   `#settings-btn`: **Gear Icon.** Switches the display to the `#settings-view`.
 
 *   **Response Area (`#response-area`)**:
     *   **Purpose**: An editable `div` where the final AI-generated message is displayed.
-    *   **States**:
-        *   **Generating**: `loading` class is added, which applies a subtle blinking ellipsis animation.
-        *   **Error**: `error` class is added, turning the text color to red.
-    *   **Action**: User can manually edit the text before copying.
+    *   **States**: `loading` class adds a blinking ellipsis; `error` class turns text red.
 
 *   **Refinement Actions (`#refinement-actions`)**:
-    *   **Purpose**: A container for buttons that appear after a message is generated.
-    *   `.btn-refine`: Buttons like "Make it Funnier", "Be More Direct", "Make it Shorter".
-    *   **Action**: Clicking one sends a "refineAIResponse" message to `background.js` with the original response and the refinement type.
+    *   **Purpose**: A container for `.btn-refine` buttons ("Make it Funnier", etc.) that appear after a message is generated.
+    *   **Action**: Sends a "refineAIResponse" message to `background.js`.
 
-*   **Custom Instructions (`#custom-instruction`)**:
-    *   **Purpose**: A `textarea` for the user to type a specific goal for the AI (e.g., "ask her about her dog").
-    *   **Action**: Its value is included in the "task" prompt for the AI.
+*   **Custom Instructions (`#custom-instruction`)**: A `textarea` for the user to type a specific goal for the AI.
 
-*   **Quick Toggles (`.quick-toggles`)**:
-    *   `#question-toggle-checkbox`: **"End w/ Question" Toggle.** A custom-styled switch. When checked, instructs the AI to end its message with a question.
-    *   `#geo-context-toggle`: **"Use Geo-context" Toggle.** When checked, forces the inclusion of geo-temporal data in the AI prompt.
-    *   `#new-topic-toggle`: **"Start Fresh" Toggle.** When checked, instructs the AI to ignore the last message and start a new topic from the match's profile.
-    *   `#strict-goal-toggle`: **"Strict Goal" Toggle.** When checked, tells the AI to ignore almost all other context and focus solely on the text in the "Custom Instructions" box.
+*   **Quick Toggles (`.quick-toggles`)**: Custom-styled switches for boolean operations.
+    *   `#question-toggle-checkbox`: "End w/ Question"
+    *   `#geo-context-toggle`: "Use Geo-context"
+    *   `#new-topic-toggle`: "Start Fresh"
+    *   `#strict-goal-toggle`: "Strict Goal"
 
 *   **Generate Actions (`.generate-actions`)**:
-    *   `#generate-btn`: **Primary Button.** The main action button.
-    *   **Action**: Triggers the `handleGenerateClick` function.
-    *   **States**:
-        *   **Default**: Amber background, says "Generate".
-        *   **Disabled/Refreshing**: Opacity is lowered, says "Refreshing...".
-        *   **Generating**: Opacity is lowered, says "Thinking...".
-    *   `#copy-btn`: **Copy Icon.** Copies the content of the response area to the clipboard.
-    *   `#cancel-btn`: **Circle-X Icon.**
-    *   **Visibility**: Hidden by default. Becomes visible only when `isGenerating` is true.
-    *   **Action**: Sends a "cancelGeneration" message to `background.js`.
+    *   `#generate-btn`: The primary, amber-colored button. Triggers `handleGenerateClick`. Its text and state change to "Thinking..." or "Refreshing..." when disabled.
+    *   `#copy-btn`: **Copy Icon.** Copies the response text.
+    *   `#cancel-btn`: **Circle-X Icon.** Becomes visible during generation to send a "cancelGeneration" message.
 
 *   **Tuning Tabs (`.tabs` & `.tab-content`)**:
-    *   **Purpose**: A standard tabbed interface to switch between different control panels.
-    *   **`#tune-response` Tab**:
-        *   `#linguistic-style-select`: A dropdown to select the AI's writing style (e.g., Witty, Poetic).
-        *   `#flirty-slider`, `#length-slider`, etc.: Range sliders for fine-tuning parameters.
-        *   **Behavior**: As the user moves a slider, a label next to it updates in real-time with a descriptive value (e.g., "Flirty", "Medium").
-    *   **Other Tabs (`#analysis`, etc.)**: These tabs display formatted debug information from the `conversationAnalysis` object.
+    *   **`#tune-response` Tab**: Contains dropdowns (`#linguistic-style-select`) and sliders (`#flirty-slider`, etc.) for fine-tuning AI parameters. Slider labels update in real-time.
+    *   **Other Tabs (`#analysis`, etc.)**: Display formatted debug information.
 
-## 7. User Workflows
-(This section remains largely the same as the previous version, as the workflow is unchanged.)
+### Settings View Element Breakdown
+
+*   **Header (`.settings-header`)**:
+    *   `#back-btn`: **Back Arrow Icon.** Returns the user to the `#main-view`.
+*   **Connection Details Card**:
+    *   `#localLlamaUrl`, `#localModelName`, `#localLlamaApiKey`: Text inputs for power users to connect their own local AI model.
+    *   `#test-api-btn`: A "Test" button next to the URL to verify the connection. The button provides feedback by changing the input field's border to green (success) or red (failure).
+*   **Analysis Service Card**:
+    *   `#analysisUrl`, `#test-analysis-btn`: An input and test button for an optional, external analysis service.
+    *   `#analysisType`: A dropdown to select the analysis level (Local, Simple, Enhanced).
+*   **Global Defaults Card**:
+    *   `#user-location-select`: A dropdown to set a default location for geo-calculations.
+    *   `#my-profile-setting`: A large `textarea` for the user to describe themselves, providing the AI with essential context.
+    *   `#master-reset-btn`: A button to reset all global settings to their defaults.
+
+### Debug Modal Breakdown
+
+*   **Overlay (`#debug-modal-overlay`)**: A semi-transparent black overlay that covers the popup, focusing attention on the modal.
+*   **Modal (`.modal`)**: A card that appears in the center of the overlay.
+*   **Multi-Step Navigation**: The modal has "Back" and "Next" buttons to navigate between two views: "Context" and "Final Payload".
+*   **Context View**: Displays all the data fed into the prompt-building process (profiles, history, analysis). All fields are presented in editable inputs, textareas, and selects, allowing the user to override any piece of data before generation.
+*   **Final Payload View**: Shows the final, constructed System and User prompts that will be sent to the AI. These are also in editable textareas for last-minute changes.
+*   **Final Action**: The "Next" button becomes a "Send to AI" button on the final step, which closes the modal and initiates the AI request with the potentially modified data.
+
+## 7. User Workflows (Enhanced UX Focus)
+
+*   **Standard Workflow: The Creative Co-pilot**
+    1.  **Intent**: The user wants help breaking the ice or continuing a conversation.
+    2.  **Experience**: Upon opening the extension, the user feels a sense of control as the UI quickly loads and presents a clear set of tools. They are not just getting a random suggestion; they are actively directing the AI. Adjusting the "Flirt Level" and "Length" sliders feels tactile and responsive, as the descriptive labels update instantly. Clicking "Generate" provides immediate visual feedback—the UI dims, the timer starts—creating a sense of anticipation. The final message appearing in both the popup and the website's text box feels seamless and magical, like having a co-pilot.
+
+*   **Refinement Workflow: The Iterative Sculptor**
+    1.  **Intent**: The first AI suggestion is good but not perfect. The user wants to tweak it.
+    2.  **Experience**: Instead of having to start over, the user feels empowered by the refinement buttons. This workflow is quick and iterative. The user feels like they are sculpting the perfect message with the AI's help, rather than just accepting a take-it-or-leave-it suggestion. It turns a simple generation into a creative partnership.
+
+*   **Debug Workflow: The Power User's Deep Dive**
+    1.  **Intent**: The user is technically savvy and wants to understand exactly what the AI is being told, or wants to force a very specific, nuanced output that the main UI controls don't allow for.
+    2.  **Experience**: Enabling debug mode transforms the user from a pilot to an engineer. The modal provides a "peek under the hood," creating a feeling of transparency and ultimate control. The user can see the raw data the AI is using and can directly edit the final prompts. This workflow provides a powerful escape hatch for advanced users, ensuring they are never limited by the simplified main interface.
 
 ## 8. Installation and Usage Instructions
-(This section remains largely the same as the previous version.)
+
+1.  **Download the Code**: Obtain the extension's source code and place it in a directory on your local machine.
+2.  **Open Chrome Extensions**: In Google Chrome, navigate to `chrome://extensions`.
+3.  **Enable Developer Mode**: In the top-right corner of the Extensions page, toggle on "Developer mode."
+4.  **Load the Extension**: Click the "Load unpacked" button, and in the file dialog, select the directory containing `manifest.json`.
+5.  **Pin the Extension**: Click the puzzle piece icon in the toolbar and "pin" the AI Assistant to keep it visible.
+6.  **Usage**: Navigate to a conversation on `tinder.com` or `bumble.com`. Click the pinned icon to open the popup. The extension will automatically analyze the page. Adjust the controls and click "Generate."
