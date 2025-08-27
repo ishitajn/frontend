@@ -141,25 +141,27 @@ function setNestedValue(obj, path, value) {
 
 function createSelect(id, dataPath, options, selectedValue) {
     const optionsHtml = options.map(opt => `<option value="${opt}" ${opt === selectedValue ? 'selected' : ''}>${opt.charAt(0).toUpperCase() + opt.slice(1)}</option>`).join('');
-    return `<select id="${id}" data-path="${dataPath}" class="modal-input">${optionsHtml}</select>`;
+    return `<select id="${id}" data-path="${dataPath}">${optionsHtml}</select>`;
 }
 
 function createMultiSelect(id, dataPath, allOptions, selectedOptions) {
     const selectedSet = new Set(selectedOptions || []);
     const optionsHtml = allOptions.map(opt => `<option value="${opt}" ${selectedSet.has(opt) ? 'selected' : ''}>${opt.charAt(0).toUpperCase() + opt.slice(1)}</option>`).join('');
-    return `<select id="${id}" data-path="${dataPath}" class="modal-input" multiple>${optionsHtml}</select>`;
+    return `<select id="${id}" data-path="${dataPath}" multiple>${optionsHtml}</select>`;
 }
 
 function createTextarea(id, dataPath, value) {
-    return `<textarea id="${id}" data-path="${dataPath}" class="modal-input">${value || ''}</textarea>`;
+    return `<textarea id="${id}" data-path="${dataPath}">${value || ''}</textarea>`;
 }
 
 function createInput(id, dataPath, value, type = 'text') {
-    return `<input type="${type}" id="${id}" data-path="${dataPath}" value="${value || ''}" class="modal-input">`;
+    return `<input type="${type}" id="${id}" data-path="${dataPath}" value="${value || ''}">`;
 }
 
 function createCheckbox(id, dataPath, checked) {
-    return `<input type="checkbox" id="${id}" data-path="${dataPath}" ${checked ? 'checked' : ''} class="modal-input">`;
+    // Note: For consistency, checkboxes might need a different structure
+    // depending on final layout choice. This is a basic implementation.
+    return `<input type="checkbox" id="${id}" data-path="${dataPath}" ${checked ? 'checked' : ''}>`;
 }
 
 function createSlider(id, dataPath, value, min, max, step, labelMap) {
@@ -209,19 +211,38 @@ function createCollapsibleJSON(title, dataObject, isEditable = true) {
 }
 
 function renderViewFromSchema(schema, state) {
-    let tableRows = '';
+    let controlGroups = '';
     for (const item of schema) {
+        // Helper to get a nested value from the state object using a path string
+        const getValue = (path) => path.split('.').reduce((o, k) => o?.[k], state);
+
         if (item.type === 'divider') {
-            tableRows += `<tr><td colspan="2" style="text-align:center; background:#333;"><strong>${item.label}</strong></td></tr>`;
+            controlGroups += `<div class="control-group-divider">${item.label}</div>`;
             continue;
         }
 
-        // Helper to get a nested value from the state object using a path string
-        const getValue = (path) => path.split('.').reduce((o, k) => o?.[k], state);
-        const value = getValue(item.path);
+        if (item.type === 'dynamic_table') {
+            const data = getValue(item.path);
+            if (data && typeof data === 'object') {
+                for (const [key, val] of Object.entries(data)) {
+                    const label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    const displayVal = typeof val === 'boolean' ?
+                        `<label class="toggle-switch" style="justify-content: flex-end;"><input type="checkbox" ${val ? 'checked' : ''} disabled><span></span></label>` :
+                        `<span class="dynamic-value">${val || 'N/A'}</span>`;
 
-        let controlHtml = '';
+                    controlGroups += `
+                        <div class="control-group">
+                            <label class="label-with-info"><span>${label}</span></label>
+                            ${displayVal}
+                        </div>`;
+                }
+            }
+            continue;
+        }
+
+        const value = getValue(item.path);
         const id = item.path.replace(/\./g, '-');
+        let controlHtml = '';
 
         switch (item.type) {
             case 'select':
@@ -231,32 +252,27 @@ function renderViewFromSchema(schema, state) {
                 controlHtml = createMultiSelect(id, item.path, item.options(), value);
                 break;
             case 'checkbox':
-                controlHtml = createCheckbox(id, item.path, value);
+                controlHtml = `<label class="toggle-switch" style="justify-content: flex-end;"><input type="checkbox" id="${id}" data-path="${item.path}" ${value ? 'checked' : ''}><span></span></label>`;
                 break;
             case 'slider':
-                controlHtml = createSlider(id, item.path, value, item.min, item.max, item.step, item.labels);
-                break;
+                // Slider needs special handling as it has its own label structure
+                const sliderLabel = `<label class="label-with-info"><span>${item.label}</span><span id="${id}-value-label" class="value-label"></span></label>`;
+                const sliderInput = createSlider(id, item.path, value, item.min, item.max, item.step, item.labels);
+                controlGroups += `<div class="control-group">${sliderLabel}${sliderInput}</div>`;
+                continue; // Skip standard group rendering
             case 'textarea':
-                // For array textareas, join with newline
                 const areaValue = Array.isArray(value) ? value.join('\n') : value;
                 controlHtml = createTextarea(id, item.path, areaValue);
                 break;
             case 'text':
                 controlHtml = createInput(id, item.path, value);
                 break;
-            case 'dynamic_table':
-                const data = getValue(item.path);
-                if (data) {
-                    for (const [key, val] of Object.entries(data)) {
-                        const displayVal = typeof val === 'boolean' ? `<input type="checkbox" ${val ? 'checked' : ''} disabled>` : `<span>${val || 'N/A'}</span>`;
-                        tableRows += `<tr><td>${key.replace(/_/g, ' ')}</td><td>${displayVal}</td></tr>`;
-                    }
-                }
-                continue; // Skip the standard row rendering
         }
-        tableRows += `<tr><td>${item.label}</td><td>${controlHtml}</td></tr>`;
+
+        const labelHtml = `<label for="${id}" class="label-with-info"><span>${item.label}</span></label>`;
+        controlGroups += `<div class="control-group">${labelHtml}${controlHtml}</div>`;
     }
-    return `<table class="payload-table">${tableRows}</table>`;
+    return controlGroups;
 }
 
 function renderDebugView(viewName) {
