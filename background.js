@@ -447,10 +447,18 @@ chrome.runtime.onConnect.addListener((port) => {
             const matchTimeZoneName = matchTimeData?.timeZone || matchCoords.timeZone || (matchCoords.country_code ? spacetime(matchCoords.country_code)?.timezone()?.name : null);
             const matchSpacetime = matchTimeZoneName ? spacetime.now(matchTimeZoneName) : null;
             const getTimeOfDay = s => (h => h < 5 ? 'Late Night' : h < 8 ? 'Early Morning' : h < 12 ? 'Morning' : h < 14 ? 'Afternoon' : h < 17 ? 'Late Afternoon' : h < 19 ? 'Evening' : h < 22 ? 'Late Evening' : 'Night')(s.hour());
+            const formatTime = s => s ? s.format('h:mm A') : 'N/A';
+
             const newGeoContext = {
                 distance,
+                userLocationName: userGeoData.name || 'Auto-Detected',
+                matchLocationName: matchCoords.displayName,
                 userTimeOfDay: getTimeOfDay(userSpacetime),
                 matchTimeOfDay: matchSpacetime ? getTimeOfDay(matchSpacetime) : 'N/A',
+                userCurrentTime: formatTime(userSpacetime),
+                matchCurrentTime: formatTime(matchSpacetime),
+                userTimeZoneName: userGeoData.timeZone,
+                matchTimeZoneName: matchTimeZoneName,
                 timeZoneDifference: matchSpacetime ? Math.abs((userSpacetime.offset() - matchSpacetime.offset()) / 60) : null,
                 countryDifference: (userGeoData.country && matchCoords.country && userGeoData.country !== matchCoords.country) ? `User: ${userGeoData.country}, Match: ${matchCoords.country}.` : null,
                 userCountry: userGeoData.country,
@@ -659,19 +667,29 @@ function mergeAnalyses(local, external) {
 
 function transformExternalGeo(geo) {
     if (!geo) return null;
+
+    const userLocation = geo.userLocation || {};
+    const matchLocation = geo.matchLocation || {};
+
     return {
         distance: {
             km: geo.distance_km,
             miles: geo.distance_miles,
         },
-        userTimeOfDay: geo.userLocation?.time_of_day,
-        matchTimeOfDay: geo.matchLocation?.time_of_day,
+        userLocationName: userLocation.name || 'Backend Provided',
+        matchLocationName: matchLocation.name || 'Unknown',
+        userTimeOfDay: userLocation.time_of_day,
+        matchTimeOfDay: matchLocation.time_of_day,
+        userCurrentTime: userLocation.currentTime,
+        matchCurrentTime: matchLocation.currentTime,
+        userTimeZoneName: userLocation.timeZone,
+        matchTimeZoneName: matchLocation.timeZone,
         timeZoneDifference: geo.time_difference_hours,
-        countryDifference: (geo.userLocation?.country && geo.matchLocation?.country && geo.userLocation.country !== geo.matchLocation.country)
-            ? `User: ${geo.userLocation.country}, Match: ${geo.matchLocation.country}.`
+        countryDifference: (userLocation.country && matchLocation.country && userLocation.country !== matchLocation.country)
+            ? `User: ${userLocation.country}, Match: ${matchLocation.country}.`
             : null,
-        userCountry: geo.userLocation?.country,
-        matchCountry: geo.matchLocation?.country,
+        userCountry: userLocation.country,
+        matchCountry: matchLocation.country,
         cachedAt: new Date().toISOString(),
     };
 }
