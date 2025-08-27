@@ -287,8 +287,10 @@ function renderDebugView(viewName) {
     };
 
     const schema = schemaMap[viewName];
-    if (schema) {
-        html = renderViewFromSchema(schema, modalState);
+    if (schema && modalState.conversationAnalysis) {
+        html = renderViewFromSchema(schema, modalState.conversationAnalysis);
+    } else if (schema) {
+        html = '<p>Analysis data not yet available.</p>';
     } else {
         html = `<p>No view schema defined for ${viewName}.</p>`;
     }
@@ -749,6 +751,21 @@ async function handleNlpAnalysisResponse(message) {
 
 
     await loadAndApplySettings();
+
+    // After loading saved settings, apply any suggestions from the backend analysis.
+    // This allows the backend to set a default state, which the user can then override.
+    const analysis = message.matchProfile.analysis;
+    if (analysis) {
+        if (analysis.endWithQuestion !== undefined) {
+            document.getElementById(SELECTORS.questionToggleCheckbox).checked = analysis.endWithQuestion;
+        }
+        if (analysis.geoContextToggle !== undefined) {
+            document.getElementById(SELECTORS.geoContextToggle).checked = analysis.geoContextToggle;
+        }
+        // No need to handle suppressGreeting here as it doesn't have a UI toggle on the main screen.
+        // No need to handle pace here as it's part of the analysis tab, not a global setting.
+    }
+
     // Only run local geo-calculation if the backend didn't provide it
     if (!state.sessionMatchProfile.memory.geoContextData) {
         await handleLocationChange();

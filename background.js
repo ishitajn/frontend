@@ -741,11 +741,14 @@ function transformExternalAnalysis(externalData) {
 
     const transformed = {
         conversationState: conversation_analysis?.Last_message_day || 'UNKNOWN',
-        suppressGreeting: conversation_analysis?.greeting_detected === false, // Note the inversion
+        // Use backend suggestion if available, otherwise use local calculation. Note the inversion.
+        suppressGreeting: conversation_analysis?.Suggest_greeting !== undefined ? conversation_analysis.Suggest_greeting === false : conversation_analysis?.greeting_detected === false,
+        endWithQuestion: conversation_analysis?.Suggest_follow_up_question === true,
+        geoContextToggle: conversation_analysis?.Match_last_message_geo_context === true,
+        pace: conversation_analysis?.Pace,
         lastMessageAnalysis: {
             isDirectQuestion: conversation_analysis?.match_last_message_has_question === true,
             recent_engagement_score: conversation_analysis?.recent_engagement_score || 'unknown',
-            // isLowEffort is now deprecated in favor of recent_engagement_score
             isSarcastic: false,
             isAmbiguous: false,
             isVulnerable: false,
@@ -761,8 +764,12 @@ function transformExternalAnalysis(externalData) {
     if (transformed.conversation_analysis) {
         delete transformed.conversation_analysis.Last_message_day;
         delete transformed.conversation_analysis.greeting_detected;
+        delete transformed.conversation_analysis.Suggest_greeting;
         delete transformed.conversation_analysis.match_last_message_has_question;
+        delete transformed.conversation_analysis.Suggest_follow_up_question;
         delete transformed.conversation_analysis.recent_engagement_score;
+        delete transformed.conversation_analysis.Match_last_message_geo_context;
+        delete transformed.conversation_analysis.Pace;
     }
      if (transformed.analysis) {
         delete transformed.analysis.sentiment;

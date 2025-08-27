@@ -143,32 +143,32 @@ export const SELECTORS = {
 // ===================================================================================
 
 export const ANALYSIS_VIEW_SCHEMA = [
-    { label: 'Conversation State', path: 'conversationAnalysis.conversationState', type: 'select', options: () => CONVERSATION_STATES },
-    { label: 'Suppress Greeting?', path: 'conversationAnalysis.suppressGreeting', type: 'checkbox' },
+    { label: 'Conversation State', path: 'conversationState', type: 'select', options: () => CONVERSATION_STATES },
+    { label: 'Suppress Greeting?', path: 'suppressGreeting', type: 'checkbox' },
     { type: 'divider', label: 'Last Message Subtext (Local)' },
-    { label: 'Is Direct Question?', path: 'conversationAnalysis.lastMessageAnalysis.isDirectQuestion', type: 'checkbox' },
-    { label: 'Is Sarcastic?', path: 'conversationAnalysis.lastMessageAnalysis.isSarcastic', type: 'checkbox' },
-    { label: 'Is Ambiguous?', path: 'conversationAnalysis.lastMessageAnalysis.isAmbiguous', type: 'checkbox' },
-    { label: 'Is Vulnerable?', path: 'conversationAnalysis.lastMessageAnalysis.isVulnerable', type: 'checkbox' },
-    { label: 'Intents', path: 'conversationAnalysis.lastMessageAnalysis.intents', type: 'multiselect', options: () => INTENT_OPTIONS },
+    { label: 'Is Direct Question?', path: 'lastMessageAnalysis.isDirectQuestion', type: 'checkbox' },
+    { label: 'Is Sarcastic?', path: 'lastMessageAnalysis.isSarcastic', type: 'checkbox' },
+    { label: 'Is Ambiguous?', path: 'lastMessageAnalysis.isAmbiguous', type: 'checkbox' },
+    { label: 'Is Vulnerable?', path: 'lastMessageAnalysis.isVulnerable', type: 'checkbox' },
+    { label: 'Intents', path: 'lastMessageAnalysis.intents', type: 'multiselect', options: () => INTENT_OPTIONS },
     { type: 'divider', label: 'Overall Analysis (Backend)' },
-    { label: 'Valence (Sentiment)', path: 'conversationAnalysis.lastMessageAnalysis.valence', type: 'slider', min: -1, max: 1, step: 0.1, labels: { '-1': 'Very Negative', '-0.5': 'Negative', '-0.1': 'Neutral', '0.5': 'Positive', '1': 'Very Positive' } },
-    { label: 'Arousal (Engagement)', path: 'conversationAnalysis.lastMessageAnalysis.arousal', type: 'slider', min: -1, max: 1, step: 0.1, labels: { '-1': 'Bored/Calm', '-0.5': 'Low Energy', '-0.1': 'Neutral', '0.5': 'Excited', '1': 'Agitated' } },
-    { label: 'Engagement Score', path: 'conversationAnalysis.lastMessageAnalysis.recent_engagement_score', type: 'select', options: () => ENGAGEMENT_SCORE_OPTIONS },
-    { label: 'Flirtation Level', path: 'conversationAnalysis.flirtation_level', type: 'select', options: () => FLIRT_LEVEL_OPTIONS },
-    { label: 'Pace', path: 'conversationAnalysis.pace', type: 'select', options: () => PACE_OPTIONS },
+    { label: 'Valence (Sentiment)', path: 'lastMessageAnalysis.valence', type: 'slider', min: -1, max: 1, step: 0.1, labels: { '-1': 'Very Negative', '-0.5': 'Negative', '-0.1': 'Neutral', '0.5': 'Positive', '1': 'Very Positive' } },
+    { label: 'Arousal (Engagement)', path: 'lastMessageAnalysis.arousal', type: 'slider', min: -1, max: 1, step: 0.1, labels: { '-1': 'Bored/Calm', '-0.5': 'Low Energy', '-0.1': 'Neutral', '0.5': 'Excited', '1': 'Agitated' } },
+    { label: 'Engagement Score', path: 'lastMessageAnalysis.recent_engagement_score', type: 'select', options: () => ENGAGEMENT_SCORE_OPTIONS },
+    { label: 'Flirtation Level', path: 'flirtation_level', type: 'select', options: () => FLIRT_LEVEL_OPTIONS },
+    { label: 'Pace', path: 'pace', type: 'select', options: () => PACE_OPTIONS },
     { type: 'divider', label: 'Power Dynamics (Backend)' },
-    { label: 'Summary', path: 'conversationAnalysis.power_dynamics.summary', type: 'text' },
-    { label: 'User Is Leading?', path: 'conversationAnalysis.power_dynamics.user_is_leading', type: 'checkbox' },
+    { label: 'Summary', path: 'power_dynamics.summary', type: 'text' },
+    { label: 'User Is Leading?', path: 'power_dynamics.user_is_leading', type: 'checkbox' },
 ];
 
 export const TOPIC_ANALYSIS_VIEW_SCHEMA = [
-    { label: 'Date Arc Phase', path: 'conversationAnalysis.memory.dateArcPhase', type: 'select', options: () => DATE_ARC_PHASES },
-    { label: 'Inside Jokes', path: 'conversationAnalysis.memory.insideJokes', type: 'textarea' },
-    { label: 'Avoided Topics', path: 'conversationAnalysis.memory.avoidedTopics', type: 'textarea' },
-    { label: 'Question History', path: 'conversationAnalysis.memory.questionHistory', type: 'textarea' },
+    { label: 'Date Arc Phase', path: 'memory.dateArcPhase', type: 'select', options: () => DATE_ARC_PHASES },
+    { label: 'Inside Jokes', path: 'memory.insideJokes', type: 'textarea' },
+    { label: 'Avoided Topics', path: 'memory.avoidedTopics', type: 'textarea' },
+    { label: 'Question History', path: 'memory.questionHistory', type: 'textarea' },
 ];
 
 export const CONV_ANALYSIS_VIEW_SCHEMA = [
-    { type: 'dynamic_table', path: 'conversationAnalysis.conversation_analysis', title: 'Backend Conversation Analysis' }
+    { type: 'dynamic_table', path: 'conversation_analysis', title: 'Backend Conversation Analysis' }
 ];
