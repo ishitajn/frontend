@@ -249,7 +249,7 @@ export const TOPIC_ANALYSIS_VIEW_SCHEMA = [
 ];
 
 export const CONV_ANALYSIS_VIEW_SCHEMA = [
-    { type: 'dynamic_table', path: 'conversationAnalysis.conversation_analysis', title: 'Backend Conversation Analysis' }
+    { type: 'dynamic_table', path: 'conversationAnalysis.conversation_analysis', title: 'Backend Conversation Analysis' },
     { type: 'divider', label: 'Power Dynamics (Backend)' },
     { label: 'Summary', path: 'conversationAnalysis.power_dynamics.summary', type: 'text' },
     { label: 'User Is Leading?', path: 'conversationAnalysis.power_dynamics.user_is_leading', type: 'checkbox' },
