@@ -106,25 +106,6 @@ export function getLengthDescription(value) {
     return levels[Object.keys(levels).reverse().find(k => value >= k) || 0];
 }
 
-export function getStyleDescription(style, analysis) {
-    if (style === 'auto' && analysis?.lastMessageAnalysis?.suggestedResponseStyle) {
-        return `Strictly adopt a ${analysis.lastMessageAnalysis.suggestedResponseStyle} style.`;
-    }
-    const styles = {
-        'witty': 'Write with a witty and humorous style.',
-        'intellectual': 'Write with an intellectual and deep style.',
-        'playful': 'Write with a playful and teasing style.',
-        'direct': 'Write with a direct and confident style.',
-        'poetic': 'Write with a poetic and romantic style.',
-        'sexual': 'Write with a bold, provocative and sexual style.',
-        'sarcastic': 'Write with a sarcastic and sharp style.',
-        'charming': 'Write with a charming and suave style.',
-        'casual': 'Write with a casual and laid-back style.',
-        'mysterious': 'Write with a mysterious and intriguing style.'
-    };
-    return styles[style] || 'Write with a natural and conversational style.';
-}
-
 export function getEmojiInstruction(strategy, flirtyValue, linguisticStyle) {
     if (!strategy || strategy === 'no_emoji')
         return '';

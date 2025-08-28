@@ -1,7 +1,6 @@
 // popup.js (Re-architected for Manifest V3 Robustness with Heartbeat)
 import { scrapeBumblePage, pasteTextIntoBumbleInput, scrapeTinderPage, pasteTextIntoTinderInput } from './content-scraper.js';
 import { getToneDescription, getLengthDescription, getEmojiInstruction, getStyleDescription } from './uiFormatters.js';
-import { determineConversationState } from './localAnalysisService.js';
 import { generatePrompts } from './prompts.js';
 import {
     LINGUISTIC_STYLES, EMOJI_STRATEGIES, USER_LOCATIONS,
@@ -84,7 +83,7 @@ function handleTabClick(event) {
 
 
 
-async function handleTestApiClick(urlInputId) {
+async function handleTestApiClick(urlInputId, testType = 'ai') {
     const urlInput = document.getElementById(urlInputId);
     const url = urlInput.value;
     if (!url) {
@@ -98,7 +97,7 @@ async function handleTestApiClick(urlInputId) {
 
     sendMessage({
         action: 'testApiConnection',
-        data: { url }
+        data: { url, type: testType }
     });
 
     // Listen for the response
@@ -856,8 +855,8 @@ function setupEventListeners() {
     });
     document.getElementById(SELECTORS.refinementActions)?.addEventListener('click', handleRefinementClick);
     document.querySelector('.tabs')?.addEventListener('click', handleTabClick);
-    document.getElementById(SELECTORS.testApiBtn)?.addEventListener('click', () => handleTestApiClick(SELECTORS.localLlamaUrl));
-    document.getElementById(SELECTORS.testAnalysisBtn)?.addEventListener('click', () => handleTestApiClick(SELECTORS.analysisUrl));
+    document.getElementById(SELECTORS.testApiBtn)?.addEventListener('click', () => handleTestApiClick(SELECTORS.localLlamaUrl, 'ai'));
+    document.getElementById(SELECTORS.testAnalysisBtn)?.addEventListener('click', () => handleTestApiClick(SELECTORS.analysisUrl, 'analysis'));
 
     populateSelect(SELECTORS.linguisticStyleSelect, LINGUISTIC_STYLES.map(s => ({
                 value: s,
@@ -904,36 +903,71 @@ async function handleLocationChange() {
 }
 
 function updateClearButtonVisibility(inputEl, clearBtnEl) {
+    if (!inputEl || !clearBtnEl) return;
     const hasContent = (inputEl.value && inputEl.value.trim() !== '') || (inputEl.textContent && inputEl.textContent.trim() !== '');
     clearBtnEl.classList.toggle('hidden', !hasContent);
 }
 
-async function handleSettingChange(event) {
+
+// --- DEBOUNCING & SETTINGS ---
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+const _saveSettings = async (el) => {
+    const key = el.dataset.storageKey || (el.id === SELECTORS.responseArea ? 'lastResponse' : null);
+    if (!key) return;
+
+    const value = el.type === 'checkbox' ? el.checked : (el.id === SELECTORS.responseArea ? el.textContent : el.value);
+
+    try {
+        if (MATCH_SPECIFIC_SETTINGS_KEYS.includes(key) && state.currentMatchUUID) {
+            const storageKey = getMatchSettingsKey(state.currentMatchUUID);
+            const result = await chrome.storage.local.get(storageKey);
+            const matchSettings = result[storageKey] || {};
+            matchSettings[key] = value;
+            await chrome.storage.local.set({ [storageKey]: matchSettings });
+        } else {
+            await chrome.storage.local.set({ [key]: value });
+        }
+    } catch (e) {
+        DEBUG.error('STORAGE', `Failed to save setting for key: ${key}`, e);
+    }
+};
+
+const debouncedSave = debounce(_saveSettings, 400);
+
+function handleSettingChange(event) {
     const el = event.target;
+
+    // --- Immediate UI Updates ---
     if (el.id === SELECTORS.customInstruction) {
         updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearInstructionBtn));
     } else if (el.id === SELECTORS.responseArea) {
         updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearResponseBtn));
         document.getElementById(SELECTORS.refinementActions).classList.add('hidden');
     }
-    const key = el.dataset.storageKey || (el.id === SELECTORS.responseArea ? 'lastResponse' : null);
-    if (!key)
-        return;
-    const value = el.type === 'checkbox' ? el.checked : (el.id === SELECTORS.responseArea ? el.textContent : el.value);
-    if (MATCH_SPECIFIC_SETTINGS_KEYS.includes(key) && state.currentMatchUUID) {
-        const storageKey = getMatchSettingsKey(state.currentMatchUUID);
-        const result = await chrome.storage.local.get(storageKey);
-        const matchSettings = result[storageKey] || {};
-        matchSettings[key] = value;
-        await chrome.storage.local.set({
-            [storageKey]: matchSettings
-        });
-    } else {
-        await chrome.storage.local.set({
-            [key]: value
-        });
+
+    // --- Data Saving Logic ---
+    // For "immediate" feeling changes like checkboxes or select dropdowns, save right away on change event.
+    // For "continuous" changes like sliders and textareas, use the debounced version on input event.
+    if (event.type === 'change' && (el.type === 'checkbox' || el.tagName.toLowerCase() === 'select')) {
+         _saveSettings(el);
+    } else if (event.type === 'input') {
+        debouncedSave(el);
+    } else if (event.type === 'change') { // Catches final value for text inputs on blur
+        _saveSettings(el);
     }
 }
+
 
 async function loadAndApplySettings() {
     const globalKeys = Object.keys(DEFAULTS);
@@ -981,8 +1015,10 @@ async function handleMatchReset() {
         await chrome.storage.local.remove(getMatchSettingsKey(state.currentMatchUUID));
         document.getElementById(SELECTORS.responseArea).textContent = '';
         await loadAndApplySettings();
+        showToast("Match preferences have been reset.");
     } catch (e) {
         DEBUG.error("RESET", "Failed to reset match settings:", e);
+        showToast("Failed to reset match preferences.", 3000, 'error');
     } finally {
         btn.disabled = false;
     }
@@ -1296,25 +1332,29 @@ function handleCopyClick() {
 }
 
 async function autoType(text) {
-    if (!state.pasterFn)
+    if (!state.pasterFn) {
+        showToast("Auto-type is not available on this page.", 3000, 'error');
         return;
+    }
     try {
         const [tab] = await chrome.tabs.query({
             active: true,
             currentWindow: true
         });
         if (tab?.id) {
-            chrome.scripting.executeScript({
+            await chrome.scripting.executeScript({
                 target: {
                     tabId: tab.id
                 },
                 function : state.pasterFn,
                 args: [text]
-        });
+            });
+            showToast("Text successfully pasted into the app.");
+        }
+    } catch (error) {
+        DEBUG.error('AUTOTYPE', 'Failed to auto-type', error);
+        showToast("Auto-type failed. Could not paste text.", 3000, 'error');
     }
-} catch (error) {
-    DEBUG.error('AUTOTYPE', 'Failed to auto-type', error);
-}
 }
 
 function setUIRefreshingState(isRefreshing) {
@@ -1380,12 +1420,14 @@ function updateUIAfterGeneration(result) {
         responseArea.classList.remove('error');
         copyBtn.classList.remove('hidden');
         refinementActions.classList.remove('hidden');
-        handleCopyClick();
+        handleCopyClick(); // This now also calls autoType
     } else {
         showErrorInResponseArea(result?.error || 'Failed to get a response.');
         copyBtn.classList.add('hidden');
         refinementActions.classList.add('hidden');
     }
+    // Always update clear button visibility after generation.
+    updateClearButtonVisibility(responseArea, document.getElementById(SELECTORS.clearResponseBtn));
 }
 
 function showView(viewId) {
@@ -1418,11 +1460,17 @@ function showErrorInResponseArea(message) {
 }
 
 let toastTimer = null;
-function showToast(message, duration = 3000) {
+function showToast(message, duration = 3000, type = 'success') {
     const toast = document.getElementById('toast-notification');
     if (!toast) return;
 
     toast.textContent = message;
+    toast.classList.remove('error', 'visible');
+
+    if (type === 'error') {
+        toast.classList.add('error');
+    }
+
     toast.classList.add('visible');
 
     clearTimeout(toastTimer);
