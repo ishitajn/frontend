@@ -1,5 +1,4 @@
 import nlp from './lib/compromise.js';
-import { positiveWords, negativeWords, arousalWords, vulnerableWords, sexualWords } from './data/wordLists.js';
 
 const DEBUG = {
     log: (category, message, data = null) => console.log(`[WINGMAN-HELPER-${category.toUpperCase()}] ${message}`, data ?? ''),
@@ -12,9 +11,10 @@ const DEBUG = {
 /**
  * Analyzes the subtext of a single message for emotion, intent, and nuance.
  * @param {object} doc - A compromise.js document object.
+ * @param {object} wordLists - An object containing all the word lists.
  * @returns {Omit<LastMessageAnalysis, 'isDirectQuestion' | 'isLowEffort' | 'isGeoRelated' | 'suggestedResponseStyle' | 'questionInfo'>} A structured object containing detailed subtext analysis.
  */
-export function analyzeMessageSubtext(doc) {
+export function analyzeMessageSubtext(doc, wordLists) {
     const subtext = {
         valence: 0.0,
         arousal: 0.0,
@@ -23,6 +23,8 @@ export function analyzeMessageSubtext(doc) {
         isAmbiguous: false,
         isVulnerable: false,
     };
+
+    const { positiveWords, negativeWords, arousalWords, vulnerableWords, sexualWords } = wordLists;
 
     const sexualEmojis = /😏|😈|🔥|💦|🥵|😜|😉|💋|👅|🍑|🍆|🛏️|🤤|😇|👀|💅|✨|🫦|👉|👌|👇|👆|💨|♋|💥|💫|🌶️|🍭|🍦|🍩|🌮|🌭|🍌|🍒|🍾|🥂|⛓️|🔗|🪢|🪚|🔨|📍|📌|🕯️|🔑|🔐|🍼/;
     const text = doc.text('text');
@@ -76,7 +78,7 @@ export function analyzeMessageSubtext(doc) {
  * @param {Message[]} conversationHistory
  * @returns {LastMessageAnalysis} A structured subtext object or a default neutral object.
  */
-export function analyzeLastMessageForSubtext(conversationHistory) {
+export function analyzeLastMessageForSubtext(conversationHistory, wordLists) {
     const lastMessageFromMatch = conversationHistory?.filter(msg => msg.role === 'assistant').pop();
     if (!lastMessageFromMatch?.content) {
         return {
@@ -99,7 +101,7 @@ export function analyzeLastMessageForSubtext(conversationHistory) {
     }
 
     const doc = nlp(lastMessageFromMatch.content);
-    const subtext = analyzeMessageSubtext(doc);
+    const subtext = analyzeMessageSubtext(doc, wordLists);
     const questionInfo = analyzeQuestion(doc);
     DEBUG.log('SUBTEXT', 'Last message analysis complete', {
         content: lastMessageFromMatch.content,
@@ -127,7 +129,7 @@ export function analyzeLastMessageForSubtext(conversationHistory) {
  * @param {MatchMemory} storedMemory
  * @returns {MatchMemory} The updated memory object.
  */
-export function updateMemoryFromHistory(conversationHistory, storedMemory) {
+export function updateMemoryFromHistory(conversationHistory, storedMemory, wordLists) {
     let memory = JSON.parse(JSON.stringify(storedMemory || {
                 topics: {},
                 insideJokes: [],
@@ -140,7 +142,7 @@ export function updateMemoryFromHistory(conversationHistory, storedMemory) {
         if (conversationHistory[i].role === 'user' && conversationHistory[i + 1].role === 'assistant') {
             const userDoc = nlp(conversationHistory[i].content);
             const matchDoc = nlp(conversationHistory[i + 1].content);
-            const subtext = analyzeMessageSubtext(matchDoc);
+            const subtext = analyzeMessageSubtext(matchDoc, wordLists);
             const genericNouns = new Set(['thing', 'things', 'point', 'weekend', 'week', 'day', 'bit', 'lot', 'way', 'time', 'place', 'stuff', 'item', 'items', 'object', 'objects', 'article', 'articles', 'entity', 'entities', 'unit', 'units', 'device', 'gadget', 'gear', 'kit', 'tackle', 'hardware', 'goods', 'wares', 'commodity', 'product', 'material', 'substance', 'contraption', 'apparatus', 'equipment', 'paraphernalia', 'junk', 'idea', 'ideas', 'concept', 'concepts', 'notion', 'thought', 'thoughts', 'subject', 'topic', 'matter', 'issue', 'issues', 'concern', 'concerns', 'aspect', 'aspects', 'element', 'elements', 'factor', 'factors', 'case', 'cases', 'deal', 'gist', 'story', 'angle', 'vibe', 'business', 'detail', 'details', 'information', 'info', 'data', 'fact', 'facts', 'news', 'scoop', 'amount', 'quantity', 'number', 'bunch', 'load', 'loads', 'heap', 'heaps', 'pile', 'piles', 'ton', 'tons', 'mass', 'chunk', 'hunk', 'piece', 'pieces', 'portion', 'share', 'slice', 'segment', 'section', 'part', 'parts', 'fraction', 'fragment', 'smidgen', 'tad', 'dash', 'hint', 'touch', 'couple', 'few', 'series', 'set', 'collection', 'array', 'assortment', 'selection', 'variety', 'person', 'people', 'individual', 'individuals', 'character', 'characters', 'guy', 'guys', 'dude', 'dudes', 'chap', 'chaps', 'bloke', 'fellow', 'body', 'bodies', 'soul', 'souls', 'head', 'heads', 'folk', 'folks', 'crowd', 'gang', 'crew', 'squad', 'team', 'party', 'bunch', 'lot', 'situation', 'scenario', 'circumstance', 'circumstances', 'state', 'affair', 'affairs', 'event', 'events', 'happening', 'incident', 'occurrence', 'episode', 'development', 'predicament', 'dilemma', 'problem', 'problems', 'trouble', 'mess', 'jam', 'pickle', 'ordeal', 'experience', 'spot', 'location', 'area', 'zone', 'region', 'site', 'venue', 'joint', 'moment', 'minute', 'second', 'hour', 'period', 'era', 'age', 'while', 'instant', 'jiffy', 'stretch', 'spell', 'thingy', 'thingie', 'thingamajig', 'thingamabob', 'whatchamacallit', 'doodad', 'doohickey', 'gizmo', 'widget', 'whatsit', 'whatnot', 'jawn', 'shit', 'crap', 'bullshit', 'fuckery', 'shitshow', 'clusterfuck', 'fiasco', 'shitstorm', 'mess', 'shitload', 'fuckload', 'assload', 'fuck-ton', 'metric-fuck-ton', 'bastard', 'fucker', 'motherfucker', 'son of a bitch']);
             const potentialTopics = userDoc.nouns().toSingular().out('array').filter(n => !genericNouns.has(n) && n.length > 2);
 
@@ -199,7 +201,7 @@ export function updateMemoryFromHistory(conversationHistory, storedMemory) {
         }
     }
 
-    const historySubtexts = conversationHistory.map(msg => analyzeMessageSubtext(nlp(msg.content)));
+    const historySubtexts = conversationHistory.map(msg => analyzeMessageSubtext(nlp(msg.content), wordLists));
     const flirtSignalsInHistory = historySubtexts.filter(s => s.intents.includes('flirting_or_sexual')).length;
     const logisticsSignalsInHistory = historySubtexts.filter(s => s.intents.includes('planning')).length;
 
@@ -223,12 +225,13 @@ export function updateMemoryFromHistory(conversationHistory, storedMemory) {
 /**
  * @param {Message[]} conversationHistory
  * @param {MatchMemory} storedMemory
+ * @param {object} wordLists
  * @returns {{updatedMemory: MatchMemory, lastMessageAnalysis: LastMessageAnalysis}}
  */
-export function runFullConversationAnalysis(conversationHistory, storedMemory) {
+export function runFullConversationAnalysis(conversationHistory, storedMemory, wordLists) {
     DEBUG.log('ANALYSIS', 'Starting full conversation analysis...');
-    const updatedMemory = updateMemoryFromHistory(conversationHistory, storedMemory);
-    const lastMessageAnalysis = analyzeLastMessageForSubtext(conversationHistory);
+    const updatedMemory = updateMemoryFromHistory(conversationHistory, storedMemory, wordLists);
+    const lastMessageAnalysis = analyzeLastMessageForSubtext(conversationHistory, wordLists);
     DEBUG.log('ANALYSIS', 'Full analysis finished.');
     return {
         updatedMemory,

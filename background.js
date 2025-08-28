@@ -340,7 +340,8 @@ chrome.runtime.onConnect.addListener((port) => {
                 }
 
                 if (!analysisPerformed) {
-                    const { updatedMemory, lastMessageAnalysis } = runFullConversationAnalysis(matchProfile.conversationHistory, matchProfile.memory);
+                    const wordLists = await import('./data/wordLists.js');
+                    const { updatedMemory, lastMessageAnalysis } = runFullConversationAnalysis(matchProfile.conversationHistory, matchProfile.memory, wordLists);
                     matchProfile.memory = updatedMemory;
 
                     const localState = determineConversationState(scrapedData.conversationHistory);
