@@ -246,57 +246,57 @@ async function handleTestApiClick(urlInputId){
   port?.onMessage.addListener(onMsg);
 }
 
-async function loadAndApplySettings(){
-  const stored = await chrome.storage.local.get(Object.keys(DEFAULTS));
-  const s = { ...DEFAULTS, ...stored };
-  // populate dropdowns/sliders
-  const fillSel = (id, opts) => { const el = document.getElementById(id); if (!el) return; el.innerHTML = Object.entries(opts).map(([k,v])=>`<option value="${k}">${v}</option>`).join(''); el.value = s[idToKey(id)] ?? Object.keys(opts)[0]; };
-  const idToKey = (id) => ({ 'linguistic-style-select':'linguisticStyle','emoji-strategy-select':'emojiStrategy','user-location-select':'userLocationChoice' }[id] || id);
+async function loadAndApplySettings() {
+  // Find all elements that are tied to a setting
+  const elements = document.querySelectorAll('[data-storage-key]');
+  const storageKeys = [...elements].map(el => el.dataset.storageKey);
 
-  // simple sets
-  document.getElementById('custom-instruction').value = s.customInstruction;
-  document.getElementById('question-toggle-checkbox').checked = s.endWithQuestion;
-  document.getElementById('geo-context-toggle').checked = s.geoContextToggle;
-  document.getElementById('strict-goal-toggle').checked = s.strictGoalOverride;
+  // Load all settings from storage in one go
+  const storedSettings = await chrome.storage.local.get(storageKeys);
+  const settings = { ...DEFAULTS, ...storedSettings };
 
-  document.getElementById('flirty-slider').value = s.flirtyValue;
-  document.getElementById('length-slider').value = s.lengthValue;
-  document.getElementById('temperature-slider').value = s.modelTemperature;
-  document.getElementById('top-p-slider').value = s.topPValue;
+  // Populate the UI with the loaded settings
+  elements.forEach(el => {
+    const key = el.dataset.storageKey;
+    if (settings[key] === undefined) return;
 
-  // enums
-  const styles = LINGUISTIC_STYLES.reduce((a,v)=> (a[v]=v, a), {});
-  fillSel('linguistic-style-select', styles);
-  fillSel('emoji-strategy-select', EMOJI_STRATEGIES);
-  fillSel('user-location-select', Object.fromEntries(Object.entries(USER_LOCATIONS).map(([k,v])=>[k, v.name])));
+    if (el.type === 'checkbox') {
+      el.checked = settings[key];
+    } else {
+      el.value = settings[key];
+    }
+  });
 
+  // Special handling to populate <select> dropdowns with <option>s
+  const fillSelect = (id, options, value) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = Object.entries(options).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
+    el.value = value ?? Object.keys(options)[0];
+  };
+
+  const styles = LINGUISTIC_STYLES.reduce((acc, style) => { acc[style] = style; return acc; }, {});
+  fillSelect('linguistic-style-select', styles, settings.linguisticStyle);
+  fillSelect('emoji-strategy-select', EMOJI_STRATEGIES, settings.emojiStrategy);
+  const locations = Object.fromEntries(Object.entries(USER_LOCATIONS).map(([k, v]) => [k, v.name]));
+  fillSelect('user-location-select', locations, settings.userLocationChoice);
+
+  // Update dynamic labels
   updateSliderLabels();
 }
 
 function handleSettingChange(e){
-  const idMap = {
-    'custom-instruction':'customInstruction',
-    'question-toggle-checkbox':'endWithQuestion',
-    'geo-context-toggle':'geoContextToggle',
-    'strict-goal-toggle':'strictGoalOverride',
-    'flirty-slider':'flirtyValue',
-    'length-slider':'lengthValue',
-    'temperature-slider':'modelTemperature',
-    'top-p-slider':'topPValue',
-    'linguistic-style-select':'linguisticStyle',
-    'emoji-strategy-select':'emojiStrategy',
-    'user-location-select':'userLocationChoice',
-    'localLlamaUrl':'local_llama_url',
-    'localModelName':'local_model_name',
-    'localLlamaApiKey':'local_llama_api_key',
-    'analysisUrl':'analysis_url',
-    'analysisType':'analysis_type',
-    'my-profile-setting':'myProfile',
-  };
-  const key = idMap[e.target.id]; if (!key) return;
-  const value = (e.target.type === 'checkbox') ? e.target.checked : e.target.value;
+  // Use the `data-storage-key` attribute for a more robust, data-driven approach
+  const key = e.target.dataset.storageKey;
+  if (!key) return;
+
+  const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
   chrome.storage.local.set({ [key]: value });
-  if (e.target.id === 'flirty-slider' || e.target.id === 'length-slider') updateSliderLabels();
+
+  // Update labels for sliders
+  if (['flirty-slider', 'length-slider', 'temperature-slider', 'top-p-slider'].includes(e.target.id)) {
+    updateSliderLabels();
+  }
 }
 
 function updateSliderLabels(){
