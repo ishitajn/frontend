@@ -1,13 +1,12 @@
 // popup.js (Re-architected for Manifest V3 Robustness with Heartbeat)
 import { scrapeBumblePage, pasteTextIntoBumbleInput, scrapeTinderPage, pasteTextIntoTinderInput } from './content-scraper.js';
-import { getToneDescription, getLengthDescription, getEmojiInstruction, getStyleDescription } from './uiFormatters.js';
-import { generatePrompts } from './prompts.js';
+import { showDebugModal, renderDebugView, setSendMessageFunction } from './debug.js';
 import {
     LINGUISTIC_STYLES, EMOJI_STRATEGIES, USER_LOCATIONS,
     DATE_ARC_PHASES, CONVERSATION_STATES, INTENT_OPTIONS,
     FLIRT_LEVEL_OPTIONS, PACE_OPTIONS, DEFAULTS,
     MATCH_SPECIFIC_SETTINGS_KEYS, SELECTORS,
-    ANALYSIS_VIEW_SCHEMA, TOPIC_ANALYSIS_VIEW_SCHEMA, CONV_ANALYSIS_VIEW_SCHEMA
+    getToneDescription, getLengthDescription, getEmojiInstruction, getStyleDescription
 } from './constants.js';
 
 const DEBUG = {
@@ -77,13 +76,20 @@ function handleTabClick(event) {
 
     // Render content if it's a debug tab
     if (['analysis', 'topic-analysis', 'conv-analysis'].includes(tabName)) {
-        renderDebugView(tabName);
+        const generationState = {
+            ...state.sessionScrapedData,
+            ...state.sessionMatchProfile?.metadata,
+            conversationHistory: state.sessionMatchProfile?.conversationHistory,
+            conversationAnalysis: state.sessionMatchProfile?.analysis,
+            geoContextData: state.sessionMatchProfile?.memory.geoContextData,
+        };
+        renderDebugView(tabName, generationState);
     }
 }
 
 
 
-async function handleTestApiClick(urlInputId, testType = 'ai') {
+async function handleTestApiClick(urlInputId) {
     const urlInput = document.getElementById(urlInputId);
     const url = urlInput.value;
     if (!url) {
@@ -97,7 +103,7 @@ async function handleTestApiClick(urlInputId, testType = 'ai') {
 
     sendMessage({
         action: 'testApiConnection',
-        data: { url, type: testType }
+        data: { url }
     });
 
     // Listen for the response
@@ -119,476 +125,6 @@ async function handleTestApiClick(urlInputId, testType = 'ai') {
         }
     };
     port.onMessage.addListener(listener);
-}
-
-
-// --- Debug View Rendering (from debug-modal.js) ---
-// Stubs and constants needed for the moved code
-let modalState = {}; // Using this name to minimize code changes from debug-modal
-
-function setNestedValue(obj, path, value) {
-    const keys = path.split('.');
-    let current = obj;
-    for (let i = 0; i < keys.length - 1; i++) {
-        if (current[keys[i]] === undefined) {
-            current[keys[i]] = {};
-        }
-        current = current[keys[i]];
-    }
-    current[keys[keys.length - 1]] = value;
-}
-
-function createSelect(id, dataPath, options, selectedValue) {
-    const optionsHtml = options.map(opt => `<option value="${opt}" ${opt === selectedValue ? 'selected' : ''}>${opt.charAt(0).toUpperCase() + opt.slice(1)}</option>`).join('');
-    return `<select id="${id}" data-path="${dataPath}">${optionsHtml}</select>`;
-}
-
-function createMultiSelect(id, dataPath, allOptions, selectedOptions) {
-    const selectedSet = new Set(selectedOptions || []);
-    const optionsHtml = allOptions.map(opt => `<option value="${opt}" ${selectedSet.has(opt) ? 'selected' : ''}>${opt.charAt(0).toUpperCase() + opt.slice(1)}</option>`).join('');
-    return `<select id="${id}" data-path="${dataPath}" multiple>${optionsHtml}</select>`;
-}
-
-function createTextarea(id, dataPath, value) {
-    return `<textarea id="${id}" data-path="${dataPath}">${value || ''}</textarea>`;
-}
-
-function createInput(id, dataPath, value, type = 'text') {
-    return `<input type="${type}" id="${id}" data-path="${dataPath}" value="${value || ''}">`;
-}
-
-function createCheckbox(id, dataPath, checked) {
-    // Note: For consistency, checkboxes might need a different structure
-    // depending on final layout choice. This is a basic implementation.
-    return `<input type="checkbox" id="${id}" data-path="${dataPath}" ${checked ? 'checked' : ''}>`;
-}
-
-function createSlider(id, dataPath, value, min, max, step, labelMap) {
-    const getLabel = (val) => {
-        const numVal = parseFloat(val);
-        for (const [limit, label] of Object.entries(labelMap).sort((a,b) => b[0] - a[0])) {
-            if (numVal >= parseFloat(limit))
-                return label;
-        }
-        return Object.values(labelMap)[0];
-    };
-    return `
-        <div class="slider-container">
-            <input type="range" id="${id}" data-path="${dataPath}" value="${value}" min="${min}" max="${max}" step="${step}" data-label-map='${JSON.stringify(labelMap)}'>
-            <span id="${id}-value" class="value-display">${value} (${getLabel(value)})</span>
-        </div>
-    `;
-}
-
-function createCollapsibleJSON(title, dataObject, isEditable = true) {
-    if (dataObject === null || typeof dataObject === 'undefined') {
-        return `
-            <div class="collapsible-json-container">
-                <details class="modal-payload-details">
-                    <summary>${title}</summary>
-                    <pre class="raw-json-area" style="color: var(--text-muted);">Not available</pre>
-                </details>
-            </div>
-        `;
-    }
-
-    const jsonString = JSON.stringify(dataObject, null, 2);
-    const key = title.split(' ')[0].toLowerCase();
-    const copyIconSVG = `<svg fill="currentColor" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"></path></svg>`;
-
-    return `
-        <div class="collapsible-json-container">
-            <details class="modal-payload-details">
-                <summary>${title}</summary>
-                <pre ${isEditable ? 'contenteditable="true"' : ''} class="raw-json-area" data-object-key="${key}">${jsonString}</pre>
-            </details>
-            <button class="icon-btn copy-json-btn" title="Copy JSON">
-                ${copyIconSVG}
-            </button>
-        </div>
-    `;
-}
-
-function renderViewFromSchema(schema, state) {
-    let controlGroups = '';
-    for (const item of schema) {
-        // Helper to get a nested value from the state object using a path string
-        const getValue = (path) => path.split('.').reduce((o, k) => o?.[k], state);
-
-        if (item.type === 'divider') {
-            controlGroups += `<div class="control-group-divider">${item.label}</div>`;
-            continue;
-        }
-
-        if (item.type === 'dynamic_table') {
-            const data = getValue(item.path);
-            if (data && typeof data === 'object') {
-                for (const [key, val] of Object.entries(data)) {
-                    const label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                    const displayVal = typeof val === 'boolean' ?
-                        `<label class="toggle-switch" style="justify-content: flex-end;"><input type="checkbox" ${val ? 'checked' : ''} disabled><span></span></label>` :
-                        `<span class="dynamic-value">${val || 'N/A'}</span>`;
-
-                    controlGroups += `
-                        <div class="control-group">
-                            <label class="label-with-info"><span>${label}</span></label>
-                            ${displayVal}
-                        </div>`;
-                }
-            }
-            continue;
-        }
-
-        const value = getValue(item.path);
-        const id = item.path.replace(/\./g, '-');
-        let controlHtml = '';
-
-        switch (item.type) {
-            case 'select':
-                controlHtml = createSelect(id, item.path, item.options(), value);
-                break;
-            case 'multiselect':
-                controlHtml = createMultiSelect(id, item.path, item.options(), value);
-                break;
-            case 'checkbox':
-                controlHtml = `<label class="toggle-switch" style="justify-content: flex-end;"><input type="checkbox" id="${id}" data-path="${item.path}" ${value ? 'checked' : ''}><span></span></label>`;
-                break;
-            case 'slider':
-                // Slider needs special handling as it has its own label structure
-                const sliderLabel = `<label class="label-with-info"><span>${item.label}</span><span id="${id}-value-label" class="value-label"></span></label>`;
-                const sliderInput = createSlider(id, item.path, value, item.min, item.max, item.step, item.labels);
-                controlGroups += `<div class="control-group">${sliderLabel}${sliderInput}</div>`;
-                continue; // Skip standard group rendering
-            case 'textarea':
-                const areaValue = Array.isArray(value) ? value.join('\n') : value;
-                controlHtml = createTextarea(id, item.path, areaValue);
-                break;
-            case 'text':
-                controlHtml = createInput(id, item.path, value);
-                break;
-        }
-
-        const labelHtml = `<label for="${id}" class="label-with-info"><span>${item.label}</span></label>`;
-        controlGroups += `<div class="control-group">${labelHtml}${controlHtml}</div>`;
-    }
-    return controlGroups;
-}
-
-function renderDebugView(viewName) {
-    const contentEl = document.getElementById(viewName);
-    if (!contentEl) return;
-
-    let html = '';
-    const schemaMap = {
-        'analysis': ANALYSIS_VIEW_SCHEMA,
-        'topic-analysis': TOPIC_ANALYSIS_VIEW_SCHEMA,
-        'conv-analysis': CONV_ANALYSIS_VIEW_SCHEMA,
-    };
-
-    const schema = schemaMap[viewName];
-    if (schema && modalState.conversationAnalysis) {
-        html = renderViewFromSchema(schema, modalState.conversationAnalysis);
-    } else if (schema) {
-        html = '<p>Analysis data not yet available.</p>';
-    } else {
-        html = `<p>No view schema defined for ${viewName}.</p>`;
-    }
-
-    contentEl.innerHTML = `<div class="card-content">${html}</div>`;
-    attachDebugEventListeners(contentEl);
-}
-
-// --- Modal Logic (re-implementing multi-view modal) ---
-const MODAL_VIEWS = ['context', 'final-payload'];
-let currentModalView = 'context';
-
-function renderModalView() {
-    const contentEl = document.getElementById('debug-modal-content');
-    if (!contentEl) return;
-
-    let html = '';
-    switch (currentModalView) {
-        case 'context': html = renderContextView(); break;
-        case 'final-payload': html = renderFinalPayloadView(); break;
-    }
-    contentEl.innerHTML = html;
-    attachDebugEventListeners(contentEl);
-}
-
-function handleModalNav(direction) {
-    const currentIndex = MODAL_VIEWS.indexOf(currentModalView);
-    let nextIndex = currentIndex + direction;
-    if (nextIndex < 0 || nextIndex >= MODAL_VIEWS.length) return;
-
-    currentModalView = MODAL_VIEWS[nextIndex];
-    renderModalView();
-    updateModalNavButtons();
-}
-
-function updateModalNavButtons() {
-    const currentIndex = MODAL_VIEWS.indexOf(currentModalView);
-    document.getElementById('modal-back-btn').disabled = currentIndex === 0;
-
-    const primaryBtn = document.getElementById('modal-primary-action-btn');
-    primaryBtn.textContent = (currentIndex === MODAL_VIEWS.length - 1) ? 'Send to AI' : 'Next';
-}
-
-function showDebugModal(generationData) {
-    modalState = JSON.parse(JSON.stringify(generationData)); // Deep copy to avoid side-effects
-    currentModalView = 'context';
-
-    const overlay = document.getElementById('debug-modal-overlay');
-    overlay.innerHTML = `
-        <div class="modal">
-            <div class="modal-header">Debug & Override Mode</div>
-            <div class="modal-content" id="debug-modal-content"></div>
-            <div class="modal-footer">
-                <div class="modal-actions">
-                    <button id="modal-cancel-btn" class="btn btn-secondary">Cancel</button>
-                    <button id="modal-back-btn" class="btn btn-secondary">Back</button>
-                    <button id="modal-primary-action-btn" class="btn btn-primary">Next</button>
-                </div>
-            </div>
-        </div>
-    `;
-    overlay.classList.remove('hidden');
-
-    document.getElementById('modal-cancel-btn').addEventListener('click', hideDebugModal);
-    document.getElementById('modal-back-btn').addEventListener('click', () => handleModalNav(-1));
-    document.getElementById('modal-primary-action-btn').addEventListener('click', () => {
-        if (currentModalView === 'final-payload') {
-            const { systemMessage, userMessage } = generatePrompts(modalState);
-            const finalPayload = {
-                messages: [{ role: "system", content: systemMessage }, { role: "user", content: userMessage }],
-                temperature: modalState.taskInstructions.temperature,
-                top_p: modalState.taskInstructions.top_p,
-            };
-
-            setUIGeneratingState(true);
-            startTimer(Date.now());
-            hideDebugModal();
-
-            sendMessage({
-                action: "getAIResponse",
-                data: {
-                    payload: finalPayload,
-                    generationId: Date.now(),
-                    uuid: state.currentMatchUUID,
-                    logData: {
-                        uuid: state.currentMatchUUID,
-                        analysis: modalState.conversationAnalysis,
-                        payload: finalPayload
-                    }
-                }
-            });
-
-        } else {
-            handleModalNav(1);
-        }
-    });
-
-    renderModalView();
-    updateModalNavButtons();
-}
-
-function hideDebugModal() {
-    const overlay = document.getElementById('debug-modal-overlay');
-    if (overlay) {
-        overlay.classList.add('hidden');
-        overlay.innerHTML = '';
-    }
-}
-
-function renderContextView() {
-    if (!modalState.conversationHistory) return '<p>Context data not available.</p>';
-    const historyHtml = modalState.conversationHistory.map((msg, index) => `
-        <div class="message-card" data-index="${index}">
-            <div class="message-card-header">
-                <select class="modal-input" data-path="conversationHistory.${index}.role">
-                    <option value="user" ${msg.role === 'user' ? 'selected' : ''}>User</option>
-                    <option value="assistant" ${msg.role === 'assistant' ? 'selected' : ''}>Assistant</option>
-                </select>
-                <button class="icon-btn remove-msg-btn" title="Remove Message">&times;</button>
-            </div>
-            <div class="message-card-content">
-                <textarea class="modal-input" data-path="conversationHistory.${index}.content">${msg.content}</textarea>
-            </div>
-        </div>
-    `).join('');
-
-    return `
-        <h3>Profiles & History</h3>
-        <table class="payload-table">
-            <tr><td>My Name</td><td>${createInput('context-myName', 'myName', modalState.myName)}</td></tr>
-            <tr><td>Their Name</td><td>${createInput('context-theirName', 'theirName', modalState.theirName)}</td></tr>
-            <tr><td>My Profile</td><td>${createTextarea('context-myProfile', 'myProfile', modalState.myProfile)}</td></tr>
-            <tr><td>Their Profile</td><td>${createTextarea('context-theirProfile', 'theirProfile', modalState.theirProfile)}</td></tr>
-        </table>
-        <h4>Conversation History</h4>
-        <div class="messages-container">${historyHtml}</div>
-        <button id="add-message-btn" class="btn btn-secondary add-message-btn">Add Message</button>
-        ${createCollapsibleJSON('View/Edit Raw GeoContext Data', modalState.geoContextData)}
-    `;
-}
-
-function renderFinalPayloadView() {
-    if (!modalState.taskInstructions) {
-        modalState.taskInstructions = {
-            myName: state.sessionScrapedData?.myName || DEFAULTS.myProfile.split(',')[0].trim(),
-            theirName: state.sessionMatchProfile?.metadata?.theirName || 'Match',
-            goal: document.getElementById(SELECTORS.customInstruction).value.trim(),
-            flirtyValue: Number(document.getElementById(SELECTORS.flirtySlider).value),
-            lengthValue: Number(document.getElementById(SELECTORS.lengthSlider).value),
-            linguisticStyle: document.getElementById(SELECTORS.linguisticStyleSelect).value,
-            emojiStrategy: document.getElementById(SELECTORS.emojiStrategySelect).value,
-            temperature: parseFloat(document.getElementById(SELECTORS.temperatureSlider).value),
-            top_p: parseFloat(document.getElementById(SELECTORS.topPSlider).value),
-            endWithQuestion: document.getElementById(SELECTORS.questionToggleCheckbox).checked,
-            strictGoalOverride: document.getElementById(SELECTORS.strictGoalToggle).checked,
-            forceNewTopic: document.getElementById(SELECTORS.newTopicToggle).checked,
-            local_model_name: document.getElementById(SELECTORS.localModelName).value,
-        };
-        modalState.forceIncludeGeoContext = document.getElementById(SELECTORS.geoContextToggle).checked;
-    }
-
-    const { systemMessage, userMessage } = generatePrompts(modalState);
-    const finalPayload = {
-        messages: [{
-                role: "system",
-                content: systemMessage
-            }, {
-                role: "user",
-                content: userMessage
-            }
-        ],
-        temperature: modalState.taskInstructions.temperature,
-        top_p: modalState.taskInstructions.top_p
-    };
-    modalState.finalPayload = finalPayload;
-
-    return `
-        <h3>Final Payload Review</h3>
-        <p>This is the exact data that will be sent to the AI. You can make final edits to the messages below.</p>
-        <div class="messages-container">
-            <div class="message-card">
-                <div class="message-card-header"><strong>System Message</strong></div>
-                <div class="message-card-content">${createTextarea('final-system', 'finalPayload.messages.0.content', systemMessage)}</div>
-            </div>
-            <div class="message-card">
-                <div class="message-card-header"><strong>User Message</strong></div>
-                <div class="message-card-content">${createTextarea('final-user', 'finalPayload.messages.1.content', userMessage)}</div>
-            </div>
-        </div>
-        ${createCollapsibleJSON('View/Edit Raw Final Payload', finalPayload, false)}
-    `;
-}
-
-function attachDebugEventListeners(container) {
-    container.addEventListener('input', updateStateFromUI);
-    container.addEventListener('change', updateStateFromUI);
-
-    container.querySelectorAll('input[type="range"][data-label-map]').forEach(slider => {
-        slider.addEventListener('input', (e) => {
-            const targetSlider = e.currentTarget;
-            const valueDisplay = document.getElementById(`${targetSlider.id}-value`);
-            if (valueDisplay) {
-                const labelMap = JSON.parse(targetSlider.dataset.labelMap);
-                const currentValue = targetSlider.value;
-                const getLabel = (val) => {
-                     const numVal = parseFloat(val);
-                     for (const [limit, label] of Object.entries(labelMap).sort((a,b) => b[0] - a[0])) {
-                         if (numVal >= parseFloat(limit)) return label;
-                     }
-                     return Object.values(labelMap)[0];
-                };
-                valueDisplay.textContent = `${currentValue} (${getLabel(currentValue)})`;
-            }
-        });
-    });
-
-    container.querySelectorAll('.copy-json-btn').forEach(btn => {
-        btn.addEventListener('click', e => {
-            const button = e.currentTarget;
-            const pre = button.closest('.collapsible-json-container').querySelector('pre.raw-json-area');
-            if (!pre) return;
-            navigator.clipboard.writeText(pre.textContent.replace(/\\n/g, '\\n'));
-            const originalIcon = button.innerHTML;
-            button.innerHTML = '✅';
-            button.disabled = true;
-            setTimeout(() => {
-                button.innerHTML = originalIcon;
-                button.disabled = false;
-            }, 1500);
-        });
-    });
-
-    container.querySelectorAll('.raw-json-area[contenteditable="true"]').forEach(area => {
-        area.addEventListener('blur', e => {
-            try {
-                const newJson = JSON.parse(e.target.textContent);
-                const key = e.target.dataset.objectKey;
-                if (key === 'memory') modalState.conversationAnalysis.memory = newJson;
-                else if (key === 'analysis') modalState.conversationAnalysis = newJson;
-                else modalState[key] = newJson;
-                renderDebugView(container.id);
-            } catch (err) {
-                console.error("Invalid JSON entered:", err);
-                e.target.style.border = '1px solid red';
-            }
-        });
-        area.addEventListener('focus', e => { e.target.style.border = ''; });
-    });
-
-    if (container.id === 'context') {
-        container.querySelector('#add-message-btn')?.addEventListener('click', () => {
-            modalState.conversationHistory.push({ role: 'user', content: '', date: new Date().toISOString().split('T')[0] });
-            renderDebugView('context');
-        });
-        container.querySelectorAll('.remove-msg-btn').forEach(btn => {
-            btn.addEventListener('click', e => {
-                const index = e.currentTarget.closest('.message-card').dataset.index;
-                modalState.conversationHistory.splice(index, 1);
-                renderDebugView('context');
-            });
-        });
-    }
-}
-
-function updateStateFromUI(e) {
-    const el = e.target;
-    const path = el.dataset.path;
-    if (!path) return;
-
-    let value;
-    if (el.type === 'checkbox') value = el.checked;
-    else if (el.type === 'range' || el.type === 'number') value = parseFloat(el.value);
-    else if (el.multiple) value = Array.from(el.selectedOptions).map(opt => opt.value);
-    else value = el.value;
-
-    if (path.endsWith('insideJokes') || path.endsWith('avoidedTopics') || path.endsWith('questionHistory')) {
-        value = el.value.split('\\n').filter(Boolean);
-    }
-
-    setNestedValue(modalState, path, value);
-
-    const objectKey = path.split('.')[0];
-    const activeTab = document.querySelector('.tab-content.active').id;
-    if ((objectKey === 'conversationAnalysis' || objectKey === 'memory') && (activeTab==='analysis' || activeTab==='memory')) {
-        updateRawJsonDisplay(activeTab);
-    }
-}
-
-function updateRawJsonDisplay(key) {
-    const pre = document.querySelector(`#${key} .raw-json-area[data-object-key="${key}"]`);
-    if (!pre) return;
-
-    let objectToDisplay;
-    switch (key) {
-        case 'analysis': objectToDisplay = modalState.conversationAnalysis; break;
-        case 'memory': objectToDisplay = modalState.conversationAnalysis.memory; break;
-        case 'geocontext': objectToDisplay = modalState.geoContextData; break;
-    }
-    if(objectToDisplay) pre.textContent = JSON.stringify(objectToDisplay, null, 2);
 }
 
 function setupPort() {
@@ -632,6 +168,7 @@ function setupPort() {
 async function initializePopup() {
     setupEventListeners();
     setupPort();
+    setSendMessageFunction(sendMessage);
     await loadAndApplySettings();
     await refreshDataAndUI();
 }
@@ -736,18 +273,6 @@ async function handleNlpAnalysisResponse(message) {
 
     state.sessionMatchProfile = message.matchProfile;
     state.currentMatchUUID = message.matchProfile.uuid;
-
-    // Populate modalState for debug views
-    modalState = {
-        ...state.sessionScrapedData,
-        ...state.sessionMatchProfile.metadata,
-        myProfile: (await chrome.storage.local.get('myProfile')).myProfile || DEFAULTS.myProfile,
-        conversationHistory: state.sessionMatchProfile.conversationHistory,
-        conversationAnalysis: state.sessionMatchProfile.analysis,
-        geoContextData: state.sessionMatchProfile.memory.geoContextData,
-        taskInstructions: {}, // This will be populated on generate click
-    };
-
 
     await loadAndApplySettings();
 
@@ -855,8 +380,8 @@ function setupEventListeners() {
     });
     document.getElementById(SELECTORS.refinementActions)?.addEventListener('click', handleRefinementClick);
     document.querySelector('.tabs')?.addEventListener('click', handleTabClick);
-    document.getElementById(SELECTORS.testApiBtn)?.addEventListener('click', () => handleTestApiClick(SELECTORS.localLlamaUrl, 'ai'));
-    document.getElementById(SELECTORS.testAnalysisBtn)?.addEventListener('click', () => handleTestApiClick(SELECTORS.analysisUrl, 'analysis'));
+    document.getElementById(SELECTORS.testApiBtn)?.addEventListener('click', () => handleTestApiClick(SELECTORS.localLlamaUrl));
+    document.getElementById(SELECTORS.testAnalysisBtn)?.addEventListener('click', () => handleTestApiClick(SELECTORS.analysisUrl));
 
     populateSelect(SELECTORS.linguisticStyleSelect, LINGUISTIC_STYLES.map(s => ({
                 value: s,
@@ -903,71 +428,36 @@ async function handleLocationChange() {
 }
 
 function updateClearButtonVisibility(inputEl, clearBtnEl) {
-    if (!inputEl || !clearBtnEl) return;
     const hasContent = (inputEl.value && inputEl.value.trim() !== '') || (inputEl.textContent && inputEl.textContent.trim() !== '');
     clearBtnEl.classList.toggle('hidden', !hasContent);
 }
 
-
-// --- DEBOUNCING & SETTINGS ---
-function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
-}
-
-const _saveSettings = async (el) => {
-    const key = el.dataset.storageKey || (el.id === SELECTORS.responseArea ? 'lastResponse' : null);
-    if (!key) return;
-
-    const value = el.type === 'checkbox' ? el.checked : (el.id === SELECTORS.responseArea ? el.textContent : el.value);
-
-    try {
-        if (MATCH_SPECIFIC_SETTINGS_KEYS.includes(key) && state.currentMatchUUID) {
-            const storageKey = getMatchSettingsKey(state.currentMatchUUID);
-            const result = await chrome.storage.local.get(storageKey);
-            const matchSettings = result[storageKey] || {};
-            matchSettings[key] = value;
-            await chrome.storage.local.set({ [storageKey]: matchSettings });
-        } else {
-            await chrome.storage.local.set({ [key]: value });
-        }
-    } catch (e) {
-        DEBUG.error('STORAGE', `Failed to save setting for key: ${key}`, e);
-    }
-};
-
-const debouncedSave = debounce(_saveSettings, 400);
-
-function handleSettingChange(event) {
+async function handleSettingChange(event) {
     const el = event.target;
-
-    // --- Immediate UI Updates ---
     if (el.id === SELECTORS.customInstruction) {
         updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearInstructionBtn));
     } else if (el.id === SELECTORS.responseArea) {
         updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearResponseBtn));
         document.getElementById(SELECTORS.refinementActions).classList.add('hidden');
     }
-
-    // --- Data Saving Logic ---
-    // For "immediate" feeling changes like checkboxes or select dropdowns, save right away on change event.
-    // For "continuous" changes like sliders and textareas, use the debounced version on input event.
-    if (event.type === 'change' && (el.type === 'checkbox' || el.tagName.toLowerCase() === 'select')) {
-         _saveSettings(el);
-    } else if (event.type === 'input') {
-        debouncedSave(el);
-    } else if (event.type === 'change') { // Catches final value for text inputs on blur
-        _saveSettings(el);
+    const key = el.dataset.storageKey || (el.id === SELECTORS.responseArea ? 'lastResponse' : null);
+    if (!key)
+        return;
+    const value = el.type === 'checkbox' ? el.checked : (el.id === SELECTORS.responseArea ? el.textContent : el.value);
+    if (MATCH_SPECIFIC_SETTINGS_KEYS.includes(key) && state.currentMatchUUID) {
+        const storageKey = getMatchSettingsKey(state.currentMatchUUID);
+        const result = await chrome.storage.local.get(storageKey);
+        const matchSettings = result[storageKey] || {};
+        matchSettings[key] = value;
+        await chrome.storage.local.set({
+            [storageKey]: matchSettings
+        });
+    } else {
+        await chrome.storage.local.set({
+            [key]: value
+        });
     }
 }
-
 
 async function loadAndApplySettings() {
     const globalKeys = Object.keys(DEFAULTS);
@@ -1015,10 +505,10 @@ async function handleMatchReset() {
         await chrome.storage.local.remove(getMatchSettingsKey(state.currentMatchUUID));
         document.getElementById(SELECTORS.responseArea).textContent = '';
         await loadAndApplySettings();
-        showToast("Match preferences have been reset.");
+        showToast("Match-specific settings have been reset.");
     } catch (e) {
         DEBUG.error("RESET", "Failed to reset match settings:", e);
-        showToast("Failed to reset match preferences.", 3000, 'error');
+        showToast("Error resetting match settings.", 3000);
     } finally {
         btn.disabled = false;
     }
@@ -1031,8 +521,10 @@ async function handleMasterReset() {
         const keysToRemove = Object.keys(DEFAULTS);
         await chrome.storage.local.remove(keysToRemove);
         await loadAndApplySettings();
+        showToast("All global settings have been reset to default.");
     } catch (e) {
         DEBUG.error("RESET", "Failed to reset master settings:", e);
+        showToast("Error resetting global settings.", 3000);
     } finally {
         btn.disabled = false;
     }
@@ -1259,14 +751,20 @@ async function handleGenerateClick() {
     const dataForBackground = await gatherCoreDataForGeneration();
 
     if (document.getElementById(SELECTORS.debugModeToggle).checked) {
+        const myProfile = (await chrome.storage.local.get('myProfile')).myProfile || DEFAULTS.myProfile;
         // In debug mode, show the modal instead of sending to the background script
         const fullGenerationData = {
-            ...modalState, // Base state from analysis
-            myProfile: dataForBackground.myProfile, // Overwrite with fresh profile from settings
-            forceIncludeGeoContext: dataForBackground.forceIncludeGeoContext, // Overwrite with fresh toggle state
-            taskInstructions: dataForBackground.taskInstructions, // Overwrite with fresh instructions from main UI
+            ...state.sessionScrapedData,
+            ...state.sessionMatchProfile.metadata,
+            myProfile: myProfile,
+            conversationHistory: state.sessionMatchProfile.conversationHistory,
+            conversationAnalysis: state.sessionMatchProfile.analysis,
+            geoContextData: state.sessionMatchProfile.memory.geoContextData,
+            forceIncludeGeoContext: dataForBackground.forceIncludeGeoContext,
+            taskInstructions: dataForBackground.taskInstructions,
+            uuid: state.currentMatchUUID,
         };
-        showDebugModal(fullGenerationData);
+        showDebugModal(fullGenerationData, { setUIGeneratingState, startTimer });
     } else {
         // In normal mode, get the final payload from the background script
         sendMessage({
@@ -1332,29 +830,25 @@ function handleCopyClick() {
 }
 
 async function autoType(text) {
-    if (!state.pasterFn) {
-        showToast("Auto-type is not available on this page.", 3000, 'error');
+    if (!state.pasterFn)
         return;
-    }
     try {
         const [tab] = await chrome.tabs.query({
             active: true,
             currentWindow: true
         });
         if (tab?.id) {
-            await chrome.scripting.executeScript({
+            chrome.scripting.executeScript({
                 target: {
                     tabId: tab.id
                 },
                 function : state.pasterFn,
                 args: [text]
-            });
-            showToast("Text successfully pasted into the app.");
-        }
-    } catch (error) {
-        DEBUG.error('AUTOTYPE', 'Failed to auto-type', error);
-        showToast("Auto-type failed. Could not paste text.", 3000, 'error');
+        });
     }
+} catch (error) {
+    DEBUG.error('AUTOTYPE', 'Failed to auto-type', error);
+}
 }
 
 function setUIRefreshingState(isRefreshing) {
@@ -1420,14 +914,12 @@ function updateUIAfterGeneration(result) {
         responseArea.classList.remove('error');
         copyBtn.classList.remove('hidden');
         refinementActions.classList.remove('hidden');
-        handleCopyClick(); // This now also calls autoType
+        handleCopyClick();
     } else {
         showErrorInResponseArea(result?.error || 'Failed to get a response.');
         copyBtn.classList.add('hidden');
         refinementActions.classList.add('hidden');
     }
-    // Always update clear button visibility after generation.
-    updateClearButtonVisibility(responseArea, document.getElementById(SELECTORS.clearResponseBtn));
 }
 
 function showView(viewId) {
@@ -1460,17 +952,11 @@ function showErrorInResponseArea(message) {
 }
 
 let toastTimer = null;
-function showToast(message, duration = 3000, type = 'success') {
+function showToast(message, duration = 3000) {
     const toast = document.getElementById('toast-notification');
     if (!toast) return;
 
     toast.textContent = message;
-    toast.classList.remove('error', 'visible');
-
-    if (type === 'error') {
-        toast.classList.add('error');
-    }
-
     toast.classList.add('visible');
 
     clearTimeout(toastTimer);

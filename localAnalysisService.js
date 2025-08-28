@@ -76,6 +76,7 @@ export function analyzeMessageSubtext(doc, wordLists) {
 /**
  * Analyzes only the last message from the match for immediate response context.
  * @param {Message[]} conversationHistory
+ * @param {object} wordLists
  * @returns {LastMessageAnalysis} A structured subtext object or a default neutral object.
  */
 export function analyzeLastMessageForSubtext(conversationHistory, wordLists) {
@@ -127,6 +128,7 @@ export function analyzeLastMessageForSubtext(conversationHistory, wordLists) {
  * Updates the memory object based on the entire conversation history.
  * @param {Message[]} conversationHistory
  * @param {MatchMemory} storedMemory
+ * @param {object} wordLists
  * @returns {MatchMemory} The updated memory object.
  */
 export function updateMemoryFromHistory(conversationHistory, storedMemory, wordLists) {
@@ -242,78 +244,6 @@ export function runFullConversationAnalysis(conversationHistory, storedMemory, w
 // ===================================================================================
 // SECTION 4: HELPER FUNCTIONS
 // ===================================================================================
-
-/**
- * @param {Message[]} conversationHistory
- * @returns {ConversationState}
- */
-export function determineConversationState(conversationHistory) {
-    const messageCount = conversationHistory?.length || 0;
-    if (messageCount === 0) {
-        DEBUG.log('STATE', 'Determined state: OPENER (no history)');
-        return 'OPENER';
-    }
-
-    const lastMessage = conversationHistory[messageCount - 1];
-    const TWO_DAYS = 24 * 2,
-    ONE_WEEK = 24 * 7,
-    ONE_MONTH = 24 * 30;
-
-    const hoursSinceMatchReply = calculateHoursSinceMatchReply(conversationHistory);
-    const staleGapInHours = calculateStaleConversationGap(conversationHistory);
-    let state = 'ACTIVE_CONVO';
-    if (lastMessage.role === 'user') {
-        if (hoursSinceMatchReply >= ONE_MONTH)
-            state = 'REENGAGING_MONTH';
-        else if (hoursSinceMatchReply >= ONE_WEEK)
-            state = 'REENGAGING_WEEK';
-        else if (hoursSinceMatchReply >= TWO_DAYS)
-            state = 'REENGAGING_DAY';
-    }
-    if (lastMessage.role === 'assistant') {
-        if (staleGapInHours >= ONE_MONTH)
-            state = 'REENGAGING_MONTH';
-        else if (staleGapInHours >= ONE_WEEK)
-            state = 'REENGAGING_WEEK';
-        else if (staleGapInHours >= TWO_DAYS)
-            state = 'REENGAGING_DAY';
-    }
-
-    if (state === 'ACTIVE_CONVO' && messageCount < 5) {
-        state = 'EARLY_CONVO';
-    }
-
-    DEBUG.log('STATE', `Determined state: ${state}`, {
-        messageCount,
-        hoursSinceMatchReply,
-        staleGapInHours
-    });
-    return state;
-}
-function calculateHoursSinceMatchReply(conversationHistory) {
-    const lastMatchMessage = conversationHistory?.filter(msg => msg.role === 'assistant').pop();
-    if (!lastMatchMessage || !lastMatchMessage.date)
-        return Infinity;
-    try {
-        return (new Date() - new Date(lastMatchMessage.date)) / (1000 * 60 * 60);
-    } catch (e) {
-        return Infinity;
-    }
-}
-
-function calculateStaleConversationGap(conversationHistory) {
-    if (!conversationHistory || conversationHistory.length < 2)
-        return 0;
-    const lastMessage = conversationHistory[conversationHistory.length - 1];
-    const secondToLastMessage = conversationHistory[conversationHistory.length - 2];
-    if (!lastMessage.date || !secondToLastMessage.date)
-        return 0;
-    try {
-        return (new Date(lastMessage.date) - new Date(secondToLastMessage.date)) / (1000 * 60 * 60);
-    } catch (e) {
-        return 0;
-    }
-}
 
 /**
  * @param {object} doc

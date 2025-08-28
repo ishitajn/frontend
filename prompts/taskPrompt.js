@@ -1,6 +1,6 @@
 // src/prompts/taskPrompt.js (Corrected with Defensive Destructuring and Optional Chaining)
 
-import { getToneDescription, getLengthDescription, getStyleDescription, getEmojiInstruction } from '../uiFormatters.js';
+import { getToneDescription, getLengthDescription, getStyleDescription, getEmojiInstruction } from '../constants.js';
 
 // FIX: Accept conversationAnalysis as the third parameter
 export function buildTaskPrompt(instructions, data, conversationAnalysis) {
