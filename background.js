@@ -287,44 +287,62 @@ chrome.runtime.onConnect.addListener((port) => {
                 matchProfile.metadata.theirProfile = scrapedData.theirProfile;
                 matchProfile.metadata.matchLocation = scrapedData.matchLocation;
 
-                let finalAnalysis;
-                let analysisPerformed = false;
+                // --- Step 1: Always run local analysis to get a baseline ---
+                const { updatedMemory, lastMessageAnalysis } = runFullConversationAnalysis(matchProfile.conversationHistory, matchProfile.memory);
+                matchProfile.memory = updatedMemory;
 
+                const localState = determineConversationState(scrapedData.conversationHistory);
+                const localSuppressGreeting = hasRecentGreeting(scrapedData.conversationHistory) && !localState.startsWith('REENGAGING');
+
+                let finalAnalysis = {
+                    conversationState: localState,
+                    suppressGreeting: localSuppressGreeting,
+                    lastMessageAnalysis: lastMessageAnalysis,
+                    memory: updatedMemory,
+                };
+
+                // --- Step 2: If external analysis is enabled, fetch, transform, and merge ---
                 if (analysisType !== 'local') {
+                    let response;
                     try {
                         const controller = new AbortController();
                         const timeoutId = setTimeout(() => controller.abort(), settings.analysisApiTimeout);
 
                         const requestBody = buildExternalAnalysisRequest(scrapedData, matchProfile, uiSettings);
-                        const response = await fetch(analysisUrl, {
+                        response = await fetch(analysisUrl, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(requestBody),
                             signal: controller.signal
                         });
 
-                        clearTimeout(timeoutId);
+                        clearTimeout(timeoutId); // Clear the timeout if the fetch completes
 
                         if (!response.ok) {
                             throw new Error(`External analysis service failed with status: ${response.status}`);
                         }
 
                         const externalAnalysisRaw = await response.json();
-                        finalAnalysis = transformExternalAnalysis(externalAnalysisRaw);
+                        const externalAnalysisTransformed = transformExternalAnalysis(externalAnalysisRaw);
 
+                        finalAnalysis = mergeAnalyses(finalAnalysis, externalAnalysisTransformed);
+
+                        // Also update the top-level memory and geo objects from the backend
                         if (externalAnalysisRaw.memory) {
+                            // Merge memory objects, prioritizing external data but preserving local-only fields
                             matchProfile.memory = { ...matchProfile.memory, ...externalAnalysisRaw.memory };
-                            finalAnalysis.memory = matchProfile.memory;
+                            finalAnalysis.memory = matchProfile.memory; // Ensure merged analysis has latest memory
                         }
                         if (externalAnalysisRaw.geo) {
                             matchProfile.memory.geoContextData = transformExternalGeo(externalAnalysisRaw.geo);
                         }
-                        analysisPerformed = true;
+
                     } catch (e) {
                         let fallbackError;
                         if (e.name === 'AbortError') {
                             fallbackError = 'External analysis timed out.';
                         } else {
+                            // Provide a more specific error for other fetch-related issues (e.g., network, CORS)
                             fallbackError = `External analysis failed: ${e.message}.`;
                         }
                         DEBUG.error('NLP', `${fallbackError} Falling back to local analysis.`, e);
@@ -337,21 +355,6 @@ chrome.runtime.onConnect.addListener((port) => {
                             DEBUG.error('PORT', 'Failed to send fallback notification.', portError);
                         }
                     }
-                }
-
-                if (!analysisPerformed) {
-                    const { updatedMemory, lastMessageAnalysis } = await runFullConversationAnalysis(matchProfile.conversationHistory, matchProfile.memory);
-                    matchProfile.memory = updatedMemory;
-
-                    const localState = determineConversationState(scrapedData.conversationHistory);
-                    const localSuppressGreeting = hasRecentGreeting(scrapedData.conversationHistory) && !localState.startsWith('REENGAGING');
-
-                    finalAnalysis = {
-                        conversationState: localState,
-                        suppressGreeting: localSuppressGreeting,
-                        lastMessageAnalysis: lastMessageAnalysis,
-                        memory: updatedMemory,
-                    };
                 }
 
                 matchProfile.analysis = finalAnalysis;
@@ -566,40 +569,16 @@ chrome.runtime.onConnect.addListener((port) => {
             DEBUG.log('HEARTBEAT', 'Received heartbeat.');
         },
 
-        "testApiConnection": async (request) => {
-            const { url, type } = request.data;
+        "testApiConnection": async(request) => {
+            const { url } = request.data;
             let success = false;
             try {
-                if (type === 'analysis') {
-                    const response = await fetch(url.endsWith('/') ? `${url}ready` : `${url}/ready`, { method: 'GET' });
-                    if (response.ok) {
-                        success = true;
-                    }
-                } else { // 'ai'
-                    const settings = await chrome.storage.local.get(['local_llama_api_key', 'local_model_name']);
-                    const apiKey = settings.local_llama_api_key;
-                    const model = settings.local_model_name || DEFAULTS.local_model_name;
-
-                    const headers = { "Content-Type": "application/json" };
-                    if (apiKey) {
-                        headers["Authorization"] = `Bearer ${apiKey}`;
-                    }
-
-                    const body = JSON.stringify({
-                        model: model,
-                        messages: [{ role: "user", content: "test" }],
-                        stream: false,
-                        max_tokens: 1
-                    });
-
-                    const response = await fetch(url, { method: 'POST', headers, body });
-                    if (response.ok) {
-                        success = true;
-                    }
+                const response = await fetch(`${url}/ready`, { method: 'GET' });
+                if (response.ok) {
+                    success = true;
                 }
             } catch (e) {
                 success = false;
-                DEBUG.error('API_TEST', `API test failed for ${url}`, e);
             }
             port.postMessage({
                 action: 'testApiConnectionResponse',

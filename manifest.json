@@ -36,10 +36,6 @@
         "*://*.tinder.com/*",
 		"http://10.0.0.24:*/*"
       ]
-    },
-    {
-      "resources": [ "data/*.json" ],
-      "matches": [ "<all_urls>" ]
     }
   ],
   "commands": {
