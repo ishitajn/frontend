@@ -207,10 +207,6 @@ async function handleAITask(uuid, generationId, payload, port, options = {}) {
 
         const responseText = await fetchLocalLlamaResponse(settings.local_llama_api_key, payload, settings, controller.signal);
 
-        if (controller.signal.aborted) {
-            return;
-        }
-
         const currentState = await getGenerationState(uuid);
         if (currentState.generationId !== generationId) {
             DEBUG.log('AI', `Stale generation response ignored for ${uuid}.`);

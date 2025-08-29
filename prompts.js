@@ -6,44 +6,6 @@ import { buildContextPrompt } from './prompts/contextPrompt.js';
 import { buildTaskPrompt } from './prompts/taskPrompt.js';
 
 /**
- * Determines whether the geographical context should be included in the prompt.
- * @param {object} params
- * @param {import('./conversationHelpers.js').GenerationData['geoContextData']} params.geoContextData
- * @param {boolean} params.forceIncludeGeoContext
- * @param {import('./conversationHelpers.js').ConversationAnalysis} params.conversationAnalysis
- * @param {import('./conversationHelpers.js').Message[]} params.conversationHistory
- * @param {import('./conversationHelpers.js').TaskInstructions} params.taskInstructions
- * @returns {boolean}
- */
-function shouldIncludeGeoContext({
-    geoContextData,
-    forceIncludeGeoContext,
-    conversationAnalysis,
-    conversationHistory,
-    taskInstructions
-}) {
-    if (!geoContextData) return false;
-    if (forceIncludeGeoContext) return true;
-
-    const state = conversationAnalysis.conversationState;
-    const lastMessageFromMatch = conversationHistory?.filter(msg => msg.role === 'assistant').pop()?.content || '';
-
-    // Automatically include if distance is significant and certain conditions are met.
-    if (geoContextData.distance.miles > 100) {
-        const isNewOrReengaging = state === 'OPENER' || state.startsWith('REENGAGING');
-        const isGoalGeoRelated = taskInstructions.goal && isMessageGeoRelated(taskInstructions.goal);
-        const isLastMessageGeoRelated = state !== 'OPENER' && isMessageGeoRelated(lastMessageFromMatch);
-
-        if (isNewOrReengaging || isGoalGeoRelated || isLastMessageGeoRelated) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-
-/**
  * @param {import('./conversationHelpers.js').GenerationData} data
  * @returns {{systemMessage: string, userMessage: string}}
  */
@@ -58,13 +20,14 @@ export function generatePrompts(data) {
 
     const state = conversationAnalysis.conversationState;
 
-    const includeGeoContext = shouldIncludeGeoContext({
-        geoContextData,
-        forceIncludeGeoContext,
-        conversationAnalysis,
-        conversationHistory,
-        taskInstructions
-    });
+    // Geo-context inclusion logic
+    const lastMessageFromMatch = conversationHistory?.filter(msg => msg.role === 'assistant').pop()?.content || '';
+    let includeGeoContext = false;
+    if (geoContextData) {
+        if (forceIncludeGeoContext || (geoContextData.distance.miles > 100 && (state === 'OPENER' || state.startsWith('REENGAGING') || (taskInstructions.goal && isMessageGeoRelated(taskInstructions.goal)) || (state !== 'OPENER' && isMessageGeoRelated(lastMessageFromMatch))))) {
+            includeGeoContext = true;
+        }
+    }
 
     const timeContext = getTimeContext();
     const contextData = {

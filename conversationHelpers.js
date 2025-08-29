@@ -759,54 +759,16 @@ function analyzeMessageSubtext(doc) {
     };
     const vulnerableWords = ['a little scared', 'actually', 'confess', 'feeling a bit down', 'honestly', 'i admit', 'i feel', 'i struggle with', 'i\'ve never told anyone', 'i\'m worried', 'if that makes sense', 'is that weird', 'it\'s been tough', 'my secret is', 'nervous', 'opening up', 'tbh', 'to be honest', 'I have a confession', 'I must admit', 'I have to confess', 'my biggest fear is', 'my weakness is', 'the truth is', 'can I tell you a secret?', 'full disclosure', 'I shouldn\'t say this but', 'I messed up', 'it was my fault', 'I regret', 'I was wrong', 'I apologize for', 'for what it\'s worth', 'I feel like', 'it makes me feel', 'deep down', 'on the inside', 'I\'m feeling', 'my heart sank', 'I\'m hurting', 'I feel so alone', 'I\'m lost', 'I\'m not okay', 'I feel empty', 'it hurts', 'this is hard for me to say', 'I\'m going through a lot', 'I\'m at my limit', 'I can\'t handle this', 'am I crazy for', 'call me crazy but', 'does that make any sense?', 'don\'t judge me but', 'is it just me or', 'I don\'t know', 'I guess', 'I might be wrong but', 'maybe I\'m overthinking this', 'or something', 'tell me what you think', 'what should I do?', 'you probably think I\'m', 'I need your advice', 'am I being unreasonable?', 'is this normal?', 'I feel insecure about', 'I\'m not good enough', 'I\'m trying my best', 'I\'m scared of', 'I\'m afraid', 'I feel like a failure', 'I\'m struggling with', 'my anxiety is', 'I\'m so anxious', 'I\'m overwhelmed', 'I don\'t know how to', 'I\'m not sure if', 'I doubt', 'I worry that', 'for real', 'genuinely', 'in all honesty', 'in all seriousness', 'let me be real', 'let\'s be real', 'look,', 'not gonna lie', 'NGL', 'real talk', 'sincerely', 'to tell you the truth'];
     const sexualWords = ['bed', 'beautiful', 'body', 'come over', 'craving', 'cuddle', 'cute', 'desire', 'dirty', 'get a room', 'gorgeous', 'handsome', 'hot', 'kiss', 'lips', 'make a move', 'my place', 'naughty', 'pleasure', 'sexy', 'sheets', 'skin', 'spoil', 'stunning', 'taste', 'tease', 'tonight', 'touch', 'undress', 'your place', 'adore', 'all night', 'caress', 'cherish', 'close', 'embrace', 'erotic', 'explore', 'foreplay', 'hold me', 'intimacy', 'intimate', 'lover', 'making love', 'massage', 'naked', 'passion', 'passionate', 'ravish', 'romance', 'seduce', 'seductive', 'sensual', 'share a bed', 'slowly', 'soft', 'sweet', 'tender', 'warm', 'whisper', 'alone time', 'can\'t wait', 'can\'t stop thinking about you', 'come here', 'get you alone', 'I want you', 'in the mood', 'let\'s get into trouble', 'let\'s play', 'make you mine', 'mischief', 'need you', 'private', 'room for two', 'temptation', 'tempting', 'turn on', 'turned on', 'what are you wearing', 'wild', 'you drive me crazy', 'you turn me on', 'abs', 'anus', 'areola', 'ass', 'asshole', 'balls', 'bellend', 'body', 'boobies', 'boobs', 'breast', 'breasts', 'butt', 'butt-hole', 'cheeks', 'chest', 'clit', 'clitoris', 'cock', 'crotch', 'dick', 'erection', 'g-spot', 'genitals', 'glutes', 'groin', 'hole', 'member', 'mouth', 'nipple', 'nipples', 'nuts', 'package', 'pecker', 'penis', 'prostate', 'pussy', 'scrotum', 'shaft', 'taint', 'testicles', 'thighs', 'tits', 'titties', 'tongue', 'vagina', 'bang', 'beat', 'bend over', 'blow', 'blowjob', 'bone', 'bukkake', 'choke', 'come', 'creampie', 'cunnilingus', 'deepthroat', 'devour', 'doggy style', 'dominate', 'drill', 'eat', 'eat out', 'ejaculate', 'face-sit', 'facial', 'fellatio', 'finger', 'fingering', 'fist', 'fisting', 'fuck', 'fucking', 'gangbang', 'go down on', 'grind', 'handjob', 'have sex', 'head', 'hump', 'inside you', 'jack off', 'jerk off', 'jizz', 'lick', 'mount', 'nail', 'orgasm', 'pegging', 'penetrate', 'penetration', 'pound', 'pump', 'rail', 'rim', 'rimjob', 'ride', 'rub', 'satisfy', 'screw', 'shag', 'sixty-nine', 'smash', 'spitroast', 'spread', 'stroke', 'suck', 'suck off', 'submit', 'swallow', 'take it', 'thrust', 'top', 'toss off', 'wank', 'aroused', 'climax', 'come', 'creamy', 'cum', 'cumshot', 'dripping', 'erect', 'hard', 'horny', 'in heat', 'jizz', 'juices', 'lust', 'moist', 'orgasm', 'precum', 'randy', 'rock-hard', 'seed', 'semen', 'slutty', 'sperm', 'stiff', 'throbbing', 'wet', 'aftercare', 'age play', 'ball gag', 'bdsm', 'blindfold', 'bondage', 'brat', 'breath play', 'cane', 'chain', 'chastity', 'choke', 'collar', 'daddy', 'ddlg', 'discipline', 'dom', 'dominant', 'domme', 'dungeon', 'edge', 'edging', 'femboy', 'femdom', 'fetish', 'flog', 'gag', 'handcuffs', 'harness', 'humiliation', 'impact play', 'kink', 'kinky', 'leash', 'leather', 'latex', 'little', 'master', 'mistress', 'mommy', 'owner', 'paddle', 'pegging', 'pet', 'pet play', 'punish', 'punishment', 'rope', 'rough', 'safeword', 'sadism', 'serve', 'service', 'slave', 'spank', 'spanking', 'sub', 'submission', 'submissive', 'switch', 'tame', 'tie me up', 'use me', 'whip', 'anal beads', 'ball gag', 'ben wa balls', 'bondage tape', 'butt plug', 'cock ring', 'condom', 'dildo', 'fleshlight', 'gag', 'g-spot vibrator', 'handcuffs', 'hitachi', 'lingerie', 'lube', 'nipple clamps', 'paddles', 'restraints', 'riding crop', 'sex swing', 'sex toy', 'strapon', 'vibrator', 'whip', 'affair', 'all fours', 'backseat', 'bedroom', 'counter', 'hookup', 'hotel', 'motel', 'one night stand', 'orgy', 'porn', 'pornography', 'sex', 'sexual', 'shower', 'threesome'];
-    const sexualEmojis = /😏|😈|🔥|💦|🥵|😜|😉|💋|👅|🍑|🍆|🛏️|🤤|😇|👀|💅|✨|🫦|👉|👌|👇|👆|💦|💨|♋️|69|💥|💫|✨|🌶️|🍭|🍦|🍩|🌮|🌭|🍌|🍒|🍾|🥂|⛓️|🔗|🪢|🪚|🔨|📍|📌|🕯️|🔑|🔐|🍼/;
+    const sexualEmojis = /😏|😈|🔥|💦|🥵|😜|😉|💋|👅|🍑|🍆|🛏️|🤤|😇|👀|💅|✨|🫦|👉|👌|👇|👆|💦|💨|♋️|69|💥|💫|✨|🌶️|🍭|🍦|🍩|🌮|🌭|🍌|🍒|🍾|🥂|⛓️|🔗|🪢|🪚|🔨|📍|📌| handcuffs | whip |🕯️|🔑|🔐|🍼| kitten | puppy | bull | top | bottom /;
     const text = doc.text('text');
-
-    const negations = ['not', 'no', 'never', 'isnt', 'wasnt', 'werent', 'cant', 'couldnt', 'wont', 'wouldnt', 'dont', 'doesnt', 'didnt', 'aint', 'without'];
-    const intensifiers = { 'very': 1.5, 'really': 1.5, 'extremely': 1.8, 'incredibly': 1.8, 'absolutely': 1.8, 'totally': 1.6, 'so': 1.4, 'freaking': 1.6, 'fucking': 1.9, 'damn': 1.6, 'hella': 1.7, 'super': 1.5 };
-    const diminishers = { 'kinda': 0.7, 'kind of': 0.7, 'sort of': 0.7, 'a bit': 0.8, 'a little': 0.8, 'slightly': 0.8, 'somewhat': 0.7 };
-
-    // Create a combined sentiment dictionary, removing entries handled by negation logic
-    const tempNegativeWords = { ...negativeWords };
-    delete tempNegativeWords['not good'];
-    const allSentimentWords = {...positiveWords, ...tempNegativeWords};
-
-    let totalValence = 0;
-    const terms = doc.terms().out('array');
-
-    for (let i = 0; i < terms.length; i++) {
-        const term = terms[i].toLowerCase();
-        if (allSentimentWords[term]) {
-            let score = allSentimentWords[term];
-            let modifier = 1.0;
-
-            // Check word at i-1
-            if (i > 0) {
-                const prevTerm = terms[i - 1].toLowerCase();
-                if (negations.includes(prevTerm)) {
-                    modifier *= -1;
-                } else if (intensifiers[prevTerm]) {
-                    modifier *= intensifiers[prevTerm];
-                } else if (diminishers[prevTerm]) {
-                    modifier *= diminishers[prevTerm];
-                }
-            }
-
-            // Check word at i-2 (for cases like "not very good")
-            if (i > 1) {
-                const prevTerm = terms[i-1].toLowerCase();
-                const prevPrevTerm = terms[i-2].toLowerCase();
-                if (intensifiers[prevTerm] && negations.includes(prevPrevTerm)) {
-                    // This handles "not very [sentiment]" by applying negation to the intensified score
-                    modifier *= -1;
-                }
-            }
-
-            totalValence += score * modifier;
-        }
-    }
-    subtext.valence = totalValence;
-
+    Object.entries(positiveWords).forEach(([word, score]) => {
+        if (doc.has(word))
+            subtext.valence += score;
+    });
+    Object.entries(negativeWords).forEach(([word, score]) => {
+        if (doc.has(word))
+            subtext.valence += score;
+    });
     Object.entries(arousalWords).forEach(([word, score]) => {
         if (text.includes(word))
             subtext.arousal += score;

@@ -374,56 +374,43 @@ function stopHeartbeat() {
 }
 
 function setupEventListeners() {
-    // Delegated click handler
-    document.addEventListener('click', (event) => {
-        const target = event.target;
-        const targetId = target.id || target.closest('[id]')?.id;
-
-        switch (targetId) {
-            case SELECTORS.generateBtn: handleGenerateClick(); break;
-            case SELECTORS.copyBtn: handleCopyClick(); break;
-            case SELECTORS.cancelBtn: handleCancelClick(); break;
-            case SELECTORS.settingsBtn: showView(SELECTORS.settingsView); break;
-            case SELECTORS.backBtn: showView(SELECTORS.mainView); break;
-            case SELECTORS.masterResetBtn: handleMasterReset(); break;
-            case SELECTORS.resetMatchBtn: handleMatchReset(); break;
-            case SELECTORS.dateIdeaBtn: handleDateIdeaClick(); break;
-            case SELECTORS.clearResponseBtn:
-                const responseArea = document.getElementById(SELECTORS.responseArea);
-                responseArea.textContent = '';
-                responseArea.dispatchEvent(new Event('input', { bubbles: true }));
-                break;
-            case SELECTORS.clearInstructionBtn:
-                const instructionArea = document.getElementById(SELECTORS.customInstruction);
-                instructionArea.value = '';
-                instructionArea.dispatchEvent(new Event('input', { bubbles: true }));
-                break;
-        }
-
-        if (target.closest('.refinement-actions')) {
-            handleRefinementClick(event);
-        }
-    });
-
-    // Listeners for immediate UI feedback (e.g., slider labels) should use 'input'
+    window.addEventListener('focus', refreshDataAndUI);
+    document.getElementById(SELECTORS.generateBtn)?.addEventListener('click', handleGenerateClick);
+    document.getElementById(SELECTORS.copyBtn)?.addEventListener('click', handleCopyClick);
+    document.getElementById(SELECTORS.cancelBtn)?.addEventListener('click', handleCancelClick);
+    document.getElementById(SELECTORS.settingsBtn)?.addEventListener('click', () => showView(SELECTORS.settingsView));
+    document.getElementById(SELECTORS.backBtn)?.addEventListener('click', () => showView(SELECTORS.mainView));
+    document.getElementById(SELECTORS.masterResetBtn)?.addEventListener('click', handleMasterReset);
+    document.getElementById(SELECTORS.resetMatchBtn)?.addEventListener('click', handleMatchReset);
     document.getElementById(SELECTORS.flirtySlider)?.addEventListener('input', updateSliderLabels);
     document.getElementById(SELECTORS.lengthSlider)?.addEventListener('input', updateSliderLabels);
     document.getElementById(SELECTORS.temperatureSlider)?.addEventListener('input', () => updateSliderValueLabel(SELECTORS.temperatureSlider, SELECTORS.temperatureValueLabel));
     document.getElementById(SELECTORS.topPSlider)?.addEventListener('input', () => updateSliderValueLabel(SELECTORS.topPSlider, SELECTORS.topPValueLabel, 2));
-
-    // Listeners for tooltips
     document.querySelectorAll('.info-icon, [data-tooltip-id]').forEach(icon => {
         icon.addEventListener('mouseenter', handleTooltipShow);
         icon.addEventListener('mouseleave', handleTooltipHide);
     });
-
-    // Listeners that save data should use 'change' to be efficient.
-    // 'change' fires on release for sliders, on blur for text inputs, and on selection for selects/checkboxes.
+    document.getElementById('main-view')?.addEventListener('input', handleSettingChange);
     document.getElementById('main-view')?.addEventListener('change', handleSettingChange);
+    document.getElementById('settings-view')?.addEventListener('input', handleSettingChange);
     document.getElementById('settings-view')?.addEventListener('change', handleSettingChange);
-
-    // Specific listener for location select as it triggers a background action
     document.getElementById(SELECTORS.userLocationSelect)?.addEventListener('change', handleLocationChange);
+    document.getElementById(SELECTORS.clearResponseBtn)?.addEventListener('click', () => {
+        const area = document.getElementById(SELECTORS.responseArea);
+        area.textContent = '';
+        area.dispatchEvent(new Event('input', {
+                bubbles: true
+            }));
+    });
+    document.getElementById(SELECTORS.clearInstructionBtn)?.addEventListener('click', () => {
+        const area = document.getElementById(SELECTORS.customInstruction);
+        area.value = '';
+        area.dispatchEvent(new Event('input', {
+                bubbles: true
+            }));
+    });
+    document.getElementById(SELECTORS.dateIdeaBtn)?.addEventListener('click', handleDateIdeaClick);
+    document.getElementById(SELECTORS.refinementActions)?.addEventListener('click', handleRefinementClick);
 
     populateSelect(SELECTORS.linguisticStyleSelect, LINGUISTIC_STYLES.map(s => ({
                 value: s,
@@ -471,39 +458,34 @@ async function handleLocationChange() {
 }
 
 function updateClearButtonVisibility(inputEl, clearBtnEl) {
-    // Also listen to 'input' to show/hide the clear buttons immediately
-    inputEl.addEventListener('input', () => {
-        const hasContent = (inputEl.value && inputEl.value.trim() !== '') || (inputEl.textContent && inputEl.textContent.trim() !== '');
-        clearBtnEl.classList.toggle('hidden', !hasContent);
-    });
-    // Initial check
     const hasContent = (inputEl.value && inputEl.value.trim() !== '') || (inputEl.textContent && inputEl.textContent.trim() !== '');
     clearBtnEl.classList.toggle('hidden', !hasContent);
 }
 
 async function handleSettingChange(event) {
     const el = event.target;
-
+    if (el.id === SELECTORS.customInstruction) {
+        updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearInstructionBtn));
+    } else if (el.id === SELECTORS.responseArea) {
+        updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearResponseBtn));
+        document.getElementById(SELECTORS.refinementActions).classList.add('hidden');
+    }
     const key = el.dataset.storageKey || (el.id === SELECTORS.responseArea ? 'lastResponse' : null);
-    if (!key) return;
-
+    if (!key)
+        return;
     const value = el.type === 'checkbox' ? el.checked : (el.id === SELECTORS.responseArea ? el.textContent : el.value);
-    const isMatchSpecific = MATCH_SPECIFIC_SETTINGS_KEYS.includes(key) && state.currentMatchUUID;
-
-    try {
-        if (isMatchSpecific) {
-            const storageKey = getMatchSettingsKey(state.currentMatchUUID);
-            const result = await chrome.storage.local.get(storageKey);
-            const matchSettings = result[storageKey] || {};
-            matchSettings[key] = value;
-            await chrome.storage.local.set({ [storageKey]: matchSettings });
-        } else {
-            await chrome.storage.local.set({ [key]: value });
-        }
-        showToast("Setting saved!");
-    } catch (e) {
-        DEBUG.error('STORAGE', `Failed to save setting for key: ${key}`, e);
-        showToast("Error saving setting", 3000, true);
+    if (MATCH_SPECIFIC_SETTINGS_KEYS.includes(key) && state.currentMatchUUID) {
+        const storageKey = getMatchSettingsKey(state.currentMatchUUID);
+        const result = await chrome.storage.local.get(storageKey);
+        const matchSettings = result[storageKey] || {};
+        matchSettings[key] = value;
+        await chrome.storage.local.set({
+            [storageKey]: matchSettings
+        });
+    } else {
+        await chrome.storage.local.set({
+            [key]: value
+        });
     }
 }
 
@@ -540,17 +522,8 @@ async function loadAndApplySettings() {
     updateSliderLabels();
     updateSliderValueLabel(SELECTORS.temperatureSlider, SELECTORS.temperatureValueLabel);
     updateSliderValueLabel(SELECTORS.topPSlider, SELECTORS.topPValueLabel, 2);
-
-    // Ensure clear buttons are visible on load if there's content
-    const instructionArea = document.getElementById(SELECTORS.customInstruction);
-    const clearInstructionBtn = document.getElementById(SELECTORS.clearInstructionBtn);
-    if (instructionArea && clearInstructionBtn) {
-        updateClearButtonVisibility(instructionArea, clearInstructionBtn);
-    }
-    const clearResponseBtn = document.getElementById(SELECTORS.clearResponseBtn);
-    if (responseArea && clearResponseBtn) {
-        updateClearButtonVisibility(responseArea, clearResponseBtn);
-    }
+    updateClearButtonVisibility(document.getElementById(SELECTORS.customInstruction), document.getElementById(SELECTORS.clearInstructionBtn));
+    updateClearButtonVisibility(responseArea, document.getElementById(SELECTORS.clearResponseBtn));
 }
 
 async function handleMatchReset() {
@@ -562,10 +535,8 @@ async function handleMatchReset() {
         await chrome.storage.local.remove(getMatchSettingsKey(state.currentMatchUUID));
         document.getElementById(SELECTORS.responseArea).textContent = '';
         await loadAndApplySettings();
-        showToast("Match preferences have been reset.");
     } catch (e) {
         DEBUG.error("RESET", "Failed to reset match settings:", e);
-        showErrorInResponseArea("Failed to reset match preferences.");
     } finally {
         btn.disabled = false;
     }
@@ -578,10 +549,8 @@ async function handleMasterReset() {
         const keysToRemove = Object.keys(DEFAULTS);
         await chrome.storage.local.remove(keysToRemove);
         await loadAndApplySettings();
-        showToast("Global defaults have been reset.");
     } catch (e) {
         DEBUG.error("RESET", "Failed to reset master settings:", e);
-        showToast("Error resetting defaults.", 3000, true);
     } finally {
         btn.disabled = false;
     }
@@ -897,7 +866,6 @@ function handleCopyClick() {
     if (!responseArea || !copyBtn || !responseArea.textContent)
         return;
     navigator.clipboard.writeText(responseArea.textContent).then(() => {
-        showToast("Copied to clipboard!");
         const originalHTML = copyBtn.innerHTML;
         copyBtn.textContent = 'Copied!';
         setTimeout(() => {
@@ -915,19 +883,17 @@ async function autoType(text) {
             currentWindow: true
         });
         if (tab?.id) {
-            await chrome.scripting.executeScript({
+            chrome.scripting.executeScript({
                 target: {
                     tabId: tab.id
                 },
-                function: state.pasterFn,
+                function : state.pasterFn,
                 args: [text]
-            });
-            showToast("Text pasted successfully!");
-        }
-    } catch (error) {
-        DEBUG.error('AUTOTYPE', 'Failed to auto-type', error);
-        showErrorInResponseArea(`Failed to paste text. You may need to focus the text input on the page.`);
+        });
     }
+} catch (error) {
+    DEBUG.error('AUTOTYPE', 'Failed to auto-type', error);
+}
 }
 
 function setUIRefreshingState(isRefreshing) {
@@ -1032,20 +998,6 @@ function showErrorInResponseArea(message) {
             }));
         responseArea.classList.add('error');
     }
-}
-
-let toastTimer = null;
-function showToast(message, duration = 3000) {
-    const toast = document.getElementById('toast-notification');
-    if (!toast) return;
-
-    toast.textContent = message;
-    toast.classList.add('visible');
-
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
-        toast.classList.remove('visible');
-    }, duration);
 }
 
 function displayConversationState() {

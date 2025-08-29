@@ -91,8 +91,6 @@
                         </button>
                     </div>
 
-                    <div class="control-divider">Tone & Style</div>
-
                     <div class="control-group">
                         <label class="label-with-info">
                             <span>Linguistic Style</span>
@@ -123,26 +121,20 @@
                         </label>
                         <select id="emoji-strategy-select" data-storage-key="emojiStrategy"></select>
                     </div>
-
-                    <details class="accordion">
-                        <summary>Technical Parameters</summary>
-                        <div class="accordion-content">
-                            <div class="control-group">
-                                <label class="label-with-info">
-                                    <span>Creativity</span>
-                                    <span id="temperature-value-label" class="value-label"></span>
-                                </label>
-                                <input type="range" id="temperature-slider" data-storage-key="modelTemperature" min="0" max="2" step="0.1">
-                            </div>
-                            <div class="control-group">
-                                <label class="label-with-info">
-                                    <span>Focus</span>
-                                    <span id="top-p-value-label" class="value-label"></span>
-                                </label>
-                                <input type="range" id="top-p-slider" data-storage-key="topPValue" min="0" max="1" step="0.05">
-                            </div>
-                        </div>
-                    </details>
+                    <div class="control-group">
+                        <label class="label-with-info">
+                            <span>Creativity</span>
+                            <span id="temperature-value-label" class="value-label"></span>
+                        </label>
+                        <input type="range" id="temperature-slider" data-storage-key="modelTemperature" min="0" max="2" step="0.1">
+                    </div>
+                     <div class="control-group">
+                        <label class="label-with-info">
+                            <span>Focus</span>
+                            <span id="top-p-value-label" class="value-label"></span>
+                        </label>
+                        <input type="range" id="top-p-slider" data-storage-key="topPValue" min="0" max="1" step="0.05">
+                    </div>
                 </div>
             </details>
 
@@ -202,7 +194,6 @@
 
     <div id="debug-modal-overlay" class="modal-overlay hidden"></div>
     <div id="info-tooltip" class="tooltip"></div>
-    <div id="toast-notification" class="toast"></div>
 
     <script type="module" src="popup.js"></script>
 </body>
