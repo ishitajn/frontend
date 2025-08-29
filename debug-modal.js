@@ -13,7 +13,7 @@ const CONVERSATION_STATES = ['OPENER', 'EARLY_CONVO', 'ACTIVE_CONVO', 'REENGAGIN
 const INTENT_OPTIONS = ['questioning', 'planning', 'reacting_to_humor', 'storytelling', 'flirting_or_sexual'];
 
 // --- Helper to set nested values from a string path ---
-function setNestedValue(obj, path, value) {
+export function setNestedValue(obj, path, value) {
     const keys = path.split('.');
     let current = obj;
     for (let i = 0; i < keys.length - 1; i++) {
@@ -121,8 +121,8 @@ function renderView() {
     attachEventListeners();
 }
 
-function renderAnalysisView() {
-    const { conversationAnalysis } = modalState;
+export function renderAnalysisView(data) {
+    const { conversationAnalysis } = data;
     const { lastMessageAnalysis } = conversationAnalysis;
     const valenceLabels = {
         '-1': 'Very Negative',
@@ -158,8 +158,8 @@ function renderAnalysisView() {
     `;
 }
 
-function renderMemoryView() {
-    const { memory } = modalState.conversationAnalysis;
+export function renderMemoryView(data) {
+    const { memory } = data.conversationAnalysis;
     return `
         <h3>View 2: Match Memory</h3>
         <table class="payload-table">
