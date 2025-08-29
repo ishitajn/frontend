@@ -35,15 +35,6 @@ const MATCH_SPECIFIC_SETTINGS_KEYS = [
     'customInstruction', 'lastResponse'
 ];
 
-function debounce(func, delay) {
-    let timeout;
-    return function(...args) {
-        const context = this;
-        clearTimeout(timeout);
-        timeout = setTimeout(() => func.apply(context, args), delay);
-    };
-}
-
 const EMOJI_STRATEGIES = {
     'auto': 'Auto (Recommended)',
     'friendly': 'Friendly',
@@ -382,21 +373,6 @@ function stopHeartbeat() {
     }
 }
 
-const debouncedSaveSetting = debounce(async (key, value, isMatchSpecific, uuid) => {
-    if (!key) return;
-    DEBUG.log('STORAGE', `Debounced save for key: ${key}`);
-    if (isMatchSpecific) {
-        if (!uuid) return;
-        const storageKey = getMatchSettingsKey(uuid);
-        const result = await chrome.storage.local.get(storageKey);
-        const matchSettings = result[storageKey] || {};
-        matchSettings[key] = value;
-        await chrome.storage.local.set({ [storageKey]: matchSettings });
-    } else {
-        await chrome.storage.local.set({ [key]: value });
-    }
-}, 300);
-
 function setupEventListeners() {
     // Delegated click handler
     document.addEventListener('click', (event) => {
@@ -429,21 +405,24 @@ function setupEventListeners() {
         }
     });
 
-    // Listeners that don't fit the click delegation model
+    // Listeners for immediate UI feedback (e.g., slider labels) should use 'input'
     document.getElementById(SELECTORS.flirtySlider)?.addEventListener('input', updateSliderLabels);
     document.getElementById(SELECTORS.lengthSlider)?.addEventListener('input', updateSliderLabels);
     document.getElementById(SELECTORS.temperatureSlider)?.addEventListener('input', () => updateSliderValueLabel(SELECTORS.temperatureSlider, SELECTORS.temperatureValueLabel));
     document.getElementById(SELECTORS.topPSlider)?.addEventListener('input', () => updateSliderValueLabel(SELECTORS.topPSlider, SELECTORS.topPValueLabel, 2));
 
+    // Listeners for tooltips
     document.querySelectorAll('.info-icon, [data-tooltip-id]').forEach(icon => {
         icon.addEventListener('mouseenter', handleTooltipShow);
         icon.addEventListener('mouseleave', handleTooltipHide);
     });
 
-    document.getElementById('main-view')?.addEventListener('input', handleSettingChange);
+    // Listeners that save data should use 'change' to be efficient.
+    // 'change' fires on release for sliders, on blur for text inputs, and on selection for selects/checkboxes.
     document.getElementById('main-view')?.addEventListener('change', handleSettingChange);
-    document.getElementById('settings-view')?.addEventListener('input', handleSettingChange);
     document.getElementById('settings-view')?.addEventListener('change', handleSettingChange);
+
+    // Specific listener for location select as it triggers a background action
     document.getElementById(SELECTORS.userLocationSelect)?.addEventListener('change', handleLocationChange);
 
     populateSelect(SELECTORS.linguisticStyleSelect, LINGUISTIC_STYLES.map(s => ({
@@ -492,21 +471,18 @@ async function handleLocationChange() {
 }
 
 function updateClearButtonVisibility(inputEl, clearBtnEl) {
+    // Also listen to 'input' to show/hide the clear buttons immediately
+    inputEl.addEventListener('input', () => {
+        const hasContent = (inputEl.value && inputEl.value.trim() !== '') || (inputEl.textContent && inputEl.textContent.trim() !== '');
+        clearBtnEl.classList.toggle('hidden', !hasContent);
+    });
+    // Initial check
     const hasContent = (inputEl.value && inputEl.value.trim() !== '') || (inputEl.textContent && inputEl.textContent.trim() !== '');
     clearBtnEl.classList.toggle('hidden', !hasContent);
 }
 
 async function handleSettingChange(event) {
     const el = event.target;
-    const isContinuousInput = el.type === 'range' || el.type === 'textarea' || el.id === SELECTORS.responseArea || el.type === 'text';
-
-    // Immediate UI updates
-    if (el.id === SELECTORS.customInstruction) {
-        updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearInstructionBtn));
-    } else if (el.id === SELECTORS.responseArea) {
-        updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearResponseBtn));
-        document.getElementById(SELECTORS.refinementActions).classList.add('hidden');
-    }
 
     const key = el.dataset.storageKey || (el.id === SELECTORS.responseArea ? 'lastResponse' : null);
     if (!key) return;
@@ -514,10 +490,7 @@ async function handleSettingChange(event) {
     const value = el.type === 'checkbox' ? el.checked : (el.id === SELECTORS.responseArea ? el.textContent : el.value);
     const isMatchSpecific = MATCH_SPECIFIC_SETTINGS_KEYS.includes(key) && state.currentMatchUUID;
 
-    if (isContinuousInput) {
-        debouncedSaveSetting(key, value, isMatchSpecific, state.currentMatchUUID);
-    } else {
-        // For checkboxes and selects, save immediately
+    try {
         if (isMatchSpecific) {
             const storageKey = getMatchSettingsKey(state.currentMatchUUID);
             const result = await chrome.storage.local.get(storageKey);
@@ -527,6 +500,10 @@ async function handleSettingChange(event) {
         } else {
             await chrome.storage.local.set({ [key]: value });
         }
+        showToast("Setting saved!");
+    } catch (e) {
+        DEBUG.error('STORAGE', `Failed to save setting for key: ${key}`, e);
+        showToast("Error saving setting", 3000, true);
     }
 }
 
@@ -601,8 +578,10 @@ async function handleMasterReset() {
         const keysToRemove = Object.keys(DEFAULTS);
         await chrome.storage.local.remove(keysToRemove);
         await loadAndApplySettings();
+        showToast("Global defaults have been reset.");
     } catch (e) {
         DEBUG.error("RESET", "Failed to reset master settings:", e);
+        showToast("Error resetting defaults.", 3000, true);
     } finally {
         btn.disabled = false;
     }
@@ -918,6 +897,7 @@ function handleCopyClick() {
     if (!responseArea || !copyBtn || !responseArea.textContent)
         return;
     navigator.clipboard.writeText(responseArea.textContent).then(() => {
+        showToast("Copied to clipboard!");
         const originalHTML = copyBtn.innerHTML;
         copyBtn.textContent = 'Copied!';
         setTimeout(() => {
