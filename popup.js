@@ -35,6 +35,15 @@ const MATCH_SPECIFIC_SETTINGS_KEYS = [
     'customInstruction', 'lastResponse'
 ];
 
+function debounce(func, delay) {
+    let timeout;
+    return function(...args) {
+        const context = this;
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(context, args), delay);
+    };
+}
+
 const EMOJI_STRATEGIES = {
     'auto': 'Auto (Recommended)',
     'friendly': 'Friendly',
@@ -373,42 +382,69 @@ function stopHeartbeat() {
     }
 }
 
+const debouncedSaveSetting = debounce(async (key, value, isMatchSpecific, uuid) => {
+    if (!key) return;
+    DEBUG.log('STORAGE', `Debounced save for key: ${key}`);
+    if (isMatchSpecific) {
+        if (!uuid) return;
+        const storageKey = getMatchSettingsKey(uuid);
+        const result = await chrome.storage.local.get(storageKey);
+        const matchSettings = result[storageKey] || {};
+        matchSettings[key] = value;
+        await chrome.storage.local.set({ [storageKey]: matchSettings });
+    } else {
+        await chrome.storage.local.set({ [key]: value });
+    }
+}, 300);
+
 function setupEventListeners() {
-    window.addEventListener('focus', refreshDataAndUI);
-    document.getElementById(SELECTORS.generateBtn)?.addEventListener('click', handleGenerateClick);
-    document.getElementById(SELECTORS.copyBtn)?.addEventListener('click', handleCopyClick);
-    document.getElementById(SELECTORS.cancelBtn)?.addEventListener('click', handleCancelClick);
-    document.getElementById(SELECTORS.settingsBtn)?.addEventListener('click', () => showView(SELECTORS.settingsView));
-    document.getElementById(SELECTORS.backBtn)?.addEventListener('click', () => showView(SELECTORS.mainView));
-    document.getElementById(SELECTORS.masterResetBtn)?.addEventListener('click', handleMasterReset);
-    document.getElementById(SELECTORS.resetMatchBtn)?.addEventListener('click', handleMatchReset);
+    // Delegated click handler
+    document.addEventListener('click', (event) => {
+        const target = event.target;
+        const targetId = target.id || target.closest('[id]')?.id;
+
+        switch (targetId) {
+            case SELECTORS.generateBtn: handleGenerateClick(); break;
+            case SELECTORS.copyBtn: handleCopyClick(); break;
+            case SELECTORS.cancelBtn: handleCancelClick(); break;
+            case SELECTORS.settingsBtn: showView(SELECTORS.settingsView); break;
+            case SELECTORS.backBtn: showView(SELECTORS.mainView); break;
+            case SELECTORS.masterResetBtn: handleMasterReset(); break;
+            case SELECTORS.resetMatchBtn: handleMatchReset(); break;
+            case SELECTORS.dateIdeaBtn: handleDateIdeaClick(); break;
+            case SELECTORS.clearResponseBtn:
+                const responseArea = document.getElementById(SELECTORS.responseArea);
+                responseArea.textContent = '';
+                responseArea.dispatchEvent(new Event('input', { bubbles: true }));
+                break;
+            case SELECTORS.clearInstructionBtn:
+                const instructionArea = document.getElementById(SELECTORS.customInstruction);
+                instructionArea.value = '';
+                instructionArea.dispatchEvent(new Event('input', { bubbles: true }));
+                break;
+        }
+
+        if (target.closest('.refinement-actions')) {
+            handleRefinementClick(event);
+        }
+    });
+
+    // Listeners that don't fit the click delegation model
     document.getElementById(SELECTORS.flirtySlider)?.addEventListener('input', updateSliderLabels);
     document.getElementById(SELECTORS.lengthSlider)?.addEventListener('input', updateSliderLabels);
     document.getElementById(SELECTORS.temperatureSlider)?.addEventListener('input', () => updateSliderValueLabel(SELECTORS.temperatureSlider, SELECTORS.temperatureValueLabel));
     document.getElementById(SELECTORS.topPSlider)?.addEventListener('input', () => updateSliderValueLabel(SELECTORS.topPSlider, SELECTORS.topPValueLabel, 2));
+
     document.querySelectorAll('.info-icon, [data-tooltip-id]').forEach(icon => {
         icon.addEventListener('mouseenter', handleTooltipShow);
         icon.addEventListener('mouseleave', handleTooltipHide);
     });
+
+    document.getElementById('main-view')?.addEventListener('input', handleSettingChange);
     document.getElementById('main-view')?.addEventListener('change', handleSettingChange);
+    document.getElementById('settings-view')?.addEventListener('input', handleSettingChange);
     document.getElementById('settings-view')?.addEventListener('change', handleSettingChange);
     document.getElementById(SELECTORS.userLocationSelect)?.addEventListener('change', handleLocationChange);
-    document.getElementById(SELECTORS.clearResponseBtn)?.addEventListener('click', () => {
-        const area = document.getElementById(SELECTORS.responseArea);
-        area.textContent = '';
-        area.dispatchEvent(new Event('input', {
-                bubbles: true
-            }));
-    });
-    document.getElementById(SELECTORS.clearInstructionBtn)?.addEventListener('click', () => {
-        const area = document.getElementById(SELECTORS.customInstruction);
-        area.value = '';
-        area.dispatchEvent(new Event('input', {
-                bubbles: true
-            }));
-    });
-    document.getElementById(SELECTORS.dateIdeaBtn)?.addEventListener('click', handleDateIdeaClick);
-    document.getElementById(SELECTORS.refinementActions)?.addEventListener('click', handleRefinementClick);
 
     populateSelect(SELECTORS.linguisticStyleSelect, LINGUISTIC_STYLES.map(s => ({
                 value: s,
@@ -462,28 +498,35 @@ function updateClearButtonVisibility(inputEl, clearBtnEl) {
 
 async function handleSettingChange(event) {
     const el = event.target;
+    const isContinuousInput = el.type === 'range' || el.type === 'textarea' || el.id === SELECTORS.responseArea || el.type === 'text';
+
+    // Immediate UI updates
     if (el.id === SELECTORS.customInstruction) {
         updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearInstructionBtn));
     } else if (el.id === SELECTORS.responseArea) {
         updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearResponseBtn));
         document.getElementById(SELECTORS.refinementActions).classList.add('hidden');
     }
+
     const key = el.dataset.storageKey || (el.id === SELECTORS.responseArea ? 'lastResponse' : null);
-    if (!key)
-        return;
+    if (!key) return;
+
     const value = el.type === 'checkbox' ? el.checked : (el.id === SELECTORS.responseArea ? el.textContent : el.value);
-    if (MATCH_SPECIFIC_SETTINGS_KEYS.includes(key) && state.currentMatchUUID) {
-        const storageKey = getMatchSettingsKey(state.currentMatchUUID);
-        const result = await chrome.storage.local.get(storageKey);
-        const matchSettings = result[storageKey] || {};
-        matchSettings[key] = value;
-        await chrome.storage.local.set({
-            [storageKey]: matchSettings
-        });
+    const isMatchSpecific = MATCH_SPECIFIC_SETTINGS_KEYS.includes(key) && state.currentMatchUUID;
+
+    if (isContinuousInput) {
+        debouncedSaveSetting(key, value, isMatchSpecific, state.currentMatchUUID);
     } else {
-        await chrome.storage.local.set({
-            [key]: value
-        });
+        // For checkboxes and selects, save immediately
+        if (isMatchSpecific) {
+            const storageKey = getMatchSettingsKey(state.currentMatchUUID);
+            const result = await chrome.storage.local.get(storageKey);
+            const matchSettings = result[storageKey] || {};
+            matchSettings[key] = value;
+            await chrome.storage.local.set({ [storageKey]: matchSettings });
+        } else {
+            await chrome.storage.local.set({ [key]: value });
+        }
     }
 }
 
