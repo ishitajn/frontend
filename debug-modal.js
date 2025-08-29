@@ -6,8 +6,8 @@ import { LINGUISTIC_STYLES, DATE_ARC_PHASES } from './conversationHelpers.js';
 /** @type {import('./conversationHelpers.js').GenerationData} */
 let modalState = {};
 let callbacks = {};
-let currentView = 'analysis'; // Start at the new first view
-const VIEWS = ['analysis', 'memory', 'context', 'final'];
+let currentView = 'context'; // Start at the new first view
+const VIEWS = ['context', 'final'];
 
 const CONVERSATION_STATES = ['OPENER', 'EARLY_CONVO', 'ACTIVE_CONVO', 'REENGAGING_DAY', 'REENGAGING_WEEK', 'REENGAGING_MONTH'];
 const INTENT_OPTIONS = ['questioning', 'planning', 'reacting_to_humor', 'storytelling', 'flirting_or_sexual'];
@@ -46,7 +46,12 @@ function createInput(id, dataPath, value, type = 'text') {
 }
 
 function createCheckbox(id, dataPath, checked) {
-    return `<input type="checkbox" id="${id}" data-path="${dataPath}" ${checked ? 'checked' : ''} class="modal-input">`;
+    return `
+        <label class="toggle-switch">
+            <input type="checkbox" id="${id}" data-path="${dataPath}" ${checked ? 'checked' : ''}>
+            <span></span>
+        </label>
+    `;
 }
 
 // FIX: Removed inline event handler to be CSP compliant.
@@ -140,20 +145,47 @@ export function renderAnalysisView(data) {
     };
 
     return `
-        <h3>View 1: Conversation Analysis</h3>
-        <table class="payload-table">
-            <tr><td>Conversation State</td><td>${createSelect('analysis-state', 'conversationAnalysis.conversationState', CONVERSATION_STATES, conversationAnalysis.conversationState)}</td></tr>
-            <tr><td>Suppress Greeting?</td><td>${createCheckbox('analysis-suppressGreeting', 'conversationAnalysis.suppressGreeting', conversationAnalysis.suppressGreeting)}</td></tr>
-            <tr><td colspan="2" style="text-align:center; background:#333;"><strong>Last Message Subtext</strong></td></tr>
-            <tr><td>Is Direct Question?</td><td>${createCheckbox('subtext-isDirectQuestion', 'conversationAnalysis.lastMessageAnalysis.isDirectQuestion', lastMessageAnalysis.isDirectQuestion)}</td></tr>
-            <tr><td>Is Low Effort?</td><td>${createCheckbox('subtext-isLowEffort', 'conversationAnalysis.lastMessageAnalysis.isLowEffort', lastMessageAnalysis.isLowEffort)}</td></tr>
-            <tr><td>Is Sarcastic?</td><td>${createCheckbox('subtext-isSarcastic', 'conversationAnalysis.lastMessageAnalysis.isSarcastic', lastMessageAnalysis.isSarcastic)}</td></tr>
-            <tr><td>Is Ambiguous?</td><td>${createCheckbox('subtext-isAmbiguous', 'conversationAnalysis.lastMessageAnalysis.isAmbiguous', lastMessageAnalysis.isAmbiguous)}</td></tr>
-            <tr><td>Is Vulnerable?</td><td>${createCheckbox('subtext-isVulnerable', 'conversationAnalysis.lastMessageAnalysis.isVulnerable', lastMessageAnalysis.isVulnerable)}</td></tr>
-            <tr><td>Valence</td><td>${createSlider('subtext-valence', 'conversationAnalysis.lastMessageAnalysis.valence', lastMessageAnalysis.valence, -1, 1, 0.1, valenceLabels)}</td></tr>
-            <tr><td>Arousal</td><td>${createSlider('subtext-arousal', 'conversationAnalysis.lastMessageAnalysis.arousal', lastMessageAnalysis.arousal, -1, 1, 0.1, arousalLabels)}</td></tr>
-            <tr><td>Intents</td><td>${createMultiSelect('subtext-intents', 'conversationAnalysis.lastMessageAnalysis.intents', INTENT_OPTIONS, lastMessageAnalysis.intents)}</td></tr>
-        </table>
+        <div class="control-group">
+            <label class="label-with-info"><span>Conversation State</span></label>
+            ${createSelect('analysis-state', 'conversationAnalysis.conversationState', CONVERSATION_STATES, conversationAnalysis.conversationState)}
+        </div>
+        <div class="control-group">
+            <label class="label-with-info"><span>Suppress Greeting?</span></label>
+            ${createCheckbox('analysis-suppressGreeting', 'conversationAnalysis.suppressGreeting', conversationAnalysis.suppressGreeting)}
+        </div>
+        <div class="info-display" style="text-align:center; margin-top: 16px; margin-bottom: 8px;"><strong>Last Message Subtext</strong></div>
+        <div class="control-group">
+            <label class="label-with-info"><span>Is Direct Question?</span></label>
+            ${createCheckbox('subtext-isDirectQuestion', 'conversationAnalysis.lastMessageAnalysis.isDirectQuestion', lastMessageAnalysis.isDirectQuestion)}
+        </div>
+        <div class="control-group">
+            <label class="label-with-info"><span>Is Low Effort?</span></label>
+            ${createCheckbox('subtext-isLowEffort', 'conversationAnalysis.lastMessageAnalysis.isLowEffort', lastMessageAnalysis.isLowEffort)}
+        </div>
+        <div class="control-group">
+            <label class="label-with-info"><span>Is Sarcastic?</span></label>
+            ${createCheckbox('subtext-isSarcastic', 'conversationAnalysis.lastMessageAnalysis.isSarcastic', lastMessageAnalysis.isSarcastic)}
+        </div>
+        <div class="control-group">
+            <label class="label-with-info"><span>Is Ambiguous?</span></label>
+            ${createCheckbox('subtext-isAmbiguous', 'conversationAnalysis.lastMessageAnalysis.isAmbiguous', lastMessageAnalysis.isAmbiguous)}
+        </div>
+        <div class="control-group">
+            <label class="label-with-info"><span>Is Vulnerable?</span></label>
+            ${createCheckbox('subtext-isVulnerable', 'conversationAnalysis.lastMessageAnalysis.isVulnerable', lastMessageAnalysis.isVulnerable)}
+        </div>
+        <div class="control-group">
+            <label class="label-with-info"><span>Valence</span></label>
+            ${createSlider('subtext-valence', 'conversationAnalysis.lastMessageAnalysis.valence', lastMessageAnalysis.valence, -1, 1, 0.1, valenceLabels)}
+        </div>
+        <div class="control-group">
+            <label class="label-with-info"><span>Arousal</span></label>
+            ${createSlider('subtext-arousal', 'conversationAnalysis.lastMessageAnalysis.arousal', lastMessageAnalysis.arousal, -1, 1, 0.1, arousalLabels)}
+        </div>
+        <div class="control-group stacked">
+            <label class="label-with-info"><span>Intents</span></label>
+            ${createMultiSelect('subtext-intents', 'conversationAnalysis.lastMessageAnalysis.intents', INTENT_OPTIONS, lastMessageAnalysis.intents)}
+        </div>
         ${createCollapsibleJSON('View/Edit Raw Analysis Object', conversationAnalysis)}
     `;
 }
@@ -161,13 +193,22 @@ export function renderAnalysisView(data) {
 export function renderMemoryView(data) {
     const { memory } = data.conversationAnalysis;
     return `
-        <h3>View 2: Match Memory</h3>
-        <table class="payload-table">
-            <tr><td>Date Arc Phase</td><td>${createSelect('memory-dateArcPhase', 'conversationAnalysis.memory.dateArcPhase', DATE_ARC_PHASES, memory.dateArcPhase)}</td></tr>
-            <tr><td>Inside Jokes (one per line)</td><td>${createTextarea('memory-insideJokes', 'conversationAnalysis.memory.insideJokes', (memory.insideJokes || []).join('\n'))}</td></tr>
-            <tr><td>Avoided Topics (one per line)</td><td>${createTextarea('memory-avoidedTopics', 'conversationAnalysis.memory.avoidedTopics', (memory.avoidedTopics || []).join('\n'))}</td></tr>
-            <tr><td>Question History (one per line)</td><td>${createTextarea('memory-questionHistory', 'conversationAnalysis.memory.questionHistory', (memory.questionHistory || []).join('\n'))}</td></tr>
-        </table>
+        <div class="control-group">
+            <label class="label-with-info"><span>Date Arc Phase</span></label>
+            ${createSelect('memory-dateArcPhase', 'conversationAnalysis.memory.dateArcPhase', DATE_ARC_PHASES, memory.dateArcPhase)}
+        </div>
+        <div class="control-group stacked">
+            <label class="label-with-info"><span>Inside Jokes (one per line)</span></label>
+            ${createTextarea('memory-insideJokes', 'conversationAnalysis.memory.insideJokes', (memory.insideJokes || []).join('\n'))}
+        </div>
+        <div class="control-group stacked">
+            <label class="label-with-info"><span>Avoided Topics (one per line)</span></label>
+            ${createTextarea('memory-avoidedTopics', 'conversationAnalysis.memory.avoidedTopics', (memory.avoidedTopics || []).join('\n'))}
+        </div>
+        <div class="control-group stacked">
+            <label class="label-with-info"><span>Question History (one per line)</span></label>
+            ${createTextarea('memory-questionHistory', 'conversationAnalysis.memory.questionHistory', (memory.questionHistory || []).join('\n'))}
+        </div>
         ${createCollapsibleJSON('View/Edit Raw Memory Object', memory)}
     `;
 }
