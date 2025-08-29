@@ -27,6 +27,8 @@ const DEFAULTS = {
     local_llama_url: 'http://localhost:8080/v1/chat/completions',
     local_model_name: 'llama3:latest',
     local_llama_api_key: '',
+    analysis_url: '',
+    analysis_type: 'local',
 };
 
 const MATCH_SPECIFIC_SETTINGS_KEYS = [
@@ -120,6 +122,8 @@ const SELECTORS = {
     localLlamaUrl: 'localLlamaUrl',
     localLlamaApiKey: 'localLlamaApiKey',
     localModelName: 'localModelName',
+    analysisUrl: 'analysisUrl',
+    analysisType: 'analysisType',
     userLocationSelect: 'user-location-select',
     myProfileSetting: 'my-profile-setting',
     infoTooltip: 'info-tooltip',
@@ -411,6 +415,18 @@ function setupEventListeners() {
     });
     document.getElementById(SELECTORS.dateIdeaBtn)?.addEventListener('click', handleDateIdeaClick);
     document.getElementById(SELECTORS.refinementActions)?.addEventListener('click', handleRefinementClick);
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tabId = btn.dataset.tab;
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            document.querySelectorAll('.card-container .card').forEach(card => {
+                card.open = card.id === tabId;
+            });
+        });
+    });
 
     populateSelect(SELECTORS.linguisticStyleSelect, LINGUISTIC_STYLES.map(s => ({
                 value: s,
@@ -705,10 +721,10 @@ async function updateGeoContextDisplay(geoContextData) {
     const userLocationData = USER_LOCATIONS[settings.userLocationChoice || 'autodetect'];
     const card = document.getElementById(SELECTORS.geoContextCard);
 
-    if (card)
-        card.hidden = !geoContextData;
     if (!geoContextData)
         return;
+
+    card.open = true;
 
     const dataMap = {
         geoUserName: myName || 'User',
@@ -977,6 +993,10 @@ function showView(viewId) {
     if (view)
         view.classList.remove('hidden');
     state.currentViewId = viewId;
+
+    if (viewId === SELECTORS.mainView) {
+        document.getElementById('tune-response-card').open = true;
+    }
 }
 
 function showError(title, message) {
