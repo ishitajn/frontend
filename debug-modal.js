@@ -105,10 +105,10 @@ function renderView() {
     let html = '';
     switch (currentView) {
     case 'analysis':
-        html = renderAnalysisView();
+        html = renderAnalysisView(modalState);
         break;
     case 'memory':
-        html = renderMemoryView();
+        html = renderMemoryView(modalState);
         break;
     case 'context':
         html = renderContextView();

@@ -326,10 +326,10 @@ function renderTabContent(tabId) {
     let contentEl = null;
 
     if (tabId === 'conversation-analysis-card') {
-        html = renderAnalysisView(state.sessionMatchProfile);
+        html = renderAnalysisView({ conversationAnalysis: state.sessionMatchProfile.analysis });
         contentEl = document.getElementById('conversation-analysis-content');
     } else if (tabId === 'match-memory-card') {
-        html = renderMemoryView(state.sessionMatchProfile);
+        html = renderMemoryView({ conversationAnalysis: state.sessionMatchProfile.analysis });
         contentEl = document.getElementById('match-memory-content');
     }
 
