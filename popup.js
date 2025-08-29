@@ -520,8 +520,17 @@ async function loadAndApplySettings() {
     updateSliderLabels();
     updateSliderValueLabel(SELECTORS.temperatureSlider, SELECTORS.temperatureValueLabel);
     updateSliderValueLabel(SELECTORS.topPSlider, SELECTORS.topPValueLabel, 2);
-    updateClearButtonVisibility(document.getElementById(SELECTORS.customInstruction), document.getElementById(SELECTORS.clearInstructionBtn));
-    updateClearButtonVisibility(responseArea, document.getElementById(SELECTORS.clearResponseBtn));
+
+    // Ensure clear buttons are visible on load if there's content
+    const instructionArea = document.getElementById(SELECTORS.customInstruction);
+    const clearInstructionBtn = document.getElementById(SELECTORS.clearInstructionBtn);
+    if (instructionArea && clearInstructionBtn) {
+        updateClearButtonVisibility(instructionArea, clearInstructionBtn);
+    }
+    const clearResponseBtn = document.getElementById(SELECTORS.clearResponseBtn);
+    if (responseArea && clearResponseBtn) {
+        updateClearButtonVisibility(responseArea, clearResponseBtn);
+    }
 }
 
 async function handleMatchReset() {
@@ -533,8 +542,10 @@ async function handleMatchReset() {
         await chrome.storage.local.remove(getMatchSettingsKey(state.currentMatchUUID));
         document.getElementById(SELECTORS.responseArea).textContent = '';
         await loadAndApplySettings();
+        showToast("Match preferences have been reset.");
     } catch (e) {
         DEBUG.error("RESET", "Failed to reset match settings:", e);
+        showErrorInResponseArea("Failed to reset match preferences.");
     } finally {
         btn.disabled = false;
     }
@@ -881,17 +892,19 @@ async function autoType(text) {
             currentWindow: true
         });
         if (tab?.id) {
-            chrome.scripting.executeScript({
+            await chrome.scripting.executeScript({
                 target: {
                     tabId: tab.id
                 },
-                function : state.pasterFn,
+                function: state.pasterFn,
                 args: [text]
-        });
+            });
+            showToast("Text pasted successfully!");
+        }
+    } catch (error) {
+        DEBUG.error('AUTOTYPE', 'Failed to auto-type', error);
+        showErrorInResponseArea(`Failed to paste text. You may need to focus the text input on the page.`);
     }
-} catch (error) {
-    DEBUG.error('AUTOTYPE', 'Failed to auto-type', error);
-}
 }
 
 function setUIRefreshingState(isRefreshing) {
@@ -996,6 +1009,20 @@ function showErrorInResponseArea(message) {
             }));
         responseArea.classList.add('error');
     }
+}
+
+let toastTimer = null;
+function showToast(message, duration = 3000) {
+    const toast = document.getElementById('toast-notification');
+    if (!toast) return;
+
+    toast.textContent = message;
+    toast.classList.add('visible');
+
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+        toast.classList.remove('visible');
+    }, duration);
 }
 
 function displayConversationState() {
