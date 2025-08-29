@@ -1,16 +1,21 @@
 // background.js (Re-architected for Manifest V3 Robustness with Heartbeat)
 import { generatePrompts } from './prompts.js';
-import { runFullConversationAnalysis, determineConversationState, hasRecentGreeting } from './localAnalysisService.js';
-import { getTimeContext } from './uiFormatters.js';
+import { runFullConversationAnalysis, determineConversationState, hasRecentGreeting } from './conversationHelpers.js';
 import spacetime from './lib/spacetime.min.js';
 import informal from './lib/spacetime-informal.min.js';
-import { DEFAULTS } from './constants.js';
 
 spacetime.extend(informal);
 
 const DEBUG = {
     log: (category, message, data = null) => console.log(`[WINGMAN-BG-${category.toUpperCase()}] ${message}`, data ?? ''),
     error: (category, message, error = null) => console.error(`[WINGMAN-BG-${category.toUpperCase()}-ERROR] ${message}`, error ?? ''),
+};
+
+// --- NEW: Default configuration to prevent undefined settings ---
+const DEFAULTS = {
+    local_llama_url: 'http://localhost:8080/v1/chat/completions',
+    local_model_name: 'llama3:latest',
+    local_llama_api_key: '',
 };
 
 const abortControllers = new Map();
@@ -202,6 +207,10 @@ async function handleAITask(uuid, generationId, payload, port, options = {}) {
 
         const responseText = await fetchLocalLlamaResponse(settings.local_llama_api_key, payload, settings, controller.signal);
 
+        if (controller.signal.aborted) {
+            return;
+        }
+
         const currentState = await getGenerationState(uuid);
         if (currentState.generationId !== generationId) {
             DEBUG.log('AI', `Stale generation response ignored for ${uuid}.`);
@@ -247,7 +256,7 @@ chrome.runtime.onConnect.addListener((port) => {
         "getNlpAnalysis": async(request) => {
             try {
                 DEBUG.log('NLP', 'Received getNlpAnalysis request', request.data);
-                const { scrapedData, uiSettings } = request.data;
+                const { scrapedData } = request.data;
                 if (!scrapedData)
                     throw new Error("getNlpAnalysis received no scrapedData.");
 
@@ -261,136 +270,54 @@ chrome.runtime.onConnect.addListener((port) => {
                 }
 
                 const newCacheHash = await generateCacheHash(scrapedData.conversationHistory, scrapedData.theirProfile);
-
-                const settings = await chrome.storage.local.get(['analysis_type', 'analysis_url', 'analysisApiTimeout']);
-                const analysisType = settings.analysis_type || 'local';
-                const analysisUrl = settings.analysis_url || DEFAULTS.analysis_url;
-
-                // Defensively set a minimum timeout to avoid issues with stale stored settings.
-                if (!settings.analysisApiTimeout || settings.analysisApiTimeout < 600000) {
-                    settings.analysisApiTimeout = 600000;
-                }
-
-                // Bypass cache if using a non-local analysis for now
-                if (analysisType === 'local' && matchProfile.memory?.lastCacheHash === newCacheHash && matchProfile.analysis) {
-                    DEBUG.log('NLP-CACHE', 'Cache HIT.', { uuid });
-                    try {
-                        port.postMessage({ action: 'nlpAnalysisResponse', matchProfile });
-                    } catch (e) { /* port closed */ }
+                if (matchProfile.memory?.lastCacheHash === newCacheHash && matchProfile.analysis) {
+                    DEBUG.log('NLP-CACHE', 'Cache HIT.', {
+                        uuid
+                    });
+                    port.postMessage({
+                        action: 'nlpAnalysisResponse',
+                        matchProfile
+                    });
                     return;
                 }
-
-                const logMessage = analysisType === 'local' ? 'Cache MISS. Running local analysis.' : 'Calling external analysis service.';
-                DEBUG.log('NLP', logMessage, { uuid, analysisType });
+                DEBUG.log('NLP-CACHE', 'Cache MISS. Running full analysis.', {
+                    uuid
+                });
 
                 matchProfile.conversationHistory = scrapedData.conversationHistory;
                 matchProfile.metadata.theirProfile = scrapedData.theirProfile;
                 matchProfile.metadata.matchLocation = scrapedData.matchLocation;
 
-                // --- Step 1: Always run local analysis to get a baseline ---
                 const { updatedMemory, lastMessageAnalysis } = runFullConversationAnalysis(matchProfile.conversationHistory, matchProfile.memory);
                 matchProfile.memory = updatedMemory;
+                matchProfile.memory.lastCacheHash = newCacheHash;
 
-                const localState = determineConversationState(scrapedData.conversationHistory);
-                const localSuppressGreeting = hasRecentGreeting(scrapedData.conversationHistory) && !localState.startsWith('REENGAGING');
+                const state = determineConversationState(scrapedData.conversationHistory);
+                const suppressGreeting = hasRecentGreeting(scrapedData.conversationHistory) && !state.startsWith('REENGAGING');
 
-                let finalAnalysis = {
-                    conversationState: localState,
-                    suppressGreeting: localSuppressGreeting,
+                const fullAnalysis = {
+                    conversationState: state,
+                    suppressGreeting: suppressGreeting,
                     lastMessageAnalysis: lastMessageAnalysis,
-                    memory: updatedMemory,
+                    memory: matchProfile.memory,
                 };
 
-                // --- Step 2: If external analysis is enabled, fetch, transform, and merge ---
-                if (analysisType !== 'local') {
-                    let response;
-                    try {
-                        const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), settings.analysisApiTimeout);
-
-                        const requestBody = buildExternalAnalysisRequest(scrapedData, matchProfile, uiSettings);
-                        response = await fetch(analysisUrl, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(requestBody),
-                            signal: controller.signal
-                        });
-
-                        clearTimeout(timeoutId); // Clear the timeout if the fetch completes
-
-                        if (!response.ok) {
-                            throw new Error(`External analysis service failed with status: ${response.status}`);
-                        }
-
-                        const externalAnalysisRaw = await response.json();
-                        const externalAnalysisTransformed = transformExternalAnalysis(externalAnalysisRaw);
-
-                        finalAnalysis = mergeAnalyses(finalAnalysis, externalAnalysisTransformed);
-
-                        // Also update the top-level memory and geo objects from the backend
-                        if (externalAnalysisRaw.memory) {
-                            // Merge memory objects, prioritizing external data but preserving local-only fields
-                            matchProfile.memory = { ...matchProfile.memory, ...externalAnalysisRaw.memory };
-                            finalAnalysis.memory = matchProfile.memory; // Ensure merged analysis has latest memory
-                        }
-                        if (externalAnalysisRaw.geo) {
-                            matchProfile.memory.geoContextData = transformExternalGeo(externalAnalysisRaw.geo);
-                        }
-
-                    } catch (e) {
-                        let fallbackError;
-                        if (e.name === 'AbortError') {
-                            fallbackError = 'External analysis timed out.';
-                        } else {
-                            // Provide a more specific error for other fetch-related issues (e.g., network, CORS)
-                            fallbackError = `External analysis failed: ${e.message}.`;
-                        }
-                        DEBUG.error('NLP', `${fallbackError} Falling back to local analysis.`, e);
-                        try {
-                            port.postMessage({
-                                action: 'analysisFallback',
-                                error: fallbackError
-                            });
-                        } catch (portError) {
-                            DEBUG.error('PORT', 'Failed to send fallback notification.', portError);
-                        }
-                    }
-                }
-
-                matchProfile.analysis = finalAnalysis;
-
-                matchProfile.memory.lastCacheHash = newCacheHash;
+                matchProfile.analysis = fullAnalysis;
                 matchProfile.metadata.lastUpdated = new Date().toISOString();
                 await memoryManager.saveMatchProfile(uuid, matchProfile);
                 DEBUG.log('NLP', 'Analysis complete. Sending response.', {
                     matchProfile
                 });
-                try {
-                    port.postMessage({
-                        action: 'nlpAnalysisResponse',
-                        matchProfile
-                    });
-                } catch (e) {
-                    if (e.message.includes('disconnected port')) {
-                        DEBUG.log('NLP', 'Port disconnected before analysis response could be sent.');
-                    } else {
-                        throw e;
-                    }
-                }
+                port.postMessage({
+                    action: 'nlpAnalysisResponse',
+                    matchProfile
+                });
             } catch (error) {
                 DEBUG.error('NLP', 'Analysis failed', error);
-                try {
-                    port.postMessage({
-                        action: 'nlpAnalysisResponse',
-                        error: error.message
-                    });
-                } catch (e) {
-                    if (e.message.includes('disconnected port')) {
-                        DEBUG.log('NLP', 'Port disconnected before analysis error response could be sent.');
-                    } else {
-                        throw e;
-                    }
-                }
+                port.postMessage({
+                    action: 'nlpAnalysisResponse',
+                    error: error.message
+                });
             }
         },
 
@@ -453,24 +380,16 @@ chrome.runtime.onConnect.addListener((port) => {
                 km: Math.round(distanceKm),
                 miles: Math.round(distanceKm * 0.621371)
             };
-            const userSpacetime = spacetime.now(userGeoData.timeZone);
+            const userS = spacetime.now(userGeoData.timeZone);
             const matchTimeData = await fetchTimezoneFromCoords(matchCoords.lat, matchCoords.lon);
             const matchTimeZoneName = matchTimeData?.timeZone || matchCoords.timeZone || (matchCoords.country_code ? spacetime(matchCoords.country_code)?.timezone()?.name : null);
-            const matchSpacetime = matchTimeZoneName ? spacetime.now(matchTimeZoneName) : null;
+            const matchS = matchTimeZoneName ? spacetime.now(matchTimeZoneName) : null;
             const getTimeOfDay = s => (h => h < 5 ? 'Late Night' : h < 8 ? 'Early Morning' : h < 12 ? 'Morning' : h < 14 ? 'Afternoon' : h < 17 ? 'Late Afternoon' : h < 19 ? 'Evening' : h < 22 ? 'Late Evening' : 'Night')(s.hour());
-            const formatTime = s => s ? s.format('h:mm A') : 'N/A';
-
             const newGeoContext = {
                 distance,
-                userLocationName: userGeoData.name || 'Auto-Detected',
-                matchLocationName: matchCoords.displayName,
-                userTimeOfDay: getTimeOfDay(userSpacetime),
-                matchTimeOfDay: matchSpacetime ? getTimeOfDay(matchSpacetime) : 'N/A',
-                userCurrentTime: formatTime(userSpacetime),
-                matchCurrentTime: formatTime(matchSpacetime),
-                userTimeZoneName: userGeoData.timeZone,
-                matchTimeZoneName: matchTimeZoneName,
-                timeZoneDifference: matchSpacetime ? Math.abs((userSpacetime.offset() - matchSpacetime.offset()) / 60) : null,
+                userTimeOfDay: getTimeOfDay(userS),
+                matchTimeOfDay: matchS ? getTimeOfDay(matchS) : 'N/A',
+                timeZoneDifference: matchS ? Math.abs((userS.offset() - matchS.offset()) / 60) : null,
                 countryDifference: (userGeoData.country && matchCoords.country && userGeoData.country !== matchCoords.country) ? `User: ${userGeoData.country}, Match: ${matchCoords.country}.` : null,
                 userCountry: userGeoData.country,
                 matchCountry: matchCoords.country || 'Unknown',
@@ -569,21 +488,48 @@ chrome.runtime.onConnect.addListener((port) => {
             DEBUG.log('HEARTBEAT', 'Received heartbeat.');
         },
 
-        "testApiConnection": async(request) => {
-            const { url } = request.data;
-            let success = false;
-            try {
-                const response = await fetch(`${url}/ready`, { method: 'GET' });
-                if (response.ok) {
-                    success = true;
-                }
-            } catch (e) {
-                success = false;
+        "getAIDateIdea": async(request) => {
+            const { uuid, generationId } = request.data;
+            const matchProfile = await memoryManager.getMatchProfile(uuid);
+            if (!matchProfile) {
+                await setGenerationState(uuid, { isGenerating: false, error: 'Match profile not found.' }, port);
+                return;
             }
-            port.postMessage({
-                action: 'testApiConnectionResponse',
-                data: { url, success }
-            });
+
+            const { metadata, memory } = matchProfile;
+            const systemPrompt = `You are a creative and thoughtful date planner. Your goal is to generate a single, unique, and compelling date idea based on the provided context about two people. The idea should be specific, actionable, and tailored to their personalities and shared interests. You must return the response in a valid JSON object with three keys: "title" (a short, catchy name for the date), "description" (a 2-3 sentence explanation of the date), and "reasoning" (a 1-2 sentence explanation of why this is a good idea for them specifically).`;
+            const userPrompt = `Based on the following context, generate one unique date idea.
+
+- **Their Name:** ${metadata.theirName}
+- **Their Profile & Interests:** ${metadata.theirProfile}
+- **Shared Conversation Topics:** ${Object.keys(memory.topics || {}).join(', ')}
+- **Inside Jokes:** ${memory.insideJokes.join(', ')}
+- **Geo-Context:** ${JSON.stringify(memory.geoContextData)}
+
+Generate one date idea in the specified JSON format.`;
+
+            const payload = {
+                model: "llama3:latest",
+                messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
+                temperature: 0.8,
+                response_format: { type: "json_object" }
+            };
+
+            const options = {
+                onSuccess: (responseText) => {
+                    let idea;
+                    try {
+                        idea = JSON.parse(responseText);
+                        if (!idea || typeof idea.title !== 'string' || typeof idea.description !== 'string' || typeof idea.reasoning !== 'string') {
+                            throw new Error("AI returned invalid JSON structure for date idea.");
+                        }
+                    } catch (parseError) {
+                        throw new Error(`AI response was not valid JSON. Raw: ${responseText.substring(0, 100)}...`);
+                    }
+                    return `Date Idea: ${idea.title}\n\n${idea.description}\n\n(Why it's a good idea: ${idea.reasoning})`;
+                }
+            };
+            await handleAITask(uuid, generationId, payload, port, options);
         },
 
         "refineAIResponse": async(request) => {
@@ -659,125 +605,6 @@ function cleanAIResponse(rawResponse) {
         }
     }
     return (earliestStopIndex !== -1 ? rawResponse.substring(0, earliestStopIndex) : rawResponse).trim();
-}
-
-function mergeAnalyses(local, external) {
-    const mergedLastMessage = {
-        ...local.lastMessageAnalysis,
-        ...external.lastMessageAnalysis,
-    };
-
-    const merged = {
-        ...local,
-        ...external,
-        lastMessageAnalysis: mergedLastMessage,
-    };
-
-    return merged;
-}
-
-function transformExternalGeo(geo) {
-    if (!geo) return null;
-
-    const userLocation = geo.userLocation || {};
-    const matchLocation = geo.matchLocation || {};
-
-    return {
-        distance: {
-            km: geo.distance_km,
-            miles: geo.distance_miles,
-        },
-        userLocationName: userLocation.name || 'Backend Provided',
-        matchLocationName: matchLocation.name || 'Unknown',
-        userTimeOfDay: userLocation.time_of_day,
-        matchTimeOfDay: matchLocation.time_of_day,
-        userCurrentTime: userLocation.currentTime,
-        matchCurrentTime: matchLocation.currentTime,
-        userTimeZoneName: userLocation.timeZone,
-        matchTimeZoneName: matchLocation.timeZone,
-        timeZoneDifference: geo.time_difference_hours,
-        countryDifference: (userLocation.country && matchLocation.country && userLocation.country !== matchLocation.country)
-            ? `User: ${userLocation.country}, Match: ${matchLocation.country}.`
-            : null,
-        userCountry: userLocation.country,
-        matchCountry: matchLocation.country,
-        cachedAt: new Date().toISOString(),
-    };
-}
-
-function buildExternalAnalysisRequest(scrapedData, matchProfile, uiSettings) {
-    return {
-        matchId: matchProfile.uuid,
-        scraped_data: {
-            myName: scrapedData.myName,
-            theirName: scrapedData.theirName,
-            theirProfile: scrapedData.theirProfile,
-            theirLocationString: scrapedData.matchLocation,
-            conversationHistory: scrapedData.conversationHistory,
-        },
-        ui_settings: {
-            useEnhancedNlp: uiSettings.analysis_type === 'enhanced',
-            myLocation: uiSettings.userLocationChoice, // This will be the key, e.g., 'autodetect' or 'charlotte'
-            myProfile: uiSettings.myProfile,
-            local_model_name: uiSettings.local_model_name,
-        }
-    };
-}
-
-function transformExternalAnalysis(externalData) {
-    const { analysis, conversation_analysis, memory } = externalData;
-
-    // Helper to map sentiment string to a numeric valence score (-1 to 1)
-    const getValence = (sentiment) => {
-        const sentimentMap = { 'very positive': 0.8, 'positive': 0.5, 'neutral': 0.0, 'negative': -0.5, 'very negative': -0.8 };
-        return sentimentMap[sentiment?.toLowerCase()] ?? 0.0;
-    };
-
-    // Helper to map engagement string to a numeric arousal score (-1 to 1)
-    const getArousal = (engagement) => {
-        const arousalMap = { 'very high': 0.8, 'high': 0.5, 'medium': 0.0, 'low': -0.5, 'very low': -0.8 };
-        return arousalMap[engagement?.toLowerCase()] ?? 0.0;
-    };
-
-    const transformed = {
-        conversationState: conversation_analysis?.Last_message_day || 'UNKNOWN',
-        // Use backend suggestion if available, otherwise use local calculation. Note the inversion.
-        suppressGreeting: conversation_analysis?.Suggest_greeting !== undefined ? conversation_analysis.Suggest_greeting === false : conversation_analysis?.greeting_detected === false,
-        endWithQuestion: conversation_analysis?.Suggest_follow_up_question === true,
-        geoContextToggle: conversation_analysis?.Match_last_message_geo_context === true,
-        pace: conversation_analysis?.Pace,
-        lastMessageAnalysis: {
-            isDirectQuestion: conversation_analysis?.match_last_message_has_question === true,
-            recent_engagement_score: conversation_analysis?.recent_engagement_score || 'unknown',
-            isSarcastic: false,
-            isAmbiguous: false,
-            isVulnerable: false,
-            valence: getValence(analysis?.sentiment),
-            arousal: getArousal(analysis?.engagement),
-            intents: [],
-        },
-        memory: memory || {},
-        conversation_analysis: conversation_analysis || {}
-    };
-
-    // De-duplicate: Remove keys from the raw object that have been mapped to canonical fields
-    if (transformed.conversation_analysis) {
-        delete transformed.conversation_analysis.Last_message_day;
-        delete transformed.conversation_analysis.greeting_detected;
-        delete transformed.conversation_analysis.Suggest_greeting;
-        delete transformed.conversation_analysis.match_last_message_has_question;
-        delete transformed.conversation_analysis.Suggest_follow_up_question;
-        delete transformed.conversation_analysis.recent_engagement_score;
-        delete transformed.conversation_analysis.Match_last_message_geo_context;
-        delete transformed.conversation_analysis.Pace;
-    }
-     if (transformed.analysis) {
-        delete transformed.analysis.sentiment;
-        delete transformed.analysis.engagement;
-    }
-
-
-    return transformed;
 }
 
 async function fetchLocalLlamaResponse(apiKey, payload, settings, signal) {

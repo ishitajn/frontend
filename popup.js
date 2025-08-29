@@ -1,19 +1,146 @@
 // popup.js (Re-architected for Manifest V3 Robustness with Heartbeat)
 import { scrapeBumblePage, pasteTextIntoBumbleInput, scrapeTinderPage, pasteTextIntoTinderInput } from './content-scraper.js';
-import { getToneDescription, getLengthDescription, getEmojiInstruction, getStyleDescription } from './uiFormatters.js';
-import { determineConversationState } from './localAnalysisService.js';
-import { generatePrompts } from './prompts.js';
-import {
-    LINGUISTIC_STYLES, EMOJI_STRATEGIES, USER_LOCATIONS,
-    DATE_ARC_PHASES, CONVERSATION_STATES, INTENT_OPTIONS,
-    FLIRT_LEVEL_OPTIONS, PACE_OPTIONS, DEFAULTS,
-    MATCH_SPECIFIC_SETTINGS_KEYS, SELECTORS,
-    ANALYSIS_VIEW_SCHEMA, TOPIC_ANALYSIS_VIEW_SCHEMA, CONV_ANALYSIS_VIEW_SCHEMA
-} from './constants.js';
+import { getToneDescription, getLengthDescription, getEmojiInstruction, getStyleDescription, determineConversationState, LINGUISTIC_STYLES } from './conversationHelpers.js';
+import { showNlpModal, hideDebugModal } from './debug-modal.js';
 
 const DEBUG = {
     log: (category, message, data = null) => console.log(`[WINGMAN-POPUP-${category.toUpperCase()}] ${message}`, data ?? ''),
     error: (category, message, error = null) => console.error(`[WINGMAN-POPUP-${category.toUpperCase()}-ERROR] ${message}`, error ?? ''),
+};
+
+const DEFAULTS = {
+    flirtyValue: 60,
+    lengthValue: 30,
+    linguisticStyle: 'auto',
+    emojiStrategy: 'no_emoji',
+    modelTemperature: 0.5,
+    topPValue: 1.0,
+    endWithQuestion: false,
+    strictGoalOverride: false,
+    geoContextToggle: true,
+    newTopic: false,
+    debugModeEnabled: false,
+    userLocationChoice: 'autodetect',
+    customInstruction: '',
+    lastResponse: '',
+    myProfile: `Jay, 35 – 6'0", Vice President at a financial institution, graduate degree from Illinois State University. Driven and grounded, with a strong career focus but a playful side—loves trying new cuisines and cooking for others. Enjoys occasional adventure, meaningful conversations, and believes in making a difference through small actions. Social drinker, non-smoker, exercises sometimes. Prefers genuine connection and meeting in person over endless chatting.`,
+    local_llama_url: 'http://localhost:8080/v1/chat/completions',
+    local_model_name: 'llama3:latest',
+    local_llama_api_key: '',
+};
+
+const MATCH_SPECIFIC_SETTINGS_KEYS = [
+    'flirtyValue', 'lengthValue', 'linguisticStyle', 'emojiStrategy',
+    'endWithQuestion', 'strictGoalOverride', 'geoContextToggle', 'newTopic',
+    'customInstruction', 'lastResponse'
+];
+
+const EMOJI_STRATEGIES = {
+    'auto': 'Auto (Recommended)',
+    'friendly': 'Friendly',
+    'playful': 'Playful',
+    'bold': 'Bold',
+    'no_emoji': 'No Emoji'
+};
+const USER_LOCATIONS = {
+    'autodetect': {
+        name: 'Auto-Detect Location'
+    },
+    'charlotte': {
+        name: 'Charlotte, NC, USA',
+        lat: 35.2271,
+        lon: -80.8431,
+        timeZone: 'America/New_York',
+        country: 'United States'
+    },
+    'nyc': {
+        name: 'New York, NY, USA',
+        lat: 40.7128,
+        lon: -74.0060,
+        timeZone: 'America/New_York',
+        country: 'United States'
+    },
+    'la': {
+        name: 'Los Angeles, CA, USA',
+        lat: 34.0522,
+        lon: -118.2437,
+        timeZone: 'America/Los_Angeles',
+        country: 'United States'
+    },
+    'london': {
+        name: 'London, UK',
+        lat: 51.5072,
+        lon: -0.1276,
+        timeZone: 'Europe/London',
+        country: 'United Kingdom'
+    },
+    'sydney': {
+        name: 'Sydney, Australia',
+        lat: -33.8688,
+        lon: 151.2093,
+        timeZone: 'Australia/Sydney',
+        country: 'Australia'
+    },
+};
+
+const SELECTORS = {
+    loadingView: 'loading-view',
+    mainView: 'main-view',
+    settingsView: 'settings-view',
+    errorView: 'error-view',
+    errorTitle: 'error-title',
+    errorMessage: 'error-message',
+    responseArea: 'response-area',
+    generateBtn: 'generate-btn',
+    copyBtn: 'copy-btn',
+    cancelBtn: 'cancel-btn',
+    customInstruction: 'custom-instruction',
+    clearResponseBtn: 'clear-response-btn',
+    clearInstructionBtn: 'clear-instruction-btn',
+    flirtySlider: 'flirty-slider',
+    flirtyValueLabel: 'flirty-value-label',
+    lengthSlider: 'length-slider',
+    lengthValueLabel: 'length-value-label',
+    emojiStrategySelect: 'emoji-strategy-select',
+    conversationStatusDisplay: 'conversation-status-display',
+    questionToggleCheckbox: 'question-toggle-checkbox',
+    strictGoalToggle: 'strict-goal-toggle',
+    geoContextToggle: 'geo-context-toggle',
+    newTopicToggle: 'new-topic-toggle',
+    settingsBtn: 'settings-btn',
+    backBtn: 'back-btn',
+    masterResetBtn: 'master-reset-btn',
+    resetMatchBtn: 'reset-match-btn',
+    temperatureSlider: 'temperature-slider',
+    temperatureValueLabel: 'temperature-value-label',
+    topPSlider: 'top-p-slider',
+    topPValueLabel: 'top-p-value-label',
+    linguisticStyleSelect: 'linguistic-style-select',
+    debugModeToggle: 'debug-mode-toggle',
+    localLlamaUrl: 'localLlamaUrl',
+    localLlamaApiKey: 'localLlamaApiKey',
+    localModelName: 'localModelName',
+    userLocationSelect: 'user-location-select',
+    myProfileSetting: 'my-profile-setting',
+    infoTooltip: 'info-tooltip',
+    responseTimer: 'response-timer',
+    geoContextCard: 'geo-context-card',
+    geoUserName: 'geo-user-name',
+    geoMatchName: 'geo-match-name',
+    userLocation: 'user-location',
+    matchLocation: 'match-location',
+    userTime: 'user-time',
+    matchTime: 'match-time',
+    userTimeOfDay: 'user-time-of-day',
+    matchTimeOfDay: 'match-time-of-day',
+    userTimezone: 'user-timezone',
+    matchTimezone: 'match-timezone',
+    userCountry: 'user-country',
+    matchCountry: 'match-country',
+    timeDifference: 'time-difference',
+    distanceInfo: 'distance-info',
+    dateIdeaBtn: 'date-idea-btn',
+    refinementActions: 'refinement-actions',
 };
 
 const state = {
@@ -61,537 +188,6 @@ function sendMessage(message) {
     }
 }
 
-// --- Tab Management ---
-function handleTabClick(event) {
-    const target = event.target;
-    if (!target.classList.contains('tab-link')) return;
-
-    const tabName = target.dataset.tab;
-
-    // Deactivate all tabs and content
-    document.querySelectorAll('.tab-link').forEach(tab => tab.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-
-    // Activate the clicked tab and its content
-    target.classList.add('active');
-    document.getElementById(tabName).classList.add('active');
-
-    // Render content if it's a debug tab
-    if (['analysis', 'topic-analysis', 'conv-analysis'].includes(tabName)) {
-        renderDebugView(tabName);
-    }
-}
-
-
-
-async function handleTestApiClick(urlInputId) {
-    const urlInput = document.getElementById(urlInputId);
-    const url = urlInput.value;
-    if (!url) {
-        showError('Test Failed', 'URL is empty.');
-        return;
-    }
-
-    const originalButtonText = urlInput.nextElementSibling.textContent;
-    urlInput.nextElementSibling.textContent = '...';
-    urlInput.nextElementSibling.disabled = true;
-
-    sendMessage({
-        action: 'testApiConnection',
-        data: { url }
-    });
-
-    // Listen for the response
-    const listener = (msg) => {
-        if (msg.action === 'testApiConnectionResponse' && msg.data.url === url) {
-            if (msg.data.success) {
-                urlInput.style.borderColor = 'var(--success-color)';
-            } else {
-                urlInput.style.borderColor = 'var(--danger-color)';
-            }
-            urlInput.nextElementSibling.textContent = originalButtonText;
-            urlInput.nextElementSibling.disabled = false;
-
-            setTimeout(() => {
-                urlInput.style.borderColor = '';
-            }, 3000);
-
-            port.onMessage.removeListener(listener);
-        }
-    };
-    port.onMessage.addListener(listener);
-}
-
-
-// --- Debug View Rendering (from debug-modal.js) ---
-// Stubs and constants needed for the moved code
-let modalState = {}; // Using this name to minimize code changes from debug-modal
-
-function setNestedValue(obj, path, value) {
-    const keys = path.split('.');
-    let current = obj;
-    for (let i = 0; i < keys.length - 1; i++) {
-        if (current[keys[i]] === undefined) {
-            current[keys[i]] = {};
-        }
-        current = current[keys[i]];
-    }
-    current[keys[keys.length - 1]] = value;
-}
-
-function createSelect(id, dataPath, options, selectedValue) {
-    const optionsHtml = options.map(opt => `<option value="${opt}" ${opt === selectedValue ? 'selected' : ''}>${opt.charAt(0).toUpperCase() + opt.slice(1)}</option>`).join('');
-    return `<select id="${id}" data-path="${dataPath}">${optionsHtml}</select>`;
-}
-
-function createMultiSelect(id, dataPath, allOptions, selectedOptions) {
-    const selectedSet = new Set(selectedOptions || []);
-    const optionsHtml = allOptions.map(opt => `<option value="${opt}" ${selectedSet.has(opt) ? 'selected' : ''}>${opt.charAt(0).toUpperCase() + opt.slice(1)}</option>`).join('');
-    return `<select id="${id}" data-path="${dataPath}" multiple>${optionsHtml}</select>`;
-}
-
-function createTextarea(id, dataPath, value) {
-    return `<textarea id="${id}" data-path="${dataPath}">${value || ''}</textarea>`;
-}
-
-function createInput(id, dataPath, value, type = 'text') {
-    return `<input type="${type}" id="${id}" data-path="${dataPath}" value="${value || ''}">`;
-}
-
-function createCheckbox(id, dataPath, checked) {
-    // Note: For consistency, checkboxes might need a different structure
-    // depending on final layout choice. This is a basic implementation.
-    return `<input type="checkbox" id="${id}" data-path="${dataPath}" ${checked ? 'checked' : ''}>`;
-}
-
-function createSlider(id, dataPath, value, min, max, step, labelMap) {
-    const getLabel = (val) => {
-        const numVal = parseFloat(val);
-        for (const [limit, label] of Object.entries(labelMap).sort((a,b) => b[0] - a[0])) {
-            if (numVal >= parseFloat(limit))
-                return label;
-        }
-        return Object.values(labelMap)[0];
-    };
-    return `
-        <div class="slider-container">
-            <input type="range" id="${id}" data-path="${dataPath}" value="${value}" min="${min}" max="${max}" step="${step}" data-label-map='${JSON.stringify(labelMap)}'>
-            <span id="${id}-value" class="value-display">${value} (${getLabel(value)})</span>
-        </div>
-    `;
-}
-
-function createCollapsibleJSON(title, dataObject, isEditable = true) {
-    if (dataObject === null || typeof dataObject === 'undefined') {
-        return `
-            <div class="collapsible-json-container">
-                <details class="modal-payload-details">
-                    <summary>${title}</summary>
-                    <pre class="raw-json-area" style="color: var(--text-muted);">Not available</pre>
-                </details>
-            </div>
-        `;
-    }
-
-    const jsonString = JSON.stringify(dataObject, null, 2);
-    const key = title.split(' ')[0].toLowerCase();
-    const copyIconSVG = `<svg fill="currentColor" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"></path></svg>`;
-
-    return `
-        <div class="collapsible-json-container">
-            <details class="modal-payload-details">
-                <summary>${title}</summary>
-                <pre ${isEditable ? 'contenteditable="true"' : ''} class="raw-json-area" data-object-key="${key}">${jsonString}</pre>
-            </details>
-            <button class="icon-btn copy-json-btn" title="Copy JSON">
-                ${copyIconSVG}
-            </button>
-        </div>
-    `;
-}
-
-function renderViewFromSchema(schema, state) {
-    let controlGroups = '';
-    for (const item of schema) {
-        // Helper to get a nested value from the state object using a path string
-        const getValue = (path) => path.split('.').reduce((o, k) => o?.[k], state);
-
-        if (item.type === 'divider') {
-            controlGroups += `<div class="control-group-divider">${item.label}</div>`;
-            continue;
-        }
-
-        if (item.type === 'dynamic_table') {
-            const data = getValue(item.path);
-            if (data && typeof data === 'object') {
-                for (const [key, val] of Object.entries(data)) {
-                    const label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                    const displayVal = typeof val === 'boolean' ?
-                        `<label class="toggle-switch" style="justify-content: flex-end;"><input type="checkbox" ${val ? 'checked' : ''} disabled><span></span></label>` :
-                        `<span class="dynamic-value">${val || 'N/A'}</span>`;
-
-                    controlGroups += `
-                        <div class="control-group">
-                            <label class="label-with-info"><span>${label}</span></label>
-                            ${displayVal}
-                        </div>`;
-                }
-            }
-            continue;
-        }
-
-        const value = getValue(item.path);
-        const id = item.path.replace(/\./g, '-');
-        let controlHtml = '';
-
-        switch (item.type) {
-            case 'select':
-                controlHtml = createSelect(id, item.path, item.options(), value);
-                break;
-            case 'multiselect':
-                controlHtml = createMultiSelect(id, item.path, item.options(), value);
-                break;
-            case 'checkbox':
-                controlHtml = `<label class="toggle-switch" style="justify-content: flex-end;"><input type="checkbox" id="${id}" data-path="${item.path}" ${value ? 'checked' : ''}><span></span></label>`;
-                break;
-            case 'slider':
-                // Slider needs special handling as it has its own label structure
-                const sliderLabel = `<label class="label-with-info"><span>${item.label}</span><span id="${id}-value-label" class="value-label"></span></label>`;
-                const sliderInput = createSlider(id, item.path, value, item.min, item.max, item.step, item.labels);
-                controlGroups += `<div class="control-group">${sliderLabel}${sliderInput}</div>`;
-                continue; // Skip standard group rendering
-            case 'textarea':
-                const areaValue = Array.isArray(value) ? value.join('\n') : value;
-                controlHtml = createTextarea(id, item.path, areaValue);
-                break;
-            case 'text':
-                controlHtml = createInput(id, item.path, value);
-                break;
-        }
-
-        const labelHtml = `<label for="${id}" class="label-with-info"><span>${item.label}</span></label>`;
-        controlGroups += `<div class="control-group">${labelHtml}${controlHtml}</div>`;
-    }
-    return controlGroups;
-}
-
-function renderDebugView(viewName) {
-    const contentEl = document.getElementById(viewName);
-    if (!contentEl) return;
-
-    let html = '';
-    const schemaMap = {
-        'analysis': ANALYSIS_VIEW_SCHEMA,
-        'topic-analysis': TOPIC_ANALYSIS_VIEW_SCHEMA,
-        'conv-analysis': CONV_ANALYSIS_VIEW_SCHEMA,
-    };
-
-    const schema = schemaMap[viewName];
-    if (schema && modalState.conversationAnalysis) {
-        html = renderViewFromSchema(schema, modalState.conversationAnalysis);
-    } else if (schema) {
-        html = '<p>Analysis data not yet available.</p>';
-    } else {
-        html = `<p>No view schema defined for ${viewName}.</p>`;
-    }
-
-    contentEl.innerHTML = `<div class="card-content">${html}</div>`;
-    attachDebugEventListeners(contentEl);
-}
-
-// --- Modal Logic (re-implementing multi-view modal) ---
-const MODAL_VIEWS = ['context', 'final-payload'];
-let currentModalView = 'context';
-
-function renderModalView() {
-    const contentEl = document.getElementById('debug-modal-content');
-    if (!contentEl) return;
-
-    let html = '';
-    switch (currentModalView) {
-        case 'context': html = renderContextView(); break;
-        case 'final-payload': html = renderFinalPayloadView(); break;
-    }
-    contentEl.innerHTML = html;
-    attachDebugEventListeners(contentEl);
-}
-
-function handleModalNav(direction) {
-    const currentIndex = MODAL_VIEWS.indexOf(currentModalView);
-    let nextIndex = currentIndex + direction;
-    if (nextIndex < 0 || nextIndex >= MODAL_VIEWS.length) return;
-
-    currentModalView = MODAL_VIEWS[nextIndex];
-    renderModalView();
-    updateModalNavButtons();
-}
-
-function updateModalNavButtons() {
-    const currentIndex = MODAL_VIEWS.indexOf(currentModalView);
-    document.getElementById('modal-back-btn').disabled = currentIndex === 0;
-
-    const primaryBtn = document.getElementById('modal-primary-action-btn');
-    primaryBtn.textContent = (currentIndex === MODAL_VIEWS.length - 1) ? 'Send to AI' : 'Next';
-}
-
-function showDebugModal(generationData) {
-    modalState = JSON.parse(JSON.stringify(generationData)); // Deep copy to avoid side-effects
-    currentModalView = 'context';
-
-    const overlay = document.getElementById('debug-modal-overlay');
-    overlay.innerHTML = `
-        <div class="modal">
-            <div class="modal-header">Debug & Override Mode</div>
-            <div class="modal-content" id="debug-modal-content"></div>
-            <div class="modal-footer">
-                <div class="modal-actions">
-                    <button id="modal-cancel-btn" class="btn btn-secondary">Cancel</button>
-                    <button id="modal-back-btn" class="btn btn-secondary">Back</button>
-                    <button id="modal-primary-action-btn" class="btn btn-primary">Next</button>
-                </div>
-            </div>
-        </div>
-    `;
-    overlay.classList.remove('hidden');
-
-    document.getElementById('modal-cancel-btn').addEventListener('click', hideDebugModal);
-    document.getElementById('modal-back-btn').addEventListener('click', () => handleModalNav(-1));
-    document.getElementById('modal-primary-action-btn').addEventListener('click', () => {
-        if (currentModalView === 'final-payload') {
-            const { systemMessage, userMessage } = generatePrompts(modalState);
-            const finalPayload = {
-                messages: [{ role: "system", content: systemMessage }, { role: "user", content: userMessage }],
-                temperature: modalState.taskInstructions.temperature,
-                top_p: modalState.taskInstructions.top_p,
-            };
-
-            setUIGeneratingState(true);
-            startTimer(Date.now());
-            hideDebugModal();
-
-            sendMessage({
-                action: "getAIResponse",
-                data: {
-                    payload: finalPayload,
-                    generationId: Date.now(),
-                    uuid: state.currentMatchUUID,
-                    logData: {
-                        uuid: state.currentMatchUUID,
-                        analysis: modalState.conversationAnalysis,
-                        payload: finalPayload
-                    }
-                }
-            });
-
-        } else {
-            handleModalNav(1);
-        }
-    });
-
-    renderModalView();
-    updateModalNavButtons();
-}
-
-function hideDebugModal() {
-    const overlay = document.getElementById('debug-modal-overlay');
-    if (overlay) {
-        overlay.classList.add('hidden');
-        overlay.innerHTML = '';
-    }
-}
-
-function renderContextView() {
-    if (!modalState.conversationHistory) return '<p>Context data not available.</p>';
-    const historyHtml = modalState.conversationHistory.map((msg, index) => `
-        <div class="message-card" data-index="${index}">
-            <div class="message-card-header">
-                <select class="modal-input" data-path="conversationHistory.${index}.role">
-                    <option value="user" ${msg.role === 'user' ? 'selected' : ''}>User</option>
-                    <option value="assistant" ${msg.role === 'assistant' ? 'selected' : ''}>Assistant</option>
-                </select>
-                <button class="icon-btn remove-msg-btn" title="Remove Message">&times;</button>
-            </div>
-            <div class="message-card-content">
-                <textarea class="modal-input" data-path="conversationHistory.${index}.content">${msg.content}</textarea>
-            </div>
-        </div>
-    `).join('');
-
-    return `
-        <h3>Profiles & History</h3>
-        <table class="payload-table">
-            <tr><td>My Name</td><td>${createInput('context-myName', 'myName', modalState.myName)}</td></tr>
-            <tr><td>Their Name</td><td>${createInput('context-theirName', 'theirName', modalState.theirName)}</td></tr>
-            <tr><td>My Profile</td><td>${createTextarea('context-myProfile', 'myProfile', modalState.myProfile)}</td></tr>
-            <tr><td>Their Profile</td><td>${createTextarea('context-theirProfile', 'theirProfile', modalState.theirProfile)}</td></tr>
-        </table>
-        <h4>Conversation History</h4>
-        <div class="messages-container">${historyHtml}</div>
-        <button id="add-message-btn" class="btn btn-secondary add-message-btn">Add Message</button>
-        ${createCollapsibleJSON('View/Edit Raw GeoContext Data', modalState.geoContextData)}
-    `;
-}
-
-function renderFinalPayloadView() {
-    if (!modalState.taskInstructions) {
-        modalState.taskInstructions = {
-            myName: state.sessionScrapedData?.myName || DEFAULTS.myProfile.split(',')[0].trim(),
-            theirName: state.sessionMatchProfile?.metadata?.theirName || 'Match',
-            goal: document.getElementById(SELECTORS.customInstruction).value.trim(),
-            flirtyValue: Number(document.getElementById(SELECTORS.flirtySlider).value),
-            lengthValue: Number(document.getElementById(SELECTORS.lengthSlider).value),
-            linguisticStyle: document.getElementById(SELECTORS.linguisticStyleSelect).value,
-            emojiStrategy: document.getElementById(SELECTORS.emojiStrategySelect).value,
-            temperature: parseFloat(document.getElementById(SELECTORS.temperatureSlider).value),
-            top_p: parseFloat(document.getElementById(SELECTORS.topPSlider).value),
-            endWithQuestion: document.getElementById(SELECTORS.questionToggleCheckbox).checked,
-            strictGoalOverride: document.getElementById(SELECTORS.strictGoalToggle).checked,
-            forceNewTopic: document.getElementById(SELECTORS.newTopicToggle).checked,
-            local_model_name: document.getElementById(SELECTORS.localModelName).value,
-        };
-        modalState.forceIncludeGeoContext = document.getElementById(SELECTORS.geoContextToggle).checked;
-    }
-
-    const { systemMessage, userMessage } = generatePrompts(modalState);
-    const finalPayload = {
-        messages: [{
-                role: "system",
-                content: systemMessage
-            }, {
-                role: "user",
-                content: userMessage
-            }
-        ],
-        temperature: modalState.taskInstructions.temperature,
-        top_p: modalState.taskInstructions.top_p
-    };
-    modalState.finalPayload = finalPayload;
-
-    return `
-        <h3>Final Payload Review</h3>
-        <p>This is the exact data that will be sent to the AI. You can make final edits to the messages below.</p>
-        <div class="messages-container">
-            <div class="message-card">
-                <div class="message-card-header"><strong>System Message</strong></div>
-                <div class="message-card-content">${createTextarea('final-system', 'finalPayload.messages.0.content', systemMessage)}</div>
-            </div>
-            <div class="message-card">
-                <div class="message-card-header"><strong>User Message</strong></div>
-                <div class="message-card-content">${createTextarea('final-user', 'finalPayload.messages.1.content', userMessage)}</div>
-            </div>
-        </div>
-        ${createCollapsibleJSON('View/Edit Raw Final Payload', finalPayload, false)}
-    `;
-}
-
-function attachDebugEventListeners(container) {
-    container.addEventListener('input', updateStateFromUI);
-    container.addEventListener('change', updateStateFromUI);
-
-    container.querySelectorAll('input[type="range"][data-label-map]').forEach(slider => {
-        slider.addEventListener('input', (e) => {
-            const targetSlider = e.currentTarget;
-            const valueDisplay = document.getElementById(`${targetSlider.id}-value`);
-            if (valueDisplay) {
-                const labelMap = JSON.parse(targetSlider.dataset.labelMap);
-                const currentValue = targetSlider.value;
-                const getLabel = (val) => {
-                     const numVal = parseFloat(val);
-                     for (const [limit, label] of Object.entries(labelMap).sort((a,b) => b[0] - a[0])) {
-                         if (numVal >= parseFloat(limit)) return label;
-                     }
-                     return Object.values(labelMap)[0];
-                };
-                valueDisplay.textContent = `${currentValue} (${getLabel(currentValue)})`;
-            }
-        });
-    });
-
-    container.querySelectorAll('.copy-json-btn').forEach(btn => {
-        btn.addEventListener('click', e => {
-            const button = e.currentTarget;
-            const pre = button.closest('.collapsible-json-container').querySelector('pre.raw-json-area');
-            if (!pre) return;
-            navigator.clipboard.writeText(pre.textContent.replace(/\\n/g, '\\n'));
-            const originalIcon = button.innerHTML;
-            button.innerHTML = '✅';
-            button.disabled = true;
-            setTimeout(() => {
-                button.innerHTML = originalIcon;
-                button.disabled = false;
-            }, 1500);
-        });
-    });
-
-    container.querySelectorAll('.raw-json-area[contenteditable="true"]').forEach(area => {
-        area.addEventListener('blur', e => {
-            try {
-                const newJson = JSON.parse(e.target.textContent);
-                const key = e.target.dataset.objectKey;
-                if (key === 'memory') modalState.conversationAnalysis.memory = newJson;
-                else if (key === 'analysis') modalState.conversationAnalysis = newJson;
-                else modalState[key] = newJson;
-                renderDebugView(container.id);
-            } catch (err) {
-                console.error("Invalid JSON entered:", err);
-                e.target.style.border = '1px solid red';
-            }
-        });
-        area.addEventListener('focus', e => { e.target.style.border = ''; });
-    });
-
-    if (container.id === 'context') {
-        container.querySelector('#add-message-btn')?.addEventListener('click', () => {
-            modalState.conversationHistory.push({ role: 'user', content: '', date: new Date().toISOString().split('T')[0] });
-            renderDebugView('context');
-        });
-        container.querySelectorAll('.remove-msg-btn').forEach(btn => {
-            btn.addEventListener('click', e => {
-                const index = e.currentTarget.closest('.message-card').dataset.index;
-                modalState.conversationHistory.splice(index, 1);
-                renderDebugView('context');
-            });
-        });
-    }
-}
-
-function updateStateFromUI(e) {
-    const el = e.target;
-    const path = el.dataset.path;
-    if (!path) return;
-
-    let value;
-    if (el.type === 'checkbox') value = el.checked;
-    else if (el.type === 'range' || el.type === 'number') value = parseFloat(el.value);
-    else if (el.multiple) value = Array.from(el.selectedOptions).map(opt => opt.value);
-    else value = el.value;
-
-    if (path.endsWith('insideJokes') || path.endsWith('avoidedTopics') || path.endsWith('questionHistory')) {
-        value = el.value.split('\\n').filter(Boolean);
-    }
-
-    setNestedValue(modalState, path, value);
-
-    const objectKey = path.split('.')[0];
-    const activeTab = document.querySelector('.tab-content.active').id;
-    if ((objectKey === 'conversationAnalysis' || objectKey === 'memory') && (activeTab==='analysis' || activeTab==='memory')) {
-        updateRawJsonDisplay(activeTab);
-    }
-}
-
-function updateRawJsonDisplay(key) {
-    const pre = document.querySelector(`#${key} .raw-json-area[data-object-key="${key}"]`);
-    if (!pre) return;
-
-    let objectToDisplay;
-    switch (key) {
-        case 'analysis': objectToDisplay = modalState.conversationAnalysis; break;
-        case 'memory': objectToDisplay = modalState.conversationAnalysis.memory; break;
-        case 'geocontext': objectToDisplay = modalState.geoContextData; break;
-    }
-    if(objectToDisplay) pre.textContent = JSON.stringify(objectToDisplay, null, 2);
-}
-
 function setupPort() {
     port = chrome.runtime.connect({
         name: "wingman-popup"
@@ -616,9 +212,6 @@ function setupPort() {
             break;
         case 'generationStateResponse':
             syncUIWithState(message.state);
-            break;
-        case 'analysisFallback':
-            showToast(`Analysis failed: ${message.error} Using local results.`);
             break;
         }
     });
@@ -706,17 +299,10 @@ if (!pageData || pageData.error) {
 }
 
 state.sessionScrapedData = pageData;
-const settings = await chrome.storage.local.get(['myProfile', 'userLocationChoice', 'local_model_name', 'analysis_type']);
 sendMessage({
     action: "getNlpAnalysis",
     data: {
-        scrapedData: pageData,
-        uiSettings: {
-            myProfile: settings.myProfile || DEFAULTS.myProfile,
-            userLocationChoice: settings.userLocationChoice || DEFAULTS.userLocationChoice,
-            local_model_name: settings.local_model_name || DEFAULTS.local_model_name,
-            analysis_type: settings.analysis_type || DEFAULTS.analysis_type,
-        }
+        scrapedData: pageData
     }
 });
 
@@ -730,48 +316,16 @@ sendMessage({
 }
 
 async function handleNlpAnalysisResponse(message) {
-    if (message.error || !message.matchProfile) {
-        showError('NLP Analysis Failed', message.error || 'No match profile returned.');
+    if (message.error) {
+        showError('NLP Analysis Failed', message.error);
         return;
     }
 
     state.sessionMatchProfile = message.matchProfile;
     state.currentMatchUUID = message.matchProfile.uuid;
 
-    // Populate modalState for debug views
-    modalState = {
-        ...state.sessionScrapedData,
-        ...state.sessionMatchProfile.metadata,
-        myProfile: (await chrome.storage.local.get('myProfile')).myProfile || DEFAULTS.myProfile,
-        conversationHistory: state.sessionMatchProfile.conversationHistory,
-        conversationAnalysis: state.sessionMatchProfile.analysis,
-        geoContextData: state.sessionMatchProfile.memory.geoContextData,
-        taskInstructions: {}, // This will be populated on generate click
-    };
-
-
     await loadAndApplySettings();
-
-    // After loading saved settings, apply any suggestions from the backend analysis.
-    // This allows the backend to set a default state, which the user can then override.
-    const analysis = message.matchProfile.analysis;
-    if (analysis) {
-        if (analysis.endWithQuestion !== undefined) {
-            document.getElementById(SELECTORS.questionToggleCheckbox).checked = analysis.endWithQuestion;
-        }
-        if (analysis.geoContextToggle !== undefined) {
-            document.getElementById(SELECTORS.geoContextToggle).checked = analysis.geoContextToggle;
-        }
-        // No need to handle suppressGreeting here as it doesn't have a UI toggle on the main screen.
-        // No need to handle pace here as it's part of the analysis tab, not a global setting.
-    }
-
-    // Only run local geo-calculation if the backend didn't provide it
-    if (!state.sessionMatchProfile.memory.geoContextData) {
-        await handleLocationChange();
-    } else {
-        updateGeoContextDisplay(state.sessionMatchProfile.memory.geoContextData);
-    }
+    await handleLocationChange();
 
     displayConversationState();
     showView(SELECTORS.mainView);
@@ -820,6 +374,7 @@ function stopHeartbeat() {
 }
 
 function setupEventListeners() {
+    window.addEventListener('focus', refreshDataAndUI);
     document.getElementById(SELECTORS.generateBtn)?.addEventListener('click', handleGenerateClick);
     document.getElementById(SELECTORS.copyBtn)?.addEventListener('click', handleCopyClick);
     document.getElementById(SELECTORS.cancelBtn)?.addEventListener('click', handleCancelClick);
@@ -835,9 +390,7 @@ function setupEventListeners() {
         icon.addEventListener('mouseenter', handleTooltipShow);
         icon.addEventListener('mouseleave', handleTooltipHide);
     });
-    document.getElementById('main-view')?.addEventListener('input', handleSettingChange);
     document.getElementById('main-view')?.addEventListener('change', handleSettingChange);
-    document.getElementById('settings-view')?.addEventListener('input', handleSettingChange);
     document.getElementById('settings-view')?.addEventListener('change', handleSettingChange);
     document.getElementById(SELECTORS.userLocationSelect)?.addEventListener('change', handleLocationChange);
     document.getElementById(SELECTORS.clearResponseBtn)?.addEventListener('click', () => {
@@ -854,10 +407,8 @@ function setupEventListeners() {
                 bubbles: true
             }));
     });
+    document.getElementById(SELECTORS.dateIdeaBtn)?.addEventListener('click', handleDateIdeaClick);
     document.getElementById(SELECTORS.refinementActions)?.addEventListener('click', handleRefinementClick);
-    document.querySelector('.tabs')?.addEventListener('click', handleTabClick);
-    document.getElementById(SELECTORS.testApiBtn)?.addEventListener('click', () => handleTestApiClick(SELECTORS.localLlamaUrl));
-    document.getElementById(SELECTORS.testAnalysisBtn)?.addEventListener('click', () => handleTestApiClick(SELECTORS.analysisUrl));
 
     populateSelect(SELECTORS.linguisticStyleSelect, LINGUISTIC_STYLES.map(s => ({
                 value: s,
@@ -891,8 +442,9 @@ async function handleLocationChange() {
                 longitude: position.coords.longitude
             };
         } catch (error) {
-            showErrorInResponseArea(`Auto-detect failed. Using fallback: Charlotte, NC.`);
-            messageData.userLocation = USER_LOCATIONS['charlotte'];
+            showErrorInResponseArea(`Geolocation failed: ${error.message}`);
+            updateGeoContextDisplay(null);
+            return;
         }
     } else {
         messageData.userLocation = USER_LOCATIONS[choice];
@@ -1142,38 +694,39 @@ function getTooltipContent(tooltipId) {
 }
 
 async function updateGeoContextDisplay(geoContextData) {
-    if (!state.sessionMatchProfile || !state.sessionScrapedData) return;
+    if (!state.sessionMatchProfile || !state.sessionScrapedData)
+        return;
 
     const { myName } = state.sessionScrapedData;
-    const { theirName } = state.sessionMatchProfile.metadata;
+    const { theirName, matchLocation } = state.sessionMatchProfile.metadata;
+    const settings = await chrome.storage.local.get('userLocationChoice');
+    const userLocationData = USER_LOCATIONS[settings.userLocationChoice || 'autodetect'];
     const card = document.getElementById(SELECTORS.geoContextCard);
 
-    if (card) card.hidden = !geoContextData;
-    if (!geoContextData) return;
+    if (card)
+        card.hidden = !geoContextData;
+    if (!geoContextData)
+        return;
 
     const dataMap = {
         geoUserName: myName || 'User',
         geoMatchName: theirName || 'Match',
-        userLocation: geoContextData.userLocationName,
-        matchLocation: geoContextData.matchLocationName,
-        userTime: geoContextData.userCurrentTime,
-        matchTime: geoContextData.matchCurrentTime,
+        userLocation: userLocationData.name.split(',')[0],
+        matchLocation: matchLocation,
         userTimeOfDay: geoContextData.userTimeOfDay,
         matchTimeOfDay: geoContextData.matchTimeOfDay,
-        userTimezone: geoContextData.userTimeZoneName,
-        matchTimezone: geoContextData.matchTimeZoneName,
-        userCountry: geoContextData.userCountry,
+        userTimezone: geoContextData.userTimeZoneName || userLocationData.timeZone,
         matchCountry: geoContextData.matchCountry,
+        userCountry: geoContextData.userCountry || userLocationData.country,
         timeDifference: geoContextData.timeZoneDifference !== null ? `${geoContextData.timeZoneDifference} hour(s)` : 'N/A',
-        distanceInfo: geoContextData.distance ? `${geoContextData.distance.miles} miles / ${geoContextData.distance.km} km` : 'N/A',
-        countryDifference: geoContextData.countryDifference,
+        distanceInfo: `${geoContextData.distance.miles} miles / ${geoContextData.distance.km} km`,
+        countryDifference: `${geoContextData.countryDifference}`
     };
 
     Object.entries(dataMap).forEach(([id, text]) => {
         const el = document.getElementById(SELECTORS[id]);
-        if (el) {
+        if (el)
             el.textContent = text || 'N/A';
-        }
     });
 }
 
@@ -1221,18 +774,42 @@ async function handleGenerateClick() {
     }
 
     const dataForBackground = await gatherCoreDataForGeneration();
-
     if (document.getElementById(SELECTORS.debugModeToggle).checked) {
-        // In debug mode, show the modal instead of sending to the background script
         const fullGenerationData = {
-            ...modalState, // Base state from analysis
-            myProfile: dataForBackground.myProfile, // Overwrite with fresh profile from settings
-            forceIncludeGeoContext: dataForBackground.forceIncludeGeoContext, // Overwrite with fresh toggle state
-            taskInstructions: dataForBackground.taskInstructions, // Overwrite with fresh instructions from main UI
+            ...state.sessionScrapedData,
+            ...state.sessionMatchProfile.metadata,
+            myProfile: dataForBackground.myProfile,
+            conversationHistory: state.sessionMatchProfile.conversationHistory,
+            conversationAnalysis: state.sessionMatchProfile.analysis,
+            geoContextData: state.sessionMatchProfile.memory.geoContextData,
+            forceIncludeGeoContext: dataForBackground.forceIncludeGeoContext,
+            taskInstructions: dataForBackground.taskInstructions,
         };
-        showDebugModal(fullGenerationData);
+        const debugCallbacks = {
+            sendFinalPayloadToAI: (payload) => {
+                sendMessage({
+                    action: "getAIResponse",
+                    data: {
+                        payload,
+                        generationId: Date.now(),
+                        uuid: state.currentMatchUUID,
+                        logData: {
+                            uuid: state.currentMatchUUID,
+                            analysis: state.sessionMatchProfile.analysis,
+                            payload: payload
+                        }
+                    }
+                });
+            },
+            setUIGeneratingState,
+            showErrorInResponseArea,
+            hideDebugModal,
+            startTimer,
+            stopTimer,
+            resetTimerDisplay
+        };
+        showNlpModal(fullGenerationData, debugCallbacks);
     } else {
-        // In normal mode, get the final payload from the background script
         sendMessage({
             action: "getFinalPayload",
             data: dataForBackground
@@ -1336,11 +913,13 @@ function setUIGeneratingState(isGenerating) {
     const copyBtn = document.getElementById(SELECTORS.copyBtn);
     const responseArea = document.getElementById(SELECTORS.responseArea);
     const refinementActions = document.getElementById(SELECTORS.refinementActions);
+    const dateIdeaBtn = document.getElementById(SELECTORS.dateIdeaBtn);
 
-    if (!generateBtn || !cancelBtn || !copyBtn || !responseArea || !refinementActions)
+    if (!generateBtn || !cancelBtn || !copyBtn || !responseArea || !refinementActions || !dateIdeaBtn)
         return;
 
     generateBtn.disabled = isGenerating;
+    dateIdeaBtn.disabled = isGenerating;
     document.querySelectorAll('.btn-refine').forEach(btn => btn.disabled = isGenerating);
 
     generateBtn.innerHTML = isGenerating ? 'Thinking...' : 'Generate';
@@ -1356,6 +935,8 @@ function setUIGeneratingState(isGenerating) {
         responseArea.classList.add('loading');
         responseArea.classList.remove('error');
     } else {
+        dateIdeaBtn.disabled = false;
+        dateIdeaBtn.innerHTML = `<svg fill="currentColor" viewBox="0 0 24 24" width="18" height="18"><path d="M9 11H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm2-7h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z"></path></svg> Suggest a Date Idea`;
         responseArea.classList.remove('loading');
         if (!responseArea.textContent || responseArea.classList.contains('error')) {
             copyBtn.classList.add('hidden');
@@ -1417,20 +998,6 @@ function showErrorInResponseArea(message) {
     }
 }
 
-let toastTimer = null;
-function showToast(message, duration = 3000) {
-    const toast = document.getElementById('toast-notification');
-    if (!toast) return;
-
-    toast.textContent = message;
-    toast.classList.add('visible');
-
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
-        toast.classList.remove('visible');
-    }, duration);
-}
-
 function displayConversationState() {
     if (!state.sessionMatchProfile?.analysis)
         return;
@@ -1449,6 +1016,29 @@ function displayConversationState() {
     const statusEl = document.getElementById(SELECTORS.conversationStatusDisplay);
     if (statusEl)
         statusEl.textContent = stateDisplayMap[convoState] || 'Status: Unknown';
+
+    const dateIdeaBtn = document.getElementById(SELECTORS.dateIdeaBtn);
+    if (dateIdeaBtn) {
+        const showButton = dateArcPhase === 'escalation' || dateArcPhase === 'planning';
+        dateIdeaBtn.classList.toggle('hidden', !showButton);
+    }
+}
+
+function handleDateIdeaClick() {
+    if (!state.sessionMatchProfile || !state.currentMatchUUID) {
+        showErrorInResponseArea("Error: Match profile data not loaded. Please refresh.");
+        return;
+    }
+    setUIGeneratingState(true);
+    startTimer(Date.now());
+
+    sendMessage({
+        action: 'getAIDateIdea',
+        data: {
+            uuid: state.currentMatchUUID,
+            generationId: Date.now()
+        }
+    });
 }
 
 function handleRefinementClick(event) {

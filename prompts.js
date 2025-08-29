@@ -1,7 +1,6 @@
 // src/prompts.js (Corrected with Consistent Data Structuring)
 
-import { isMessageGeoRelated } from './localAnalysisService.js';
-import { getTimeContext } from './localAnalysisService.js';
+import { isMessageGeoRelated, getTimeContext } from './conversationHelpers.js';
 import { getSystemPrompt } from './prompts/systemPrompt.js';
 import { buildContextPrompt } from './prompts/contextPrompt.js';
 import { buildTaskPrompt } from './prompts/taskPrompt.js';
