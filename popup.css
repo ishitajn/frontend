@@ -233,3 +233,104 @@ footer { padding: 8px 12px; font-size: 10px; color: var(--text-muted); text-alig
     flex-shrink: 0;
     margin-left: 0; /* Override default margin-left: auto */
 }
+
+/* --- Tabbed Interface --- */
+.analysis-tabs {
+    padding: 0;
+}
+
+.tab-bar {
+    display: flex;
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--bg-secondary);
+}
+
+.tab-link {
+    flex: 1;
+    padding: 10px 12px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition-speed) ease;
+    text-align: center;
+}
+
+.tab-link:hover {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.tab-link.active {
+    color: var(--accent-primary);
+    border-bottom-color: var(--accent-primary);
+}
+
+.tab-content {
+    padding: 12px;
+}
+
+.tab-panel {
+    display: none;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.tab-panel.active {
+    display: flex;
+}
+
+/* --- Tab Content Styling --- */
+.card-subheader {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 8px;
+}
+
+.key-value-grid {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 8px 12px;
+    font-size: 12px;
+}
+
+.key-value-key {
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.key-value-value {
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.value-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.value-list li {
+    background-color: var(--bg-tertiary);
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+.sub-grid {
+    grid-column: 1 / -1; /* Make sub-grid span both columns */
+    border-left: 2px solid var(--accent-primary);
+    padding-left: 12px;
+    margin-top: 4px;
+}
