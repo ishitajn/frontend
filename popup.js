@@ -340,8 +340,89 @@ async function handleNlpAnalysisResponse(response) {
     state.sessionMatchProfile = response.matchProfile;
     state.currentMatchUUID = response.matchProfile.uuid;
     await loadAndApplySettings();
-    updateUIFromState(); // <-- Add this
+    updateUIFromState();
     showView(SELECTORS.mainView);
+}
+
+function updateUIFromState() {
+    if (!state.sessionMatchProfile) return;
+
+    const { analysis, memory } = state.sessionMatchProfile;
+
+    // Update Conversation Status
+    const statusDisplay = document.getElementById(SELECTORS.conversationStatusDisplay);
+    if (statusDisplay && analysis?.state) {
+        statusDisplay.textContent = `Status: ${analysis.state.replace(/_/g, ' ')}`;
+    }
+
+    // Render Dynamic Tabs
+    renderAnalysisTab(analysis);
+    renderMemoryTab(memory);
+
+    // Update Geo Tab
+    updateGeoContextDisplay(memory?.geoContextData);
+}
+
+function renderAnalysisTab(analysis) {
+    const container = document.getElementById('analysis');
+    if (!container || !analysis) {
+        container.innerHTML = '<p>No analysis data available.</p>';
+        return;
+    }
+
+    const { lastMessageAnalysis } = analysis;
+
+    const createField = (label, element, sourcePath) => {
+        const source = analysis[sourcePath] || lastMessageAnalysis[sourcePath];
+        const sourceLabel = source === 'local' ? '<span class="source-label local" title="Value derived from local analysis">L</span>' : '';
+        return `<div class="control-group-dynamic">${label}${sourceLabel}: ${element}</div>`;
+    };
+
+    container.innerHTML = `
+        <div class="card-content">
+            <div class="card-subheader">Conversation</div>
+            ${createField('State', createInput('analysis-state', 'state', analysis.state))}
+            ${createField('Suppress Greeting', createCheckbox('analysis-suppress-greeting', 'suppressGreeting', analysis.suppressGreeting))}
+
+            <div class="card-subheader" style="margin-top: 16px;">Last Message Subtext</div>
+            ${createField('Suggested Style', createInput('analysis-style', 'lastMessageAnalysis.suggestedResponseStyle', lastMessageAnalysis.suggestedResponseStyle))}
+            ${createField('Is Question', createCheckbox('analysis-is-question', 'lastMessageAnalysis.isDirectQuestion', lastMessageAnalysis.isDirectQuestion))}
+            ${createField('Is Low Effort', createCheckbox('analysis-is-low-effort', 'lastMessageAnalysis.isLowEffort', lastMessageAnalysis.isLowEffort))}
+            ${createField('Is Ambiguous', createCheckbox('analysis-is-ambiguous', 'lastMessageAnalysis.isAmbiguous', lastMessageAnalysis.isAmbiguous))}
+            ${createField('Is Sarcastic', createCheckbox('analysis-is-sarcastic', 'lastMessageAnalysis.isSarcastic', lastMessageAnalysis.isSarcastic))}
+            ${createField('Is Vulnerable', createCheckbox('analysis-is-vulnerable', 'lastMessageAnalysis.isVulnerable', lastMessageAnalysis.isVulnerable))}
+            ${createField('Is Geo-Related', createCheckbox('analysis-is-geo', 'lastMessageAnalysis.isGeoRelated', lastMessageAnalysis.isGeoRelated))}
+            ${createField('Valence', createSlider('analysis-valence', 'lastMessageAnalysis.valence', lastMessageAnalysis.valence, -1, 1, 0.1))}
+            ${createField('Arousal', createSlider('analysis-arousal', 'lastMessageAnalysis.arousal', lastMessageAnalysis.arousal, -1, 1, 0.1))}
+            ${createField('Intents', createMultiSelect('analysis-intents', 'lastMessageAnalysis.intents', INTENT_OPTIONS, lastMessageAnalysis.intents))}
+        </div>
+    `;
+}
+
+function renderMemoryTab(memory) {
+    const container = document.getElementById('memory');
+    if (!container || !memory) {
+        container.innerHTML = '<p>No memory data available.</p>';
+        return;
+    }
+    container.innerHTML = `
+        <div class="card-content">
+            <div class="control-group-dynamic">Date Arc Phase: ${createSelect('memory-date-arc', 'memory.dateArcPhase', DATE_ARC_PHASES, memory.dateArcPhase)}</div>
+            <div class="control-group-dynamic">
+                <label>Inside Jokes (one per line)</label>
+                ${createTextarea('memory-inside-jokes', 'memory.insideJokes', (memory.insideJokes || []).join('\\n'))}
+            </div>
+            <div class="control-group-dynamic">
+                <label>Avoided Topics (one per line)</label>
+                ${createTextarea('memory-avoided-topics', 'memory.avoidedTopics', (memory.avoidedTopics || []).join('\\n'))}
+            </div>
+             <div class="control-group-dynamic">
+                <label>Question History (one per line)</label>
+                ${createTextarea('memory-question-history', 'memory.questionHistory', (memory.questionHistory || []).join('\\n'))}
+            </div>
+            ${createCollapsibleJSON('Topics', memory.topics, false)}
+        </div>
+    `;
 }
 
 function handleFinalPayloadResponse(message) {
@@ -830,36 +911,42 @@ async function updateGeoContextDisplay(geoContextData) {
 
 // --- Settings Tab: Add backend test buttons ---
 function addBackendTestButtons() {
-    const settingsTab = document.getElementById('settings');
-    if (!settingsTab) return;
+    const settingsView = document.getElementById('settings-view');
+    if (!settingsView) return;
 
     // Add test buttons next to each backend URL input
     [
-        { id: 'llm-url', label: 'Test LLM URL' },
-        { id: 'analysis-url', label: 'Test Analysis URL' }
+        { id: 'llmUrl', label: 'Test LLM URL' },
+        { id: 'analysisUrl', label: 'Test Analysis URL' }
     ].forEach(({ id, label }) => {
         const input = document.getElementById(id);
         if (input && !input.nextSibling?.classList?.contains('test-backend-btn')) {
             const btn = document.createElement('button');
-            btn.textContent = label;
-            btn.className = 'test-backend-btn';
+            btn.textContent = 'Test';
+            btn.className = 'btn btn-secondary test-backend-btn';
             btn.style.marginLeft = '8px';
             btn.onclick = async () => {
+                const originalText = btn.textContent;
                 btn.disabled = true;
                 btn.textContent = 'Testing...';
                 try {
                     const url = input.value;
-                    const resp = await fetch(url, { method: 'POST', body: JSON.stringify({ test: true }), headers: { 'Content-Type': 'application/json' } });
+                    if (!url) {
+                        showToast('URL is empty', 'error');
+                        return;
+                    }
+                    const resp = await fetch(url, { method: 'GET' }); // Simple GET test is enough
                     if (resp.ok) {
-                        showToast(`${label} succeeded!`, 'success');
+                        showToast(`${label} connection successful!`, 'success');
                     } else {
-                        showToast(`${label} failed (${resp.status})`, 'error');
+                        showToast(`${label} connection failed: ${resp.status}`, 'error');
                     }
                 } catch (e) {
-                    showToast(`${label} failed (network error)`, 'error');
+                    showToast(`${label} connection failed: Network error`, 'error');
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = originalText;
                 }
-                btn.disabled = false;
-                btn.textContent = label;
             };
             input.parentNode.insertBefore(btn, input.nextSibling);
         }
@@ -927,59 +1014,175 @@ function hideError() {
     document.getElementById('warning-message').style.display = 'none';
 }
 
-// --- New Parameter Tooltips ---
-function addParameterTooltips() {
-    const params = [
-        { id: 'slider-tone', desc: 'Adjusts the tone of the generated message.' },
-        { id: 'slider-length', desc: 'Controls the length of the response.' },
-        // ...add more as needed...
-    ];
-    params.forEach(param => {
-        const el = document.getElementById(param.id);
-        if (el) {
-            el.title = param.desc;
-        }
-    });
-}
-document.addEventListener('DOMContentLoaded', addParameterTooltips);
-
-function validateSliderValue(id, min, max) {
-    const el = document.getElementById(id);
-    el.addEventListener('input', () => {
-        if (el.value < min || el.value > max) {
-            el.classList.add('invalid');
-        } else {
-            el.classList.remove('invalid');
-        }
-    });
-}
-validateSliderValue('slider-tone', 1, 10);
-validateSliderValue('slider-length', 10, 200);
-
-// --- Prompt Preview Feature ---
-function updatePromptPreview() {
-    const prompt = buildPromptFromCurrentState();
-    document.getElementById('prompt-preview').innerText = prompt;
-}
-function buildPromptFromCurrentState() {
-    // ...build prompt string from current analysis and parameter state...
-    return `Prompt: ...`; // Replace with actual logic
-}
-// Call updatePromptPreview() whenever parameters or analysis change
 
 function handleGenerateClick() {
-    // TODO: Implement actual logic
-    console.log('Generate button clicked');
+    if (document.getElementById(SELECTORS.generateBtn).disabled) {
+        DEBUG.log('GENERATE', 'Generate button is disabled, likely already generating.');
+        return;
+    }
+
+    DEBUG.log('GENERATE', 'Generate button clicked');
+    setUIGeneratingState(true);
+
+    const taskInstructions = {};
+    document.querySelectorAll('[data-storage-key]').forEach(el => {
+        const key = el.dataset.storageKey;
+        if (!key) return;
+        taskInstructions[key] = el.type === 'checkbox' ? el.checked : el.value;
+    });
+
+    // Ensure numeric values are numbers
+    taskInstructions.flirtyValue = Number(taskInstructions.flirtyValue);
+    taskInstructions.lengthValue = Number(taskInstructions.lengthValue);
+    taskInstructions.modelTemperature = Number(taskInstructions.modelTemperature);
+    taskInstructions.topPValue = Number(taskInstructions.topPValue);
+
+    if (state.sessionScrapedData) {
+        taskInstructions.myName = state.sessionScrapedData.myName;
+    }
+
+    const myProfile = document.getElementById(SELECTORS.myProfileSetting).value;
+
+    sendMessage({
+        action: "getFinalPayload",
+        data: {
+            uuid: state.currentMatchUUID,
+            taskInstructions,
+            myProfile,
+            forceIncludeGeoContext: taskInstructions.geoContextToggle,
+        }
+    });
 }
 
 function setUIRefreshingState(isRefreshing) {
-    // TODO: Implement actual logic
-    // Example: Show/hide a loading spinner
-    console.log('UI refreshing state:', isRefreshing);
+    document.getElementById(SELECTORS.loadingView).classList.toggle('hidden', !isRefreshing);
+    document.getElementById(SELECTORS.mainView).classList.toggle('hidden', isRefreshing);
+    if (isRefreshing) {
+        document.getElementById(SELECTORS.loadingView).querySelector('p').textContent = 'Reading page...';
+    }
 }
 
 function setUIGeneratingState(isGenerating) {
-    // TODO: Implement actual logic
-    // Example: Show/hide a generating spinner
-    console.log('UI generating state:', isGenerating);
+    const generateBtn = document.getElementById(SELECTORS.generateBtn);
+    const dateIdeaBtn = document.getElementById(SELECTORS.dateIdeaBtn);
+    const cancelBtn = document.getElementById(SELECTORS.cancelBtn);
+    const tuneControls = document.querySelector('#tune .tab-panel') || document.getElementById('tune');
+
+    if (generateBtn) generateBtn.disabled = isGenerating;
+    if (dateIdeaBtn) dateIdeaBtn.disabled = isGenerating;
+    if (cancelBtn) cancelBtn.classList.toggle('hidden', !isGenerating);
+    if (generateBtn) generateBtn.classList.toggle('hidden', isGenerating);
+    if (dateIdeaBtn) dateIdeaBtn.classList.toggle('hidden', isGenerating);
+
+
+    // Disable all interactive elements during generation
+    document.getElementById(SELECTORS.customInstruction).disabled = isGenerating;
+    if (tuneControls) {
+        tuneControls.querySelectorAll('input, select').forEach(el => el.disabled = isGenerating);
+    }
+
+    if (isGenerating) {
+        startTimer(Date.now());
+    } else {
+        stopTimer();
+    }
+}
+
+function handleDateIdeaClick() {
+    if (document.getElementById(SELECTORS.dateIdeaBtn).disabled) return;
+    DEBUG.log('GENERATE', 'Date Idea button clicked');
+    setUIGeneratingState(true);
+    sendMessage({
+        action: "getAIDateIdea",
+        data: {
+            uuid: state.currentMatchUUID,
+            generationId: Date.now(),
+        }
+    });
+}
+
+function handleRefinementClick(event) {
+    const refineBtn = event.target.closest('.btn-refine');
+    if (!refineBtn || document.getElementById(SELECTORS.generateBtn).disabled) {
+        return;
+    }
+    const refinementType = refineBtn.dataset.refineType;
+    const originalResponse = document.getElementById(SELECTORS.responseArea).textContent;
+
+    if (!refinementType || !originalResponse) return;
+
+    DEBUG.log('GENERATE', `Refinement button clicked: ${refinementType}`);
+    setUIGeneratingState(true);
+
+    sendMessage({
+        action: "refineAIResponse",
+        data: {
+            originalResponse,
+            refinementType,
+            uuid: state.currentMatchUUID,
+            generationId: Date.now()
+        }
+    });
+}
+
+function startTimer(startTime) {
+    stopTimer(); // Ensure no multiple timers
+    timerStartTime = startTime;
+    const timerEl = document.getElementById(SELECTORS.responseTimer);
+    if (!timerEl) return;
+
+    timerEl.textContent = '00:00';
+    timerInterval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - timerStartTime) / 1000);
+        const minutes = Math.floor(elapsed / 60).toString().padStart(2, '0');
+        const seconds = (elapsed % 60).toString().padStart(2, '0');
+        timerEl.textContent = `${minutes}:${seconds}`;
+    }, 1000);
+}
+
+function stopTimer() {
+    if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+    }
+}
+
+function resetTimerDisplay() {
+    const timerEl = document.getElementById(SELECTORS.responseTimer);
+    if (timerEl) timerEl.textContent = '00:00';
+}
+
+function updateUIAfterGeneration({ reply, error }) {
+    const responseArea = document.getElementById(SELECTORS.responseArea);
+    if (error) {
+        showErrorInResponseArea(error);
+    } else if (reply) {
+        responseArea.classList.remove('error-text');
+        autoType(reply, responseArea);
+        document.getElementById(SELECTORS.refinementActions).classList.remove('hidden');
+    }
+    setUIGeneratingState(false);
+}
+
+function showErrorInResponseArea(errorMessage) {
+    const responseArea = document.getElementById(SELECTORS.responseArea);
+    responseArea.textContent = `Error: ${errorMessage}`;
+    responseArea.classList.add('error-text');
+}
+
+let autoTypeTimeout;
+function autoType(text, element) {
+    clearTimeout(autoTypeTimeout);
+    element.textContent = '';
+    let i = 0;
+    function type() {
+        if (i < text.length) {
+            element.textContent += text.charAt(i);
+            i++;
+            autoTypeTimeout = setTimeout(type, 20); // Adjust typing speed here
+        } else {
+            element.dispatchEvent(new Event('input', { bubbles: true })); // Ensure clear button visibility updates
+        }
+    }
+    type();
 }
