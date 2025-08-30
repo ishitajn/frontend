@@ -257,57 +257,46 @@ chrome.runtime.onConnect.addListener((port) => {
                     throw new Error("getNlpAnalysis received no scrapedData.");
 
                 const uuid = await memoryManager._getMatchUUID(scrapedData.theirName, scrapedData.theirProfile);
-                let matchProfile = await memoryManager.getMatchProfile(uuid);
 
+                const storedSettings = await chrome.storage.local.get(['analysis_url', 'analysis_type', 'local_model_name', 'myProfile', 'userLocationChoice']);
+                const settings = { ...DEFAULTS, ...storedSettings };
+
+                const requestPayload = {
+                    matchId: uuid,
+                    scraped_data: {
+                        myName: scrapedData.myName,
+                        theirName: scrapedData.theirName,
+                        theirProfile: scrapedData.theirProfile,
+                        theirLocationString: scrapedData.matchLocation,
+                        conversationHistory: scrapedData.conversationHistory,
+                    },
+                    ui_settings: {
+                        useEnhancedNlp: settings.analysis_type === 'enhanced',
+                        myLocation: settings.userLocationChoice,
+                        myProfile: settings.myProfile,
+                        local_model_name: settings.local_model_name,
+                    }
+                };
+
+                const analysisResponse = await callNlpApi(settings.analysis_url, requestPayload);
+
+                let matchProfile = await memoryManager.getMatchProfile(uuid);
                 if (!matchProfile) {
-                    DEBUG.log('NLP', `No existing profile found for ${uuid}. Creating new one.`);
                     matchProfile = memoryManager.createInitialProfile(scrapedData);
                     matchProfile.uuid = uuid;
                 }
 
-                const newCacheHash = await generateCacheHash(scrapedData.conversationHistory, scrapedData.theirProfile);
-                if (matchProfile.memory?.lastCacheHash === newCacheHash && matchProfile.analysis) {
-                    DEBUG.log('NLP-CACHE', 'Cache HIT.', {
-                        uuid
-                    });
-                    port.postMessage({
-                        action: 'nlpAnalysisResponse',
-                        matchProfile
-                    });
-                    return;
-                }
-                DEBUG.log('NLP-CACHE', 'Cache MISS. Running full analysis.', {
-                    uuid
-                });
+                matchProfile.analysis = analysisResponse.conversationAnalysis;
+                matchProfile.memory = analysisResponse.conversationAnalysis.memory;
+                matchProfile.memory.geoContextData = analysisResponse.geo;
 
-                matchProfile.conversationHistory = scrapedData.conversationHistory;
-                matchProfile.metadata.theirProfile = scrapedData.theirProfile;
-                matchProfile.metadata.matchLocation = scrapedData.matchLocation;
-
-                const { updatedMemory, lastMessageAnalysis } = runFullConversationAnalysis(matchProfile.conversationHistory, matchProfile.memory);
-                matchProfile.memory = updatedMemory;
-                matchProfile.memory.lastCacheHash = newCacheHash;
-
-                const state = determineConversationState(scrapedData.conversationHistory);
-                const suppressGreeting = hasRecentGreeting(scrapedData.conversationHistory) && !state.startsWith('REENGAGING');
-
-                const fullAnalysis = {
-                    conversationState: state,
-                    suppressGreeting: suppressGreeting,
-                    lastMessageAnalysis: lastMessageAnalysis,
-                    memory: matchProfile.memory,
-                };
-
-                matchProfile.analysis = fullAnalysis;
-                matchProfile.metadata.lastUpdated = new Date().toISOString();
                 await memoryManager.saveMatchProfile(uuid, matchProfile);
-                DEBUG.log('NLP', 'Analysis complete. Sending response.', {
-                    matchProfile
-                });
+
                 port.postMessage({
                     action: 'nlpAnalysisResponse',
                     matchProfile
                 });
+
             } catch (error) {
                 DEBUG.error('NLP', 'Analysis failed', error);
                 port.postMessage({
@@ -601,6 +590,27 @@ function cleanAIResponse(rawResponse) {
         }
     }
     return (earliestStopIndex !== -1 ? rawResponse.substring(0, earliestStopIndex) : rawResponse).trim();
+}
+
+async function callNlpApi(apiUrl, payload) {
+    if (!apiUrl) {
+        throw new Error("Analysis URL is not configured in settings.");
+    }
+    try {
+        const response = await fetch(apiUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+        if (!response.ok) {
+            const errorBody = await response.text();
+            throw new Error(`NLP API error: ${response.status} - ${errorBody}`);
+        }
+        return await response.json();
+    } catch (error) {
+        DEBUG.error('NLP-API', 'Failed to call NLP API', error);
+        throw error;
+    }
 }
 
 async function fetchLocalLlamaResponse(apiKey, payload, settings, signal) {

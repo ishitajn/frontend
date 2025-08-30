@@ -1,7 +1,7 @@
 // popup.js (Re-architected for Manifest V3 Robustness with Heartbeat)
 import { scrapeBumblePage, pasteTextIntoBumbleInput, scrapeTinderPage, pasteTextIntoTinderInput } from './content-scraper.js';
 import { getToneDescription, getLengthDescription, getEmojiInstruction, getStyleDescription, determineConversationState, LINGUISTIC_STYLES } from './conversationHelpers.js';
-import { showNlpModal, hideDebugModal, renderAnalysisView, renderMemoryView, setNestedValue } from './debug-modal.js';
+import { showNlpModal, hideDebugModal } from './debug-modal.js';
 
 const DEBUG = {
     log: (category, message, data = null) => console.log(`[WINGMAN-POPUP-${category.toUpperCase()}] ${message}`, data ?? ''),
@@ -27,8 +27,6 @@ const DEFAULTS = {
     local_llama_url: 'http://localhost:8080/v1/chat/completions',
     local_model_name: 'llama3:latest',
     local_llama_api_key: '',
-    analysis_url: '',
-    analysis_type: 'local',
 };
 
 const MATCH_SPECIFIC_SETTINGS_KEYS = [
@@ -122,8 +120,6 @@ const SELECTORS = {
     localLlamaUrl: 'localLlamaUrl',
     localLlamaApiKey: 'localLlamaApiKey',
     localModelName: 'localModelName',
-    analysisUrl: 'analysisUrl',
-    analysisType: 'analysisType',
     userLocationSelect: 'user-location-select',
     myProfileSetting: 'my-profile-setting',
     infoTooltip: 'info-tooltip',
@@ -319,25 +315,6 @@ sendMessage({
 }
 }
 
-function renderTabContent(tabId) {
-    if (!state.sessionMatchProfile) return;
-
-    let html = '';
-    let contentEl = null;
-
-    if (tabId === 'conversation-analysis-card') {
-        html = renderAnalysisView({ conversationAnalysis: state.sessionMatchProfile.analysis });
-        contentEl = document.getElementById('conversation-analysis-content');
-    } else if (tabId === 'match-memory-card') {
-        html = renderMemoryView({ conversationAnalysis: state.sessionMatchProfile.analysis });
-        contentEl = document.getElementById('match-memory-content');
-    }
-
-    if (contentEl) {
-        contentEl.innerHTML = html;
-    }
-}
-
 async function handleNlpAnalysisResponse(message) {
     if (message.error) {
         showError('NLP Analysis Failed', message.error);
@@ -352,10 +329,6 @@ async function handleNlpAnalysisResponse(message) {
 
     displayConversationState();
     showView(SELECTORS.mainView);
-
-    // Render content for all tabs initially
-    renderTabContent('conversation-analysis-card');
-    renderTabContent('match-memory-card');
 }
 
 function handleGeoCalculationsResponse(message) {
@@ -439,19 +412,6 @@ function setupEventListeners() {
     document.getElementById(SELECTORS.dateIdeaBtn)?.addEventListener('click', handleDateIdeaClick);
     document.getElementById(SELECTORS.refinementActions)?.addEventListener('click', handleRefinementClick);
 
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const tabId = btn.dataset.tab;
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-
-            document.querySelectorAll('.card-container .card').forEach(card => {
-                card.open = card.id === tabId;
-            });
-            renderTabContent(tabId);
-        });
-    });
-
     populateSelect(SELECTORS.linguisticStyleSelect, LINGUISTIC_STYLES.map(s => ({
                 value: s,
                 text: s.charAt(0).toUpperCase() + s.slice(1)
@@ -510,38 +470,22 @@ async function handleSettingChange(event) {
         updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearResponseBtn));
         document.getElementById(SELECTORS.refinementActions).classList.add('hidden');
     }
-
-    const storageKey = el.dataset.storageKey;
-    const path = el.dataset.path;
-
-    if (storageKey) {
-        const value = el.type === 'checkbox' ? el.checked : (el.id === SELECTORS.responseArea ? el.textContent : el.value);
-        if (MATCH_SPECIFIC_SETTINGS_KEYS.includes(storageKey) && state.currentMatchUUID) {
-            const matchStorageKey = getMatchSettingsKey(state.currentMatchUUID);
-            const result = await chrome.storage.local.get(matchStorageKey);
-            const matchSettings = result[matchStorageKey] || {};
-            matchSettings[storageKey] = value;
-            await chrome.storage.local.set({ [matchStorageKey]: matchSettings });
-        } else {
-            await chrome.storage.local.set({ [storageKey]: value });
-        }
-    } else if (path) {
-        let value;
-        if (el.type === 'checkbox') {
-            value = el.checked;
-        } else if (el.type === 'range' || el.type === 'number') {
-            value = parseFloat(el.value);
-        } else if (el.multiple) {
-            value = Array.from(el.selectedOptions).map(opt => opt.value);
-        } else {
-            value = el.value;
-        }
-
-        if (path.endsWith('insideJokes') || path.endsWith('avoidedTopics') || path.endsWith('questionHistory')) {
-            value = el.value.split('\n').filter(Boolean);
-        }
-
-        setNestedValue(state.sessionMatchProfile, path, value);
+    const key = el.dataset.storageKey || (el.id === SELECTORS.responseArea ? 'lastResponse' : null);
+    if (!key)
+        return;
+    const value = el.type === 'checkbox' ? el.checked : (el.id === SELECTORS.responseArea ? el.textContent : el.value);
+    if (MATCH_SPECIFIC_SETTINGS_KEYS.includes(key) && state.currentMatchUUID) {
+        const storageKey = getMatchSettingsKey(state.currentMatchUUID);
+        const result = await chrome.storage.local.get(storageKey);
+        const matchSettings = result[storageKey] || {};
+        matchSettings[key] = value;
+        await chrome.storage.local.set({
+            [storageKey]: matchSettings
+        });
+    } else {
+        await chrome.storage.local.set({
+            [key]: value
+        });
     }
 }
 
@@ -761,12 +705,10 @@ async function updateGeoContextDisplay(geoContextData) {
     const userLocationData = USER_LOCATIONS[settings.userLocationChoice || 'autodetect'];
     const card = document.getElementById(SELECTORS.geoContextCard);
 
-    if (!geoContextData) {
-        card.open = false;
+    if (card)
+        card.hidden = !geoContextData;
+    if (!geoContextData)
         return;
-    }
-
-    card.open = true;
 
     const dataMap = {
         geoUserName: myName || 'User',
@@ -1035,10 +977,6 @@ function showView(viewId) {
     if (view)
         view.classList.remove('hidden');
     state.currentViewId = viewId;
-
-    if (viewId === SELECTORS.mainView) {
-        document.getElementById('tune-response-card').open = true;
-    }
 }
 
 function showError(title, message) {
