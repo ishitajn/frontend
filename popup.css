@@ -127,14 +127,15 @@ footer { padding: 8px 12px; font-size: 10px; color: var(--text-muted); text-alig
   padding: 10px;
   font-size: 12px;
   line-height: 1.5;
-  width: 300px;
-  max-width: 340px; /* FIX: Prevent tooltip from becoming too wide */
+  width: auto;
+  max-width: 300px; /* Prevent tooltip from overflowing popup boundaries */
   z-index: 1010;
   pointer-events: none;
   opacity: 0;
   transform: scale(0.95);
   visibility: hidden;
   transition: opacity var(--transition-speed) ease, transform var(--transition-speed) ease, visibility 0s var(--transition-speed);
+  word-wrap: break-word; /* Ensure long words do not cause overflow */
 }
 .tooltip.visible { opacity: 1; transform: scale(1); visibility: visible; }
 .tooltip::after { content: ''; position: absolute; border-width: 6px; border-style: solid; }
