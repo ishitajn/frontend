@@ -1,6 +1,7 @@
 // popup.js (Re-architected for Manifest V3 Robustness with Heartbeat)
 import { scrapeBumblePage, pasteTextIntoBumbleInput, scrapeTinderPage, pasteTextIntoTinderInput } from './content-scraper.js';
 import { getToneDescription, getLengthDescription, getEmojiInstruction, getStyleDescription, LINGUISTIC_STYLES, DATE_ARC_PHASES } from './conversationHelpers.js';
+import { showNlpModal, hideDebugModal } from './debug-modal.js';
 import {
     setNestedValue,
     createSelect,
@@ -861,10 +862,47 @@ async function handleGenerateClick() {
     }
 
     const dataForBackground = await gatherCoreDataForGeneration();
-    sendMessage({
-        action: "getFinalPayload",
-        data: dataForBackground
-    });
+    if (document.getElementById(SELECTORS.debugModeToggle).checked) {
+        const fullGenerationData = {
+            ...state.sessionScrapedData,
+            ...state.sessionMatchProfile.metadata,
+            myProfile: dataForBackground.myProfile,
+            conversationHistory: state.sessionMatchProfile.conversationHistory,
+            conversationAnalysis: state.sessionMatchProfile.analysis,
+            geoContextData: state.sessionMatchProfile.memory.geoContextData,
+            forceIncludeGeoContext: dataForBackground.forceIncludeGeoContext,
+            taskInstructions: dataForBackground.taskInstructions,
+        };
+        const debugCallbacks = {
+            sendFinalPayloadToAI: (payload) => {
+                sendMessage({
+                    action: "getAIResponse",
+                    data: {
+                        payload,
+                        generationId: Date.now(),
+                        uuid: state.currentMatchUUID,
+                        logData: {
+                            uuid: state.currentMatchUUID,
+                            analysis: state.sessionMatchProfile.analysis,
+                            payload: payload
+                        }
+                    }
+                });
+            },
+            setUIGeneratingState,
+            showErrorInResponseArea,
+            hideDebugModal,
+            startTimer,
+            stopTimer,
+            resetTimerDisplay
+        };
+        showNlpModal(fullGenerationData, debugCallbacks);
+    } else {
+        sendMessage({
+            action: "getFinalPayload",
+            data: dataForBackground
+        });
+    }
 }
 
 async function gatherCoreDataForGeneration() {
