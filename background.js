@@ -315,17 +315,17 @@ chrome.runtime.onConnect.addListener((port) => {
                         const requestPayload = {
                             matchId: uuid,
                             scraped_data: {
-                                myName: scrapedData.myName,
-                                theirName: scrapedData.theirName,
-                                theirProfile: scrapedData.theirProfile,
-                                theirLocationString: scrapedData.matchLocation,
-                                conversationHistory: scrapedData.conversationHistory,
+                                myName: scrapedData.myName || '',
+                                theirName: scrapedData.theirName || '',
+                                theirProfile: scrapedData.theirProfile || '',
+                                theirLocationString: scrapedData.matchLocation || '',
+                                conversationHistory: scrapedData.conversationHistory || [],
                             },
                             ui_settings: {
                                 useEnhancedNlp: settings.analysis_type === 'enhanced',
-                                myLocation: settings.userLocationChoice,
-                                myProfile: settings.myProfile,
-                                local_model_name: settings.local_model_name,
+                                myLocation: settings.userLocationChoice || 'autodetect',
+                                myProfile: settings.myProfile || '',
+                                local_model_name: settings.local_model_name || 'llama3:latest',
                             }
                         };
                         const apiResponse = await callNlpApi(settings.analysis_url, requestPayload);
