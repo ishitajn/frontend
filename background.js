@@ -264,41 +264,53 @@ chrome.runtime.onConnect.addListener((port) => {
     const messageHandlers = {
         "getNlpAnalysis": async (request) => {
             try {
-                DEBUG.log('NLP', 'Received getNlpAnalysis request', request.data);
+                DEBUG.log('DIAGNOSTIC', 'Step 1: `getNlpAnalysis` handler started.');
                 const { scrapedData } = request.data;
-                if (!scrapedData) throw new Error("getNlpAnalysis received no scrapedData.");
+                if (!scrapedData) {
+                    DEBUG.error('DIAGNOSTIC', 'Step 1 FAILED: No scrapedData provided.');
+                    throw new Error("getNlpAnalysis received no scrapedData.");
+                }
+                DEBUG.log('DIAGNOSTIC', 'Step 2: Scraped data received.', { theirName: scrapedData.theirName, historyLength: scrapedData.conversationHistory.length });
 
                 const uuid = await memoryManager._getMatchUUID(scrapedData.theirName, scrapedData.theirProfile);
+                DEBUG.log('DIAGNOSTIC', `Step 3: Generated/Retrieved UUID: ${uuid}`);
+
                 let matchProfile = await memoryManager.getMatchProfile(uuid);
+                DEBUG.log('DIAGNOSTIC', 'Step 4: Retrieved match profile from storage.', { profileExists: !!matchProfile });
 
                 if (!matchProfile) {
-                    DEBUG.log('NLP', `No existing profile found for ${uuid}. Creating new one.`);
+                    DEBUG.log('DIAGNOSTIC', `Step 4a: No existing profile found for ${uuid}. Creating new one.`);
                     matchProfile = memoryManager.createInitialProfile(scrapedData);
                     matchProfile.uuid = uuid;
                 }
 
                 const newCacheHash = await generateCacheHash(scrapedData.conversationHistory, scrapedData.theirProfile);
+                DEBUG.log('DIAGNOSTIC', `Step 5: Generated new cache hash: ${newCacheHash}. Old hash: ${matchProfile.memory?.lastCacheHash}`);
+
                 const storedSettings = await chrome.storage.local.get(['analysis_url', 'analysis_type', 'local_model_name', 'myProfile', 'userLocationChoice']);
                 const settings = { ...DEFAULTS, ...storedSettings };
+                DEBUG.log('DIAGNOSTIC', 'Step 6: Loaded settings.', settings);
 
                 if (matchProfile.memory?.lastCacheHash === newCacheHash && matchProfile.analysis) {
-                    DEBUG.log('NLP-CACHE', 'Cache HIT.', { uuid });
+                    DEBUG.log('DIAGNOSTIC', 'Step 7: Cache HIT. Skipping analysis and returning cached profile.');
                     port.postMessage({ action: 'nlpAnalysisResponse', matchProfile });
                     return;
                 }
-                DEBUG.log('NLP-CACHE', 'Cache MISS. Running full analysis.', { uuid });
+                DEBUG.log('DIAGNOSTIC', 'Step 7: Cache MISS. Proceeding with full analysis.');
 
                 matchProfile.conversationHistory = scrapedData.conversationHistory;
                 matchProfile.metadata.theirProfile = scrapedData.theirProfile;
                 matchProfile.metadata.matchLocation = scrapedData.matchLocation;
+                DEBUG.log('DIAGNOSTIC', 'Step 8: Updated match profile with new scraped data.');
 
-                // Run the comprehensive local analysis.
+                DEBUG.log('DIAGNOSTIC', 'Step 9: Calling `runFullConversationAnalysis`...');
                 const localAnalysis = runFullConversationAnalysis(matchProfile.conversationHistory, matchProfile.memory);
+                DEBUG.log('DIAGNOSTIC', 'Step 10: `runFullConversationAnalysis` completed.');
 
                 let finalAnalysis = localAnalysis;
 
-                // If API analysis is enabled, call it and merge results.
                 if (settings.analysis_type !== 'local') {
+                    DEBUG.log('DIAGNOSTIC', `Step 11: Analysis type is '${settings.analysis_type}'. Calling external API.`);
                     try {
                         const requestPayload = {
                             matchId: uuid,
@@ -319,36 +331,38 @@ chrome.runtime.onConnect.addListener((port) => {
                         const apiResponse = await callNlpApi(settings.analysis_url, requestPayload);
 
                         if (apiResponse && apiResponse.conversationAnalysis) {
-                            DEBUG.log('NLP-API', 'API Success, merging results.', apiResponse.conversationAnalysis);
+                            DEBUG.log('DIAGNOSTIC', 'Step 11a: API Success, merging results.');
                             finalAnalysis = deepMerge(apiResponse.conversationAnalysis, localAnalysis);
                         } else {
-                            DEBUG.log('NLP-API', 'API response was empty or invalid, using local analysis.');
+                            DEBUG.log('DIAGNOSTIC', 'Step 11b: API response was empty or invalid, using local analysis.');
                         }
                     } catch (error) {
-                        DEBUG.error('NLP-API', 'API call failed, falling back to local analysis.', error);
+                        DEBUG.error('DIAGNOSTIC', 'Step 11 FAILED: API call failed, falling back to local analysis.', error);
                     }
+                } else {
+                     DEBUG.log('DIAGNOSTIC', 'Step 11: Analysis type is local. Skipping external API call.');
                 }
 
-                // Assign the new, complete analysis object to the profile.
                 matchProfile.analysis = finalAnalysis;
                 matchProfile.memory = finalAnalysis.memory;
                 matchProfile.memory.lastCacheHash = newCacheHash;
+                DEBUG.log('DIAGNOSTIC', 'Step 12: Assigned new analysis and memory to profile.');
 
                 if (finalAnalysis.geo) {
                     matchProfile.memory.geoContextData = finalAnalysis.geo;
                 }
 
-                // 6. Update metadata and save the entire profile.
                 matchProfile.metadata.lastUpdated = new Date().toISOString();
                 await memoryManager.saveMatchProfile(uuid, matchProfile);
+                DEBUG.log('DIAGNOSTIC', 'Step 13: Saved updated match profile to storage.');
 
-                DEBUG.log('NLP', 'Analysis complete. Sending response.', { matchProfile });
+                DEBUG.log('DIAGNOSTIC', 'Step 14: Analysis complete. Sending response to popup.');
                 port.postMessage({
                     action: 'nlpAnalysisResponse',
                     matchProfile
                 });
             } catch (error) {
-                DEBUG.error('NLP', 'Analysis failed', error);
+                DEBUG.error('DIAGNOSTIC', '`getNlpAnalysis` handler FAILED', error);
                 port.postMessage({
                     action: 'nlpAnalysisResponse',
                     error: error.message
