@@ -122,18 +122,16 @@ function renderView() {
 }
 
 function renderAnalysisView() {
-    const { conversationAnalysis } = modalState;
-    const { lastMessageAnalysis, analysis, engagement } = conversationAnalysis;
-    const valenceLabels = {
-        '0': 'Negative',
-        '0.5': 'Neutral',
-        '1': 'Positive'
-    };
-    const arousalLabels = {
-        '0': 'Calm',
-        '0.5': 'Neutral',
-        '1': 'Aroused'
-    };
+    const conversationAnalysis = modalState.conversationAnalysis || {};
+    const lastMessageAnalysis = conversationAnalysis.lastMessageAnalysis || {};
+    const analysis = conversationAnalysis.analysis || {};
+    const engagement = conversationAnalysis.engagement || {};
+    const powerDynamics = analysis.powerDynamics || {};
+
+    const valenceLabels = { '0': 'Negative', '0.5': 'Neutral', '1': 'Positive' };
+    const arousalLabels = { '0': 'Calm', '0.5': 'Neutral', '1': 'Aroused' };
+    const engagementOptions = ['low', 'medium', 'high'];
+    const paceOptions = ['slow', 'medium', 'fast'];
 
     return `
         <h3>View 1: Conversation Analysis</h3>
@@ -149,24 +147,26 @@ function renderAnalysisView() {
             <tr><td>Valence</td><td>${createSlider('subtext-valence', 'conversationAnalysis.lastMessageAnalysis.valence', lastMessageAnalysis.valence, 0, 1, 0.1, valenceLabels)}</td></tr>
             <tr><td>Arousal</td><td>${createSlider('subtext-arousal', 'conversationAnalysis.lastMessageAnalysis.arousal', lastMessageAnalysis.arousal, 0, 1, 0.1, arousalLabels)}</td></tr>
             <tr><td>Intents</td><td>${createMultiSelect('subtext-intents', 'conversationAnalysis.lastMessageAnalysis.intents', INTENT_OPTIONS, lastMessageAnalysis.intents)}</td></tr>
-            <tr><td colspan="2" style="text-align:center; background:#333;"><strong>Engagement Analysis</strong></td></tr>
-            <tr><td>Engagement</td><td><input type="text" value="${analysis.engagement}" readonly></td></tr>
-            <tr><td>Pace</td><td><input type="text" value="${engagement.pace}" readonly></td></tr>
-            <tr><td>Power Dynamics</td><td><input type="text" value="${analysis.powerDynamics.summary}" readonly></td></tr>
+            ${analysis ? `
+                <tr><td colspan="2" style="text-align:center; background:#333;"><strong>Engagement Analysis</strong></td></tr>
+                <tr><td>Engagement</td><td>${createSelect('analysis-engagement', 'conversationAnalysis.analysis.engagement', engagementOptions, analysis.engagement)}</td></tr>
+                <tr><td>Pace</td><td>${createSelect('engagement-pace', 'conversationAnalysis.engagement.pace', paceOptions, engagement.pace)}</td></tr>
+                <tr><td>Power Dynamics</td><td>${createInput('power-summary', 'conversationAnalysis.analysis.powerDynamics.summary', powerDynamics.summary)}</td></tr>
+            ` : ''}
         </table>
         ${createCollapsibleJSON('View/Edit Raw Analysis Object', conversationAnalysis)}
     `;
 }
 
 function renderMemoryView() {
-    const { memory } = modalState.conversationAnalysis;
+    const memory = modalState.conversationAnalysis?.memory || {};
     return `
         <h3>View 2: Match Memory</h3>
         <table class="payload-table">
             <tr><td>Date Arc Phase</td><td>${createSelect('memory-dateArcPhase', 'conversationAnalysis.memory.dateArcPhase', DATE_ARC_PHASES, memory.dateArcPhase)}</td></tr>
-            <tr><td>Inside Jokes</td><td>${createTextarea('memory-insideJokes', 'conversationAnalysis.memory.insideJokes', memory.insideJokes)}</td></tr>
-            <tr><td>Avoided Topics</td><td>${createTextarea('memory-avoidedTopics', 'conversationAnalysis.memory.avoidedTopics', memory.avoidedTopics)}</td></tr>
-            <tr><td>Question History</td><td>${createTextarea('memory-questionHistory', 'conversationAnalysis.memory.questionHistory', memory.questionHistory)}</td></tr>
+            <tr><td>Inside Jokes (one per line)</td><td>${createTextarea('memory-insideJokes', 'conversationAnalysis.memory.insideJokes', (memory.insideJokes || []).join('\n'))}</td></tr>
+            <tr><td>Avoided Topics (one per line)</td><td>${createTextarea('memory-avoidedTopics', 'conversationAnalysis.memory.avoidedTopics', (memory.avoidedTopics || []).join('\n'))}</td></tr>
+            <tr><td>Question History (one per line)</td><td>${createTextarea('memory-questionHistory', 'conversationAnalysis.memory.questionHistory', (memory.questionHistory || []).join('\n'))}</td></tr>
         </table>
         ${createCollapsibleJSON('View/Edit Raw Memory Object', memory)}
     `;

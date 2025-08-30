@@ -249,54 +249,102 @@ chrome.runtime.onConnect.addListener((port) => {
     DEBUG.log('PORT', 'Popup connected');
 
     const messageHandlers = {
-        "getNlpAnalysis": async(request) => {
+        "getNlpAnalysis": async (request) => {
             try {
                 DEBUG.log('NLP', 'Received getNlpAnalysis request', request.data);
                 const { scrapedData } = request.data;
-                if (!scrapedData)
-                    throw new Error("getNlpAnalysis received no scrapedData.");
+                if (!scrapedData) throw new Error("getNlpAnalysis received no scrapedData.");
 
                 const uuid = await memoryManager._getMatchUUID(scrapedData.theirName, scrapedData.theirProfile);
-
-                const storedSettings = await chrome.storage.local.get(['analysis_url', 'analysis_type', 'local_model_name', 'myProfile', 'userLocationChoice']);
-                const settings = { ...DEFAULTS, ...storedSettings };
-
-                const requestPayload = {
-                    matchId: uuid,
-                    scraped_data: {
-                        myName: scrapedData.myName,
-                        theirName: scrapedData.theirName,
-                        theirProfile: scrapedData.theirProfile,
-                        theirLocationString: scrapedData.matchLocation,
-                        conversationHistory: scrapedData.conversationHistory,
-                    },
-                    ui_settings: {
-                        useEnhancedNlp: settings.analysis_type === 'enhanced',
-                        myLocation: settings.userLocationChoice,
-                        myProfile: settings.myProfile,
-                        local_model_name: settings.local_model_name,
-                    }
-                };
-
-                const analysisResponse = await callNlpApi(settings.analysis_url, requestPayload);
-
                 let matchProfile = await memoryManager.getMatchProfile(uuid);
+
                 if (!matchProfile) {
+                    DEBUG.log('NLP', `No existing profile found for ${uuid}. Creating new one.`);
                     matchProfile = memoryManager.createInitialProfile(scrapedData);
                     matchProfile.uuid = uuid;
                 }
 
-                matchProfile.analysis = analysisResponse.conversationAnalysis;
-                matchProfile.memory = analysisResponse.conversationAnalysis.memory;
-                matchProfile.memory.geoContextData = analysisResponse.geo;
+                const newCacheHash = await generateCacheHash(scrapedData.conversationHistory, scrapedData.theirProfile);
+                const storedSettings = await chrome.storage.local.get(['analysis_url', 'analysis_type', 'local_model_name', 'myProfile', 'userLocationChoice']);
+                const settings = { ...DEFAULTS, ...storedSettings };
 
+                if (matchProfile.memory?.lastCacheHash === newCacheHash && matchProfile.analysis) {
+                    DEBUG.log('NLP-CACHE', 'Cache HIT.', { uuid });
+                    port.postMessage({ action: 'nlpAnalysisResponse', matchProfile });
+                    return;
+                }
+                DEBUG.log('NLP-CACHE', 'Cache MISS. Running full analysis.', { uuid });
+
+                matchProfile.conversationHistory = scrapedData.conversationHistory;
+                matchProfile.metadata.theirProfile = scrapedData.theirProfile;
+                matchProfile.metadata.matchLocation = scrapedData.matchLocation;
+
+                // 1. Run local analysis to get a complete fallback object.
+                const localAnalysisResult = runFullConversationAnalysis(matchProfile.conversationHistory, matchProfile.memory);
+                const fallbackAnalysis = { ...localAnalysisResult, memory: localAnalysisResult.updatedMemory };
+
+                let finalAnalysis = fallbackAnalysis;
+
+                // 2. If API analysis is enabled, call it and merge.
+                if (settings.analysis_type !== 'local') {
+                    try {
+                        const requestPayload = {
+                            matchId: uuid,
+                            scraped_data: {
+                                myName: scrapedData.myName,
+                                theirName: scrapedData.theirName,
+                                theirProfile: scrapedData.theirProfile,
+                                theirLocationString: scrapedData.matchLocation,
+                                conversationHistory: scrapedData.conversationHistory,
+                            },
+                            ui_settings: {
+                                useEnhancedNlp: settings.analysis_type === 'enhanced',
+                                myLocation: settings.userLocationChoice,
+                                myProfile: settings.myProfile,
+                                local_model_name: settings.local_model_name,
+                            }
+                        };
+                        const apiResponse = await callNlpApi(settings.analysis_url, requestPayload);
+
+                        if (apiResponse && apiResponse.conversationAnalysis) {
+                            DEBUG.log('NLP-API', 'API Success, merging results.', apiResponse.conversationAnalysis);
+                            finalAnalysis = deepMerge(apiResponse.conversationAnalysis, fallbackAnalysis);
+                        } else {
+                            DEBUG.log('NLP-API', 'API response was empty or invalid, using local analysis.');
+                        }
+                    } catch (error) {
+                        DEBUG.error('NLP-API', 'API call failed, falling back to local analysis.', error);
+                    }
+                }
+
+                // 3. Determine conversation state details.
+                const state = determineConversationState(scrapedData.conversationHistory);
+                const suppressGreeting = hasRecentGreeting(scrapedData.conversationHistory) && !state.startsWith('REENGAGING');
+
+                // 4. Assign the new, complete analysis object to the profile.
+                matchProfile.analysis = {
+                    ...finalAnalysis,
+                    state,
+                    suppressGreeting,
+                };
+
+                // 5. Update memory, which is part of the analysis object.
+                matchProfile.memory = matchProfile.analysis.memory;
+                matchProfile.memory.lastCacheHash = newCacheHash;
+
+                if (finalAnalysis.geo) {
+                    matchProfile.memory.geoContextData = finalAnalysis.geo;
+                }
+
+                // 6. Update metadata and save the entire profile.
+                matchProfile.metadata.lastUpdated = new Date().toISOString();
                 await memoryManager.saveMatchProfile(uuid, matchProfile);
 
+                DEBUG.log('NLP', 'Analysis complete. Sending response.', { matchProfile });
                 port.postMessage({
                     action: 'nlpAnalysisResponse',
                     matchProfile
                 });
-
             } catch (error) {
                 DEBUG.error('NLP', 'Analysis failed', error);
                 port.postMessage({
@@ -306,7 +354,7 @@ chrome.runtime.onConnect.addListener((port) => {
             }
         },
 
-        "getGeoCalculations": async(request) => {
+        "getGeoCalculations": async (request) => {
             DEBUG.log('GEO', 'Received getGeoCalculations request', request.data);
             const { userLocation, userCoords, uuid } = request.data;
             if (!uuid) {
@@ -578,18 +626,26 @@ function buildFinalPayload(data) {
     };
 }
 
-function cleanAIResponse(rawResponse) {
-    if (typeof rawResponse !== 'string' || !rawResponse)
-        return '';
-    const stopTokens = ['<|im_end|>', '<|eot_id|>', '</s>', '[INST]', '---'];
-    let earliestStopIndex = -1;
-    for (const token of stopTokens) {
-        const index = rawResponse.indexOf(token);
-        if (index !== -1 && (earliestStopIndex === -1 || index < earliestStopIndex)) {
-            earliestStopIndex = index;
-        }
+function deepMerge(source, fallback) {
+    const isObject = (item) => (item && typeof item === 'object' && !Array.isArray(item));
+    let output = { ...source };
+
+    if (isObject(source) && isObject(fallback)) {
+        Object.keys(fallback).forEach(key => {
+            if (isObject(fallback[key])) {
+                if (!(key in source)) {
+                    output[key] = fallback[key];
+                } else {
+                    output[key] = deepMerge(source[key], fallback[key]);
+                }
+            } else {
+                if (source[key] === null || source[key] === undefined || source[key] === '') {
+                    output[key] = fallback[key];
+                }
+            }
+        });
     }
-    return (earliestStopIndex !== -1 ? rawResponse.substring(0, earliestStopIndex) : rawResponse).trim();
+    return output;
 }
 
 async function callNlpApi(apiUrl, payload) {
@@ -611,6 +667,20 @@ async function callNlpApi(apiUrl, payload) {
         DEBUG.error('NLP-API', 'Failed to call NLP API', error);
         throw error;
     }
+}
+
+function cleanAIResponse(rawResponse) {
+    if (typeof rawResponse !== 'string' || !rawResponse)
+        return '';
+    const stopTokens = ['<|im_end|>', '<|eot_id|>', '</s>', '[INST]', '---'];
+    let earliestStopIndex = -1;
+    for (const token of stopTokens) {
+        const index = rawResponse.indexOf(token);
+        if (index !== -1 && (earliestStopIndex === -1 || index < earliestStopIndex)) {
+            earliestStopIndex = index;
+        }
+    }
+    return (earliestStopIndex !== -1 ? rawResponse.substring(0, earliestStopIndex) : rawResponse).trim();
 }
 
 async function fetchLocalLlamaResponse(apiKey, payload, settings, signal) {
