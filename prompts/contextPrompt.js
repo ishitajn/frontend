@@ -19,7 +19,7 @@ export function buildContextPrompt(data, conversationAnalysis) {
 - **GEO-TEMPORAL CONTEXT:** (Use this info for planning/travel topics only. Otherwise, ignore it.)
   - Your (User's) Time of Day: ${geoContextData.userTimeOfDay} in ${geoContextData.userTimezone}
   - Their (Match's) Time of Day: ${geoContextData.matchTimeOfDay} in ${geoContextData.matchTimeZoneName}
-  - Approximate Distance: ${geoContextData.distance.miles} miles (${geoContextData.distance.km} km)
+  ${geoContextData.distance ? `- Approximate Distance: ${geoContextData.distance.miles} miles (${geoContextData.distance.km} km)` : ''}
   ${geoContextData.timeZoneDifference !== null ? `- Time Difference: ${geoContextData.timeZoneDifference} hour(s)` : ''}
   ${geoContextData.countryDifference ? `- Country Difference: ${geoContextData.countryDifference}` : ''}
 ` : '';
