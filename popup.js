@@ -9,7 +9,8 @@ import {
     createTextarea,
     createInput,
     createCheckbox,
-    createSlider
+    createSlider,
+    createAnalysisView
 } from './ui-components.js';
 
 const DEBUG = {
@@ -38,6 +39,7 @@ const DEFAULTS = {
     llm_url: 'http://localhost:8080/v1/chat/completions',
     local_model_name: 'llama3:latest',
     local_llama_api_key: '',
+    apiConsent: false,
 };
 
 const MATCH_SPECIFIC_SETTINGS_KEYS = [
@@ -328,11 +330,14 @@ sendMessage({
 
 async function handleNlpAnalysisResponse(message) {
     if (message.error) {
-        showError('NLP Analysis Failed', message.error);
+        showError('Analysis Failed', `There was a problem analyzing the conversation: ${message.error}`);
         return;
     }
 
     state.sessionMatchProfile = message.matchProfile;
+    if (state.sessionMatchProfile.analysis?.error === 'api_failed') {
+        showToast('Backend analysis failed, using local fallback.', 'warning');
+    }
     state.currentMatchUUID = message.matchProfile.uuid;
 
     await loadAndApplySettings();
@@ -1082,77 +1087,21 @@ function showToast(message, type = 'success') {
     }, 3000);
 }
 
-function renderAnalysisTab(analysisData) {
-    const container = document.getElementById('analysis');
-    if (!container) return;
-
-    const conversationAnalysis = analysisData || {};
-    const lastMessageAnalysis = conversationAnalysis.lastMessageAnalysis || {};
-    const analysis = conversationAnalysis.analysis || {};
-    const engagement = conversationAnalysis.engagement || {};
-    const powerDynamics = analysis.powerDynamics || {};
-
-    const valenceLabels = { '0': 'Negative', '0.5': 'Neutral', '1': 'Positive' };
-    const arousalLabels = { '0': 'Calm', '0.5': 'Neutral', '1': 'Aroused' };
-    const engagementOptions = ['low', 'medium', 'high'];
-    const paceOptions = ['slow', 'medium', 'fast'];
-
-    const html = `
-        <div class="card-subheader">Conversation Analysis</div>
-        <table class="payload-table">
-            <tr><td>Conversation State</td><td>${createSelect('analysis-state', 'analysis.state', CONVERSATION_STATES, conversationAnalysis.state)}</td></tr>
-            <tr><td>Suppress Greeting?</td><td>${createCheckbox('analysis-suppressGreeting', 'analysis.suppressGreeting', conversationAnalysis.suppressGreeting)}</td></tr>
-        </table>
-        <div class="card-subheader">Last Message Subtext</div>
-        <table class="payload-table">
-            <tr><td>Is Direct Question?</td><td>${createCheckbox('subtext-isDirectQuestion', 'analysis.lastMessageAnalysis.isDirectQuestion', lastMessageAnalysis.isDirectQuestion)}</td></tr>
-            <tr><td>Is Low Effort?</td><td>${createCheckbox('subtext-isLowEffort', 'analysis.lastMessageAnalysis.isLowEffort', lastMessageAnalysis.isLowEffort)}</td></tr>
-            <tr><td>Is Sarcastic?</td><td>${createCheckbox('subtext-isSarcastic', 'analysis.lastMessageAnalysis.isSarcastic', lastMessageAnalysis.isSarcastic)}</td></tr>
-            <tr><td>Valence</td><td>${createSlider('subtext-valence', 'analysis.lastMessageAnalysis.valence', lastMessageAnalysis.valence, 0, 1, 0.1, valenceLabels)}</td></tr>
-            <tr><td>Arousal</td><td>${createSlider('subtext-arousal', 'analysis.lastMessageAnalysis.arousal', lastMessageAnalysis.arousal, 0, 1, 0.1, arousalLabels)}</td></tr>
-            <tr><td>Intents</td><td>${createMultiSelect('subtext-intents', 'analysis.lastMessageAnalysis.intents', INTENT_OPTIONS, lastMessageAnalysis.intents)}</td></tr>
-        </table>
-        <div class="card-subheader">Engagement</div>
-        <table class="payload-table">
-            <tr><td>Engagement</td><td>${createSelect('analysis-engagement', 'analysis.analysis.engagement', engagementOptions, analysis.engagement)}</td></tr>
-            <tr><td>Pace</td><td>${createSelect('engagement-pace', 'analysis.engagement.pace', paceOptions, engagement.pace)}</td></tr>
-            <tr><td>Power Dynamics</td><td>${createInput('power-summary', 'analysis.analysis.powerDynamics.summary', powerDynamics.summary)}</td></tr>
-        </table>
-    `;
-    container.innerHTML = html;
-}
-
-function renderMemoryTab(memoryData) {
-    const container = document.getElementById('memory');
-    if (!container) return;
-
-    const memory = memoryData || {};
-
-    const getArrayAsText = (arr) => {
-        // FIX: Check if the input is actually an array before trying to join it.
-        if (Array.isArray(arr)) {
-            return arr.join('\n');
-        }
-        // If it's not an array (e.g., null, undefined), return an empty string.
-        return '';
-    };
-
-    const html = `
-        <div class="card-subheader">Match Memory</div>
-        <table class="payload-table">
-            <tr><td>Date Arc Phase</td><td>${createSelect('memory-dateArcPhase', 'analysis.memory.dateArcPhase', DATE_ARC_PHASES, memory.dateArcPhase)}</td></tr>
-            <tr><td>Inside Jokes</td><td>${createTextarea('memory-insideJokes', 'analysis.memory.insideJokes', getArrayAsText(memory.insideJokes))}</td></tr>
-            <tr><td>Avoided Topics</td><td>${createTextarea('memory-avoidedTopics', 'analysis.memory.avoidedTopics', getArrayAsText(memory.avoidedTopics))}</td></tr>
-            <tr><td>Question History</td><td>${createTextarea('memory-questionHistory', 'analysis.memory.questionHistory', getArrayAsText(memory.questionHistory))}</td></tr>
-        </table>
-    `;
-    container.innerHTML = html;
-}
-
 function updateAnalysisTabs(analysis) {
     if (!analysis) return;
-    renderAnalysisTab(analysis);
-    renderMemoryTab(analysis.memory);
+    const fallbackKeys = analysis.fallbackKeys || [];
+    const constants = { CONVERSATION_STATES, INTENT_OPTIONS, DATE_ARC_PHASES };
+    const { analysisHtml, memoryHtml } = createAnalysisView(analysis, fallbackKeys, constants);
+
+    const analysisContainer = document.getElementById('analysis');
+    if (analysisContainer) {
+        analysisContainer.innerHTML = analysisHtml;
+    }
+
+    const memoryContainer = document.getElementById('memory');
+    if (memoryContainer) {
+        memoryContainer.innerHTML = memoryHtml;
+    }
 }
 
 function displayConversationState() {

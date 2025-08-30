@@ -262,7 +262,7 @@ export function runFullConversationAnalysis(conversationHistory, storedMemory) {
 // SECTION 4: HELPER FUNCTIONS (Internal)
 // ===================================================================================
 
-function _determineConversationState(conversationHistory) {
+export function _determineConversationState(conversationHistory) {
     const messageCount = conversationHistory?.length || 0;
     if (messageCount === 0) {
         return 'OPENER';

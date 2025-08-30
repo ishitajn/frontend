@@ -287,7 +287,7 @@ chrome.runtime.onConnect.addListener((port) => {
                 const newCacheHash = await generateCacheHash(scrapedData.conversationHistory, scrapedData.theirProfile);
                 DEBUG.log('DIAGNOSTIC', `Step 5: Generated new cache hash: ${newCacheHash}. Old hash: ${matchProfile.memory?.lastCacheHash}`);
 
-                const storedSettings = await chrome.storage.local.get(['analysis_url', 'analysis_type', 'local_model_name', 'myProfile', 'userLocationChoice']);
+                const storedSettings = await chrome.storage.local.get(['analysis_url', 'analysis_type', 'local_model_name', 'myProfile', 'userLocationChoice', 'apiConsent']);
                 const settings = { ...DEFAULTS, ...storedSettings };
                 DEBUG.log('DIAGNOSTIC', 'Step 6: Loaded settings.', settings);
 
@@ -309,8 +309,8 @@ chrome.runtime.onConnect.addListener((port) => {
 
                 let finalAnalysis = localAnalysis;
 
-                if (settings.analysis_type !== 'local') {
-                    DEBUG.log('DIAGNOSTIC', `Step 11: Analysis type is '${settings.analysis_type}'. Calling external API.`);
+                if (settings.analysis_type !== 'local' && settings.apiConsent) {
+                    DEBUG.log('DIAGNOSTIC', `Step 11: Analysis type is '${settings.analysis_type}' and user has consented. Calling external API.`);
                     try {
                         const requestPayload = {
                             matchId: uuid,
@@ -333,16 +333,23 @@ chrome.runtime.onConnect.addListener((port) => {
 
                         if (apiResponse && apiResponse.conversationAnalysis) {
                             DEBUG.log('DIAGNOSTIC', 'Step 11b: API response is valid. Merging with local analysis.');
-                            finalAnalysis = deepMerge(apiResponse.conversationAnalysis, localAnalysis);
-                            DEBUG.log('DIAGNOSTIC', 'Step 11c: Merge complete. Final analysis object:', finalAnalysis);
+                            const mergeResult = deepMerge(apiResponse.conversationAnalysis, localAnalysis);
+                            finalAnalysis = mergeResult;
+                            const fallbackKeys = getFallbackKeys(finalAnalysis, apiResponse.conversationAnalysis);
+                            finalAnalysis.fallbackKeys = fallbackKeys;
+                            DEBUG.log('DIAGNOSTIC', 'Step 11c: Merge complete.', { finalAnalysis, fallbackKeys });
                         } else {
                             DEBUG.log('DIAGNOSTIC', 'Step 11b: API response was empty or invalid. Using local analysis as fallback.', apiResponse);
+                            finalAnalysis.fallbackKeys = Object.keys(finalAnalysis);
                         }
                     } catch (error) {
                         DEBUG.error('DIAGNOSTIC', 'Step 11 FAILED: API call threw an error. Using local analysis as fallback.', error);
+                        finalAnalysis.fallbackKeys = Object.keys(finalAnalysis);
+                        finalAnalysis.error = 'api_failed';
                     }
                 } else {
                      DEBUG.log('DIAGNOSTIC', 'Step 11: Analysis type is local. Skipping external API call.');
+                     finalAnalysis.fallbackKeys = [];
                 }
 
                 matchProfile.analysis = finalAnalysis;
@@ -577,19 +584,40 @@ function buildFinalPayload(data) {
 
 function deepMerge(primary, fallback) {
     const isObject = (item) => (item && typeof item === 'object' && !Array.isArray(item));
-    const output = { ...fallback };
+    const output = { ...primary };
 
-    for (const key in primary) {
-        if (Object.prototype.hasOwnProperty.call(primary, key)) {
-            if (isObject(primary[key]) && key in fallback && isObject(fallback[key])) {
-                output[key] = deepMerge(primary[key], fallback[key]);
-            } else {
-                output[key] = primary[key];
+    for (const key in fallback) {
+        if (Object.prototype.hasOwnProperty.call(fallback, key)) {
+            // If the key is missing in the output or is null/undefined, use the fallback value
+            if (output[key] === null || output[key] === undefined) {
+                output[key] = fallback[key];
+            }
+            // If both are objects, merge them recursively
+            else if (isObject(output[key]) && isObject(fallback[key])) {
+                output[key] = deepMerge(output[key], fallback[key]);
             }
         }
     }
-
     return output;
+}
+
+function getFallbackKeys(merged, primary, parentKey = '') {
+    const keys = new Set();
+    const isObject = (item) => (item && typeof item === 'object' && !Array.isArray(item));
+
+    for (const key in merged) {
+        if (Object.prototype.hasOwnProperty.call(merged, key)) {
+            const currentKey = parentKey ? `${parentKey}.${key}` : key;
+
+            if (!Object.prototype.hasOwnProperty.call(primary, key) || primary[key] === null || primary[key] === undefined) {
+                keys.add(currentKey);
+            } else if (isObject(merged[key]) && isObject(primary[key])) {
+                const nestedKeys = getFallbackKeys(merged[key], primary[key], currentKey);
+                nestedKeys.forEach(k => keys.add(k));
+            }
+        }
+    }
+    return Array.from(keys);
 }
 
 async function callNlpApi(apiUrl, payload) {

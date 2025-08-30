@@ -60,6 +60,65 @@ export function createSlider(id, dataPath, value, min, max, step, labelMap) {
     `;
 }
 
+function createFallbackIndicator(dataPath, fallbackKeys) {
+    if (fallbackKeys && fallbackKeys.includes(dataPath)) {
+        return '<span class="fallback-indicator" title="This value was generated locally as a fallback.">L</span>';
+    }
+    return '';
+}
+
+export function createAnalysisView(analysisData, fallbackKeys, constants) {
+    const { CONVERSATION_STATES, INTENT_OPTIONS, DATE_ARC_PHASES } = constants;
+    const conversationAnalysis = analysisData || {};
+    const lastMessageAnalysis = conversationAnalysis.lastMessageAnalysis || {};
+    const analysis = conversationAnalysis.analysis || {};
+    const engagement = conversationAnalysis.engagement || {};
+    const powerDynamics = analysis.powerDynamics || {};
+    const memory = conversationAnalysis.memory || {};
+
+    const getArrayAsText = (arr) => Array.isArray(arr) ? arr.join('\n') : '';
+
+    const valenceLabels = { '0': 'Negative', '0.5': 'Neutral', '1': 'Positive' };
+    const arousalLabels = { '0': 'Calm', '0.5': 'Neutral', '1': 'Aroused' };
+    const engagementOptions = ['low', 'medium', 'high'];
+    const paceOptions = ['slow', 'medium', 'fast'];
+
+    const analysisHtml = `
+        <div class="card-subheader">Conversation Analysis</div>
+        <table class="payload-table">
+            <tr><td>Conversation State</td><td>${createFallbackIndicator('state', fallbackKeys)}${createSelect('analysis-state', 'analysis.state', CONVERSATION_STATES, conversationAnalysis.state)}</td></tr>
+            <tr><td>Suppress Greeting?</td><td>${createFallbackIndicator('suppressGreeting', fallbackKeys)}${createCheckbox('analysis-suppressGreeting', 'analysis.suppressGreeting', conversationAnalysis.suppressGreeting)}</td></tr>
+        </table>
+        <div class="card-subheader">Last Message Subtext</div>
+        <table class="payload-table">
+            <tr><td>Is Direct Question?</td><td>${createFallbackIndicator('lastMessageAnalysis.isDirectQuestion', fallbackKeys)}${createCheckbox('subtext-isDirectQuestion', 'analysis.lastMessageAnalysis.isDirectQuestion', lastMessageAnalysis.isDirectQuestion)}</td></tr>
+            <tr><td>Is Low Effort?</td><td>${createFallbackIndicator('lastMessageAnalysis.isLowEffort', fallbackKeys)}${createCheckbox('subtext-isLowEffort', 'analysis.lastMessageAnalysis.isLowEffort', lastMessageAnalysis.isLowEffort)}</td></tr>
+            <tr><td>Is Sarcastic?</td><td>${createFallbackIndicator('lastMessageAnalysis.isSarcastic', fallbackKeys)}${createCheckbox('subtext-isSarcastic', 'analysis.lastMessageAnalysis.isSarcastic', lastMessageAnalysis.isSarcastic)}</td></tr>
+            <tr><td>Valence</td><td>${createFallbackIndicator('lastMessageAnalysis.valence', fallbackKeys)}${createSlider('subtext-valence', 'analysis.lastMessageAnalysis.valence', lastMessageAnalysis.valence, 0, 1, 0.1, valenceLabels)}</td></tr>
+            <tr><td>Arousal</td><td>${createFallbackIndicator('lastMessageAnalysis.arousal', fallbackKeys)}${createSlider('subtext-arousal', 'analysis.lastMessageAnalysis.arousal', lastMessageAnalysis.arousal, 0, 1, 0.1, arousalLabels)}</td></tr>
+            <tr><td>Intents</td><td>${createFallbackIndicator('lastMessageAnalysis.intents', fallbackKeys)}${createMultiSelect('subtext-intents', 'analysis.lastMessageAnalysis.intents', INTENT_OPTIONS, lastMessageAnalysis.intents)}</td></tr>
+        </table>
+        <div class="card-subheader">Engagement</div>
+        <table class="payload-table">
+            <tr><td>Engagement</td><td>${createFallbackIndicator('analysis.engagement', fallbackKeys)}${createSelect('analysis-engagement', 'analysis.analysis.engagement', engagementOptions, analysis.engagement)}</td></tr>
+            <tr><td>Pace</td><td>${createFallbackIndicator('engagement.pace', fallbackKeys)}${createSelect('engagement-pace', 'analysis.engagement.pace', paceOptions, engagement.pace)}</td></tr>
+            <tr><td>Power Dynamics</td><td>${createFallbackIndicator('analysis.powerDynamics.summary', fallbackKeys)}${createInput('power-summary', 'analysis.analysis.powerDynamics.summary', powerDynamics.summary)}</td></tr>
+        </table>
+    `;
+
+    const memoryHtml = `
+        <div class="card-subheader">Match Memory</div>
+        <table class="payload-table">
+            <tr><td>Date Arc Phase</td><td>${createFallbackIndicator('memory.dateArcPhase', fallbackKeys)}${createSelect('memory-dateArcPhase', 'analysis.memory.dateArcPhase', DATE_ARC_PHASES, memory.dateArcPhase)}</td></tr>
+            <tr><td>Inside Jokes</td><td>${createFallbackIndicator('memory.insideJokes', fallbackKeys)}${createTextarea('memory-insideJokes', 'analysis.memory.insideJokes', getArrayAsText(memory.insideJokes))}</td></tr>
+            <tr><td>Avoided Topics</td><td>${createFallbackIndicator('memory.avoidedTopics', fallbackKeys)}${createTextarea('memory-avoidedTopics', 'analysis.memory.avoidedTopics', getArrayAsText(memory.avoidedTopics))}</td></tr>
+            <tr><td>Question History</td><td>${createFallbackIndicator('memory.questionHistory', fallbackKeys)}${createTextarea('memory-questionHistory', 'analysis.memory.questionHistory', getArrayAsText(memory.questionHistory))}</td></tr>
+        </table>
+    `;
+
+    return { analysisHtml, memoryHtml };
+}
+
 export function createCollapsibleJSON(title, dataObject, isEditable = true) {
     if (dataObject === null || typeof dataObject === 'undefined') {
         return `

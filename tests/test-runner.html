@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Wingman AI Test Suite</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        h1 { color: #333; }
+        .log { border-left: 3px solid; padding-left: 10px; margin-bottom: 5px; }
+        .log-pass { border-color: green; color: green; }
+        .log-fail { border-color: red; color: red; }
+        .log-error { white-space: pre-wrap; margin-left: 15px; }
+    </style>
+</head>
+<body>
+    <h1>Wingman AI Test Suite</h1>
+    <div id="results"></div>
+
+    <script type="module">
+        const resultsEl = document.getElementById('results');
+        const originalLog = console.log;
+        const originalError = console.error;
+
+        console.log = function(...args) {
+            const msg = args.join(' ');
+            const el = document.createElement('div');
+            el.className = 'log log-pass';
+            el.textContent = msg;
+            resultsEl.appendChild(el);
+            originalLog.apply(console, args);
+        };
+
+        console.error = function(...args) {
+            const msg = args.join(' ');
+            const el = document.createElement('div');
+            el.className = 'log log-fail';
+            el.textContent = msg;
+
+            const errorDetails = document.createElement('div');
+            errorDetails.className = 'log-error';
+            errorDetails.textContent = args[1]?.stack || args[1] || '';
+            el.appendChild(errorDetails);
+
+            resultsEl.appendChild(el);
+            originalError.apply(console, args);
+        };
+
+        // Import and run tests
+        import './test-background.js';
+        import './test-conversationHelpers.js';
+    </script>
+</body>
+</html>
