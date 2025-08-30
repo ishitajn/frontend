@@ -326,7 +326,6 @@ chrome.runtime.onConnect.addListener((port) => {
                                 useEnhancedNlp: settings.analysis_type === 'enhanced',
                                 myLocation: settings.userLocationChoice || 'autodetect',
                                 myProfile: settings.myProfile || '',
-                                local_model_name: settings.local_model_name || 'llama3:latest',
                             }
                         };
                         apiResponse = await callNlpApi(settings.analysis_url, requestPayload);
