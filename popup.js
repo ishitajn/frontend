@@ -1,6 +1,6 @@
 // popup.js (Re-architected for Manifest V3 Robustness with Heartbeat)
 import { scrapeBumblePage, pasteTextIntoBumbleInput, scrapeTinderPage, pasteTextIntoTinderInput } from './content-scraper.js';
-import { getToneDescription, getLengthDescription, getEmojiInstruction, getStyleDescription, LINGUISTIC_STYLES, DATE_ARC_PHASES } from './conversationHelpers.js';
+import { getToneDescription, getLengthDescription, getEmojiInstruction, getStyleDescription, determineConversationState, LINGUISTIC_STYLES, DATE_ARC_PHASES } from './conversationHelpers.js';
 import { showNlpModal, hideDebugModal } from './debug-modal.js';
 import {
     setNestedValue,
@@ -323,15 +323,13 @@ sendMessage({
 } catch (e) {
     showError('Initialization Failed', e.message);
     DEBUG.error('INIT', 'Refresh failed', e);
+} finally {
     state.isRefreshing = false;
     setUIRefreshingState(false);
 }
 }
 
 async function handleNlpAnalysisResponse(message) {
-    state.isRefreshing = false;
-    setUIRefreshingState(false);
-
     if (message.error) {
         showError('NLP Analysis Failed', message.error);
         return;
@@ -540,7 +538,6 @@ async function handleSettingChange(event) {
         }
 
         if (state.sessionMatchProfile) {
-            // Correctly update the nested object. The path is relative to sessionMatchProfile.
             setNestedValue(state.sessionMatchProfile, dataPath, value);
             DEBUG.log('STATE', `Updated ${dataPath} to`, value);
         }
@@ -552,18 +549,15 @@ async function handleSettingChange(event) {
     if (storageKey) {
         const value = el.type === 'checkbox' ? el.checked : el.value;
 
-        let settingsToSave = {};
         if (MATCH_SPECIFIC_SETTINGS_KEYS.includes(storageKey) && state.currentMatchUUID) {
-            const matchSettingsKey = getMatchSettingsKey(state.currentMatchUUID);
-            const result = await chrome.storage.local.get(matchSettingsKey);
-            const matchSettings = result[matchSettingsKey] || {};
+            const settingsStorageKey = getMatchSettingsKey(state.currentMatchUUID);
+            const result = await chrome.storage.local.get(settingsStorageKey);
+            const matchSettings = result[storageKey] || {};
             matchSettings[storageKey] = value;
-            settingsToSave[matchSettingsKey] = matchSettings;
+            await chrome.storage.local.set({ [settingsStorageKey]: matchSettings });
         } else {
-            settingsToSave[storageKey] = value;
+            await chrome.storage.local.set({ [storageKey]: value });
         }
-
-        await chrome.storage.local.set(settingsToSave);
         showToast('Settings saved');
     }
 }
@@ -603,6 +597,32 @@ async function loadAndApplySettings() {
     updateSliderValueLabel(SELECTORS.topPSlider, SELECTORS.topPValueLabel, 2);
     updateClearButtonVisibility(document.getElementById(SELECTORS.customInstruction), document.getElementById(SELECTORS.clearInstructionBtn));
     updateClearButtonVisibility(responseArea, document.getElementById(SELECTORS.clearResponseBtn));
+    updateOverrideIndicators(matchSpecificSettings);
+}
+
+function updateOverrideIndicators(matchSettings) {
+    document.querySelectorAll('[data-storage-key]').forEach(el => {
+        const key = el.dataset.storageKey;
+        if (MATCH_SPECIFIC_SETTINGS_KEYS.includes(key)) {
+            const label = el.closest('.control-group')?.querySelector('.label-with-info');
+            if (label) {
+                let indicator = label.querySelector('.override-indicator');
+                if (matchSettings.hasOwnProperty(key)) {
+                    if (!indicator) {
+                        indicator = document.createElement('span');
+                        indicator.className = 'override-indicator';
+                        indicator.textContent = '●';
+                        indicator.title = 'This setting is specific to this match.';
+                        label.appendChild(indicator);
+                    }
+                } else {
+                    if (indicator) {
+                        indicator.remove();
+                    }
+                }
+            }
+        }
+    });
 }
 
 async function handleMatchReset() {
@@ -614,6 +634,7 @@ async function handleMatchReset() {
         await chrome.storage.local.remove(getMatchSettingsKey(state.currentMatchUUID));
         document.getElementById(SELECTORS.responseArea).textContent = '';
         await loadAndApplySettings();
+        updateOverrideIndicators({}); // Clear indicators
     } catch (e) {
         DEBUG.error("RESET", "Failed to reset match settings:", e);
     } finally {
@@ -650,10 +671,10 @@ function syncUIWithState(generationState) {
         stopTimer();
         resetTimerDisplay();
         if (generationState.response) {
-            autoType(generationState.response);
             updateUIAfterGeneration({
                 reply: generationState.response
             });
+            autoType(generationState.response);
         } else if (generationState.error) {
             updateUIAfterGeneration({
                 error: generationState.error
@@ -1105,14 +1126,10 @@ function renderAnalysisTab(analysisData) {
     const container = document.getElementById('analysis');
     if (!container) return;
 
-    if (!analysisData) {
-        container.innerHTML = `<div class="loading-placeholder">Analyzing...</div>`;
-        return;
-    }
-
-    const lastMessageAnalysis = analysisData.lastMessageAnalysis || {};
-    const analysis = analysisData.analysis || {};
-    const engagement = analysisData.engagement || {};
+    const conversationAnalysis = analysisData || {};
+    const lastMessageAnalysis = conversationAnalysis.lastMessageAnalysis || {};
+    const analysis = conversationAnalysis.analysis || {};
+    const engagement = conversationAnalysis.engagement || {};
     const powerDynamics = analysis.powerDynamics || {};
 
     const valenceLabels = { '0': 'Negative', '0.5': 'Neutral', '1': 'Positive' };
@@ -1123,23 +1140,21 @@ function renderAnalysisTab(analysisData) {
     const html = `
         <div class="card-subheader">Conversation Analysis</div>
         <table class="payload-table">
-            <tr><td>Conversation State</td><td>${createSelect('analysis-state', 'analysis.state', CONVERSATION_STATES, analysisData.state)}</td></tr>
-            <tr><td>Suppress Greeting?</td><td>${createCheckbox('analysis-suppressGreeting', 'analysis.suppressGreeting', analysisData.suppressGreeting)}</td></tr>
+            <tr><td>Conversation State</td><td>${createSelect('analysis-state', 'analysis.state', CONVERSATION_STATES, conversationAnalysis.state)}</td></tr>
+            <tr><td>Suppress Greeting?</td><td>${createCheckbox('analysis-suppressGreeting', 'analysis.suppressGreeting', conversationAnalysis.suppressGreeting)}</td></tr>
         </table>
         <div class="card-subheader">Last Message Subtext</div>
         <table class="payload-table">
             <tr><td>Is Direct Question?</td><td>${createCheckbox('subtext-isDirectQuestion', 'analysis.lastMessageAnalysis.isDirectQuestion', lastMessageAnalysis.isDirectQuestion)}</td></tr>
             <tr><td>Is Low Effort?</td><td>${createCheckbox('subtext-isLowEffort', 'analysis.lastMessageAnalysis.isLowEffort', lastMessageAnalysis.isLowEffort)}</td></tr>
             <tr><td>Is Sarcastic?</td><td>${createCheckbox('subtext-isSarcastic', 'analysis.lastMessageAnalysis.isSarcastic', lastMessageAnalysis.isSarcastic)}</td></tr>
-            <tr><td>Is Ambiguous?</td><td>${createCheckbox('subtext-isAmbiguous', 'analysis.lastMessageAnalysis.isAmbiguous', lastMessageAnalysis.isAmbiguous)}</td></tr>
-            <tr><td>Is Vulnerable?</td><td>${createCheckbox('subtext-isVulnerable', 'analysis.lastMessageAnalysis.isVulnerable', lastMessageAnalysis.isVulnerable)}</td></tr>
             <tr><td>Valence</td><td>${createSlider('subtext-valence', 'analysis.lastMessageAnalysis.valence', lastMessageAnalysis.valence, 0, 1, 0.1, valenceLabels)}</td></tr>
             <tr><td>Arousal</td><td>${createSlider('subtext-arousal', 'analysis.lastMessageAnalysis.arousal', lastMessageAnalysis.arousal, 0, 1, 0.1, arousalLabels)}</td></tr>
             <tr><td>Intents</td><td>${createMultiSelect('subtext-intents', 'analysis.lastMessageAnalysis.intents', INTENT_OPTIONS, lastMessageAnalysis.intents)}</td></tr>
         </table>
         <div class="card-subheader">Engagement</div>
         <table class="payload-table">
-            <tr><td>Engagement</td><td>${createSelect('analysis-engagement', 'analysis.analysis.engagement', engagementOptions, analysisData.engagement)}</td></tr>
+            <tr><td>Engagement</td><td>${createSelect('analysis-engagement', 'analysis.analysis.engagement', engagementOptions, analysis.engagement)}</td></tr>
             <tr><td>Pace</td><td>${createSelect('engagement-pace', 'analysis.engagement.pace', paceOptions, engagement.pace)}</td></tr>
             <tr><td>Power Dynamics</td><td>${createInput('power-summary', 'analysis.analysis.powerDynamics.summary', powerDynamics.summary)}</td></tr>
         </table>
@@ -1151,43 +1166,24 @@ function renderMemoryTab(memoryData) {
     const container = document.getElementById('memory');
     if (!container) return;
 
-    if (!memoryData) {
-        container.innerHTML = `<div class="loading-placeholder">Analyzing...</div>`;
-        return;
-    }
+    const memory = memoryData || {};
 
     const html = `
         <div class="card-subheader">Match Memory</div>
         <table class="payload-table">
-            <tr><td>Date Arc Phase</td><td>${createSelect('memory-dateArcPhase', 'analysis.memory.dateArcPhase', DATE_ARC_PHASES, memoryData.dateArcPhase)}</td></tr>
-            <tr><td>Inside Jokes</td><td>${createTextarea('memory-insideJokes', 'analysis.memory.insideJokes', (memoryData.insideJokes || []).join('\\n'))}</td></tr>
-            <tr><td>Avoided Topics</td><td>${createTextarea('memory-avoidedTopics', 'analysis.memory.avoidedTopics', (memoryData.avoidedTopics || []).join('\\n'))}</td></tr>
-            <tr><td>Question History</td><td>${createTextarea('memory-questionHistory', 'analysis.memory.questionHistory', (memoryData.questionHistory || []).join('\\n'))}</td></tr>
+            <tr><td>Date Arc Phase</td><td>${createSelect('memory-dateArcPhase', 'analysis.memory.dateArcPhase', DATE_ARC_PHASES, memory.dateArcPhase)}</td></tr>
+            <tr><td>Inside Jokes</td><td>${createTextarea('memory-insideJokes', 'analysis.memory.insideJokes', (memory.insideJokes || []).join('\\n'))}</td></tr>
+            <tr><td>Avoided Topics</td><td>${createTextarea('memory-avoidedTopics', 'analysis.memory.avoidedTopics', (memory.avoidedTopics || []).join('\\n'))}</td></tr>
+            <tr><td>Question History</td><td>${createTextarea('memory-questionHistory', 'analysis.memory.questionHistory', (memory.questionHistory || []).join('\\n'))}</td></tr>
         </table>
     `;
     container.innerHTML = html;
 }
 
 function updateAnalysisTabs(analysis) {
-    if (!analysis) {
-        renderAnalysisTab(null);
-        renderMemoryTab(null);
-        return;
-    }
+    if (!analysis) return;
     renderAnalysisTab(analysis);
     renderMemoryTab(analysis.memory);
-    attachTabEventListeners();
-}
-
-function attachTabEventListeners() {
-    const analysisContainer = document.getElementById('analysis');
-    const memoryContainer = document.getElementById('memory');
-
-    if (analysisContainer) {
-        analysisContainer.querySelectorAll('input[type="range"]').forEach(slider => {
-            slider.addEventListener('input', () => updateSliderValueLabel(slider.id, `${slider.id}-value`, 1, JSON.parse(slider.dataset.labelMap || '{}')));
-        });
-    }
 }
 
 function displayConversationState() {

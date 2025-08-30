@@ -1,5 +1,5 @@
 import nlp from './lib/compromise.js';
-import { positiveWords, negativeWords, arousalWords, vulnerableWords, sexualWords } from '../dictionaries/wordLists.js';
+import { positiveWords, negativeWords, arousalWords, vulnerableWords, sexualWords, genericNouns } from '../dictionaries/wordLists.js';
 
 const DEBUG = {
     log: (category, message, data = null) => console.log(`[WINGMAN-HELPER-${category.toUpperCase()}] ${message}`, data ?? ''),
@@ -139,7 +139,6 @@ function updateMemoryIncrementally(newMessages, fullConversationHistory, current
             const userDoc = nlp(newMessages[i].content);
             const matchDoc = nlp(newMessages[i + 1].content);
             const subtext = analyzeMessageSubtext(matchDoc);
-            const genericNouns = new Set(['thing', 'things', 'point', 'weekend', 'week', 'day', 'bit', 'lot', 'way', 'time', 'place', 'stuff', 'item', 'items', 'object', 'objects', 'article', 'articles', 'entity', 'entities', 'unit', 'units', 'device', 'gadget', 'gear', 'kit', 'tackle', 'hardware', 'goods', 'wares', 'commodity', 'product', 'material', 'substance', 'contraption', 'apparatus', 'equipment', 'paraphernalia', 'junk', 'idea', 'ideas', 'concept', 'concepts', 'notion', 'thought', 'thoughts', 'subject', 'topic', 'matter', 'issue', 'issues', 'concern', 'concerns', 'aspect', 'aspects', 'element', 'elements', 'factor', 'factors', 'case', 'cases', 'deal', 'gist', 'story', 'angle', 'vibe', 'business', 'detail', 'details', 'information', 'info', 'data', 'fact', 'facts', 'news', 'scoop', 'amount', 'quantity', 'number', 'bunch', 'load', 'loads', 'heap', 'heaps', 'pile', 'piles', 'ton', 'tons', 'mass', 'chunk', 'hunk', 'piece', 'pieces', 'portion', 'share', 'slice', 'segment', 'section', 'part', 'parts', 'fraction', 'fragment', 'smidgen', 'tad', 'dash', 'hint', 'touch', 'couple', 'few', 'series', 'set', 'collection', 'array', 'assortment', 'selection', 'variety', 'person', 'people', 'individual', 'individuals', 'character', 'characters', 'guy', 'guys', 'dude', 'dudes', 'chap', 'chaps', 'bloke', 'fellow', 'body', 'bodies', 'soul', 'souls', 'head', 'heads', 'folk', 'folks', 'crowd', 'gang', 'crew', 'squad', 'team', 'party', 'bunch', 'lot', 'situation', 'scenario', 'circumstance', 'circumstances', 'state', 'affair', 'affairs', 'event', 'events', 'happening', 'incident', 'occurrence', 'episode', 'development', 'predicament', 'dilemma', 'problem', 'problems', 'trouble', 'mess', 'jam', 'pickle', 'ordeal', 'experience', 'spot', 'location', 'area', 'zone', 'region', 'site', 'venue', 'joint', 'moment', 'minute', 'second', 'hour', 'period', 'era', 'age', 'while', 'instant', 'jiffy', 'stretch', 'spell', 'thingy', 'thingie', 'thingamajig', 'thingamabob', 'whatchamacallit', 'doodad', 'doohickey', 'gizmo', 'widget', 'whatsit', 'whatnot', 'jawn', 'shit', 'crap', 'bullshit', 'fuckery', 'shitshow', 'clusterfuck', 'fiasco', 'shitstorm', 'mess', 'shitload', 'fuckload', 'assload', 'fuck-ton', 'metric-fuck-ton', 'bastard', 'fucker', 'motherfucker', 'son of a bitch']);
             const potentialTopics = userDoc.nouns().toSingular().out('array').filter(n => !genericNouns.has(n) && n.length > 2);
 
             if (potentialTopics.length > 0) {
@@ -316,6 +315,19 @@ function _calculateStaleConversationGap(conversationHistory) {
     } catch (e) {
         return 0;
     }
+}
+
+function _hasRecentGreeting(conversationHistory) {
+    if (!conversationHistory || conversationHistory.length === 0)
+        return false;
+    const todayDateString = new Date().toISOString().split('T')[0];
+    const GREETING_KEYWORDS = ['hey', 'hi', 'hello', 'yo', 'sup', 'hiya', 'heya', 'howdy', 'wassup', 'what up', 'what\'s up', 'greetings', 'salutations', 'aloha', 'ahoy', 'good morning', 'morning', "'morning", 'good afternoon', 'afternoon', 'good evening', 'evening', 'good day', 'how are you', 'how are ya', 'how you doing', 'how you doin', 'how\'s it going', 'hows it going', 'how is it going', 'how have you been', 'how\'s things', 'how\'s life', 'what\'s new', 'what\'s good', 'what\'s goodie', 'what\'s happening', 'what\'s crackin', 'what\'s poppin', 'long time no see', 'nice to see you', 'nice to meet you', 'pleasure to meet you', 'dear', 'to whom it may concern', 'attention', 'welcome', 'gm', 'gn', 'yerrr', 'o/', '\\o', 'hewwo', 'henlo', 'g\'day', 'howzit', 'alright?', 'u alright?', 'wagwan', 'ey up', 'what\'s the craic?', 'cheers', 'hiya pal', 'top of the morning to ya', 'oi', 'psst', 'ahem', 'excuse me', 'yo, asshole', 'hey, fucker', 'sup, bitches', 'look here', 'what do you want', ];
+    return conversationHistory.some(msg => {
+        if (!msg.date || !msg.date.startsWith(todayDateString))
+            return false;
+        const firstWord = msg.content.trim().toLowerCase().split(' ')[0].replace(/[.,!?-]/g, '');
+        return GREETING_KEYWORDS.includes(firstWord);
+    });
 }
 
 /**

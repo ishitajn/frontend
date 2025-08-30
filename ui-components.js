@@ -35,17 +35,27 @@ export function createCheckbox(id, dataPath, checked) {
 
 export function createSlider(id, dataPath, value, min, max, step, labelMap) {
     const getLabel = (val) => {
-        const numVal = parseFloat(val);
-        for (const [limit, label] of Object.entries(labelMap)) {
-            if (numVal >= parseFloat(limit))
-                return label;
+        if (!labelMap || Object.keys(labelMap).length === 0) {
+            return '';
         }
-        return Object.values(labelMap)[0];
+        const numericValue = parseFloat(val);
+        // Find the highest key that the value is greater than or equal to.
+        const closestKey = Object.keys(labelMap)
+                                 .map(parseFloat)
+                                 .sort((a, b) => b - a) // Sort keys in descending order
+                                 .find(k => numericValue >= k);
+
+        // Fallback to the lowest value if nothing is found (should not happen with proper maps)
+        return labelMap[closestKey] || Object.values(labelMap)[0];
     };
+
+    const labelText = getLabel(value);
+    const displayValue = labelText ? `${value} (${labelText})` : value;
+
     return `
         <div class="slider-container">
-            <input type="range" id="${id}" data-path="${dataPath}" value="${value}" min="${min}" max="${max}" step="${step}" data-label-map='${JSON.stringify(labelMap)}'>
-            <span id="${id}-value" class="value-display">${value} (${getLabel(value)})</span>
+            <input type="range" id="${id}" data-path="${dataPath}" value="${value}" min="${min}" max="${max}" step="${step}" data-label-map='${JSON.stringify(labelMap || {})}'>
+            <span id="${id}-value" class="value-display">${displayValue}</span>
         </div>
     `;
 }

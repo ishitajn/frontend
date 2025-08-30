@@ -103,6 +103,7 @@ label { font-size: 12px; font-weight: 600; color: var(--text-secondary); display
 .control-group.stacked { flex-direction: column; gap: 8px; align-items: stretch; }
 .label-with-info { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-secondary); flex-basis: 45%; flex-shrink: 0; }
 .label-with-info .value-label { margin-left: auto; font-weight: normal; color: var(--text-primary); }
+.label-with-info .override-indicator { color: var(--accent-primary); font-size: 10px; margin-left: 4px; line-height: 1; cursor: help; }
 .info-icon { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--text-muted); font-style: italic; font-weight: bold; font-size: 10px; color: var(--text-muted); cursor: pointer; }
 .control-group select, .control-group input[type="range"] { width: auto; flex-grow: 1; min-width: 0; }
 input[type="range"] { -webkit-appearance: none; height: 6px; background: var(--bg-tertiary); border-radius: 3px; outline: none; padding: 0; }
