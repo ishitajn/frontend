@@ -54,16 +54,6 @@ class PerformanceLogger {
 }
 const performanceLogger = new PerformanceLogger();
 
-async function generateCacheHash(history, profile) {
-    if ((!history || history.length === 0) && !profile)
-        return 'empty';
-    const combinedString = JSON.stringify(history) + JSON.stringify(profile);
-    const encoder = new TextEncoder();
-    const data = encoder.encode(combinedString);
-    const hashBuffer = await crypto.subtle.digest('SHA-1', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
 
 const getGenerationStateKey = (uuid) => `generationState_${uuid}`;
 
@@ -152,7 +142,6 @@ class MatchMemory {
                 avoidedTopics: [],
                 questionHistory: [],
                 geoContextData: null,
-                lastCacheHash: null,
             },
             conversationHistory: scrapedData.conversationHistory,
             analysis: null,
@@ -284,19 +273,9 @@ chrome.runtime.onConnect.addListener((port) => {
                     matchProfile.uuid = uuid;
                 }
 
-                const newCacheHash = await generateCacheHash(scrapedData.conversationHistory, scrapedData.theirProfile);
-                DEBUG.log('DIAGNOSTIC', `Step 5: Generated new cache hash: ${newCacheHash}. Old hash: ${matchProfile.memory?.lastCacheHash}`);
-
                 const storedSettings = await chrome.storage.local.get(['analysis_url', 'analysis_type', 'local_model_name', 'myProfile', 'userLocationChoice', 'apiConsent']);
                 const settings = { ...DEFAULTS, ...storedSettings };
                 DEBUG.log('DIAGNOSTIC', 'Step 6: Loaded settings.', settings);
-
-                if (matchProfile.memory?.lastCacheHash === newCacheHash && matchProfile.analysis) {
-                    DEBUG.log('DIAGNOSTIC', 'Step 7: Cache HIT. Skipping analysis and returning cached profile.');
-                    port.postMessage({ action: 'nlpAnalysisResponse', matchProfile });
-                    return;
-                }
-                DEBUG.log('DIAGNOSTIC', 'Step 7: Cache MISS. Proceeding with full analysis.');
 
                 matchProfile.conversationHistory = scrapedData.conversationHistory;
                 matchProfile.metadata.theirProfile = scrapedData.theirProfile;
@@ -358,7 +337,6 @@ chrome.runtime.onConnect.addListener((port) => {
 
                 matchProfile.analysis = finalAnalysis;
                 matchProfile.memory = finalAnalysis.memory;
-                matchProfile.memory.lastCacheHash = newCacheHash;
                 DEBUG.log('DIAGNOSTIC', 'Step 12: Assigned new analysis and memory to profile.');
 
                 if (finalAnalysis.geo) {
