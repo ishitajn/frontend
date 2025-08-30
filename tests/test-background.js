@@ -1,21 +1,33 @@
 import { test, assertEquals, assertDeepEquals } from './assert.js';
 
+// Mock the chrome API for the test environment
+globalThis.chrome = {
+    runtime: {
+        onConnect: {
+            addListener: () => {}
+        },
+        sendMessage: () => {}
+    },
+    storage: {
+        local: {
+            get: () => Promise.resolve({}),
+            set: () => Promise.resolve(),
+        }
+    }
+};
+
 // The function to be tested will be dynamically imported.
 // This is a simplified approach for a browser-based test runner.
-let deepMerge;
-
-// Dynamically import the function from the module
 (async () => {
     try {
-        const module = await import('../background.js');
-        deepMerge = module.deepMerge;
-        runTests();
+        const { deepMerge } = await import('../background.js');
+        runTests(deepMerge);
     } catch (e) {
         console.error("Failed to import background.js for testing.", e);
     }
 })();
 
-function runTests() {
+function runTests(deepMerge) {
     test('deepMerge should merge non-conflicting properties', () => {
         const primary = { a: 1 };
         const fallback = { b: 2 };
@@ -57,5 +69,57 @@ function runTests() {
         deepMerge(primary, fallback);
         assertDeepEquals(primary, { a: { b: 1 } });
         assertDeepEquals(fallback, { a: { c: 2 } });
+    });
+
+    test('deepMerge should handle arrays correctly (primary takes precedence)', () => {
+        const primary = { a: [1, 2] };
+        const fallback = { a: [3, 4], b: 5 };
+        const result = deepMerge(primary, fallback);
+        assertDeepEquals(result, { a: [1, 2], b: 5 });
+    });
+
+    test('deepMerge should fill in null arrays from fallback', () => {
+        const primary = { a: null };
+        const fallback = { a: [1, 2] };
+        const result = deepMerge(primary, fallback);
+        assertDeepEquals(result, { a: [1, 2] });
+    });
+
+    test('deepMerge with complex nested objects', () => {
+        const primary = {
+            a: {
+                b: {
+                    c: 1
+                },
+                d: [1, 2]
+            },
+            f: null
+        };
+        const fallback = {
+            a: {
+                b: {
+                    x: 10
+                },
+                d: [3, 4],
+                e: 3
+            },
+            f: {
+                g: 4
+            }
+        };
+        const result = deepMerge(primary, fallback);
+        assertDeepEquals(result, {
+            a: {
+                b: {
+                    c: 1,
+                    x: 10
+                },
+                d: [1, 2],
+                e: 3
+            },
+            f: {
+                g: 4
+            }
+        });
     });
 }

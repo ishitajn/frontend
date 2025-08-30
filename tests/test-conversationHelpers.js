@@ -72,4 +72,35 @@ function runTests() {
         const state = _determineConversationState(history);
         assertEquals(state, 'REENGAGING_MONTH');
     });
+
+    test('should return ACTIVE_CONVO if assistant sent the last message recently', () => {
+        const now = new Date();
+        const oneHourAgo = new Date(now.getTime() - (60 * 60 * 1000));
+        const history = [
+            { role: 'user', content: 'Hi', date: oneHourAgo.toISOString() },
+            { role: 'assistant', content: 'Hey there!', date: now.toISOString() },
+        ];
+        const state = _determineConversationState(history);
+        assertEquals(state, 'ACTIVE_CONVO');
+    });
+
+    test('should return REENGAGING_DAY if there was a 3-day gap before the last message', () => {
+        const now = new Date();
+        const threeDaysAgo = new Date(now.getTime() - (3 * 24 * 60 * 60 * 1000));
+        const history = [
+            { role: 'user', content: 'Hi', date: threeDaysAgo.toISOString() },
+            { role: 'assistant', content: 'Hey, sorry for the delay', date: now.toISOString() },
+        ];
+        const state = _determineConversationState(history);
+        assertEquals(state, 'REENGAGING_DAY');
+    });
+
+    test('should handle invalid dates gracefully', () => {
+        const history = [
+            { role: 'user', content: 'Hi', date: 'invalid-date' },
+            { role: 'assistant', content: 'Hey', date: new Date().toISOString() },
+        ];
+        const state = _determineConversationState(history);
+        assertEquals(state, 'EARLY_CONVO'); // Should not crash
+    });
 }

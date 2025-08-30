@@ -308,6 +308,7 @@ chrome.runtime.onConnect.addListener((port) => {
                 DEBUG.log('DIAGNOSTIC', 'Step 10: `runFullConversationAnalysis` completed.', localAnalysis);
 
                 let finalAnalysis = localAnalysis;
+                let apiResponse = null;
 
                 if (settings.analysis_type !== 'local' && settings.apiConsent) {
                     DEBUG.log('DIAGNOSTIC', `Step 11: Analysis type is '${settings.analysis_type}' and user has consented. Calling external API.`);
@@ -328,7 +329,7 @@ chrome.runtime.onConnect.addListener((port) => {
                                 local_model_name: settings.local_model_name || 'llama3:latest',
                             }
                         };
-                        const apiResponse = await callNlpApi(settings.analysis_url, requestPayload);
+                        apiResponse = await callNlpApi(settings.analysis_url, requestPayload);
                         DEBUG.log('DIAGNOSTIC', 'Step 11a: API call succeeded. Response:', apiResponse);
 
                         if (apiResponse && apiResponse.conversationAnalysis) {
@@ -350,6 +351,10 @@ chrome.runtime.onConnect.addListener((port) => {
                 } else {
                      DEBUG.log('DIAGNOSTIC', 'Step 11: Analysis type is local. Skipping external API call.');
                      finalAnalysis.fallbackKeys = [];
+                }
+
+                if (apiResponse && apiResponse.geo) {
+                    finalAnalysis.geo = apiResponse.geo;
                 }
 
                 matchProfile.analysis = finalAnalysis;
@@ -582,7 +587,7 @@ function buildFinalPayload(data) {
     };
 }
 
-function deepMerge(primary, fallback) {
+export function deepMerge(primary, fallback) {
     const isObject = (item) => (item && typeof item === 'object' && !Array.isArray(item));
     const output = { ...primary };
 
