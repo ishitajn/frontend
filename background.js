@@ -13,7 +13,9 @@ const DEBUG = {
 
 // --- NEW: Default configuration to prevent undefined settings ---
 const DEFAULTS = {
-    local_llama_url: 'http://localhost:8080/v1/chat/completions',
+    analysis_type: 'local',
+    analysis_url: '',
+    llm_url: 'http://localhost:8080/v1/chat/completions',
     local_model_name: 'llama3:latest',
     local_llama_api_key: '',
 };
@@ -684,7 +686,7 @@ function cleanAIResponse(rawResponse) {
 }
 
 async function fetchLocalLlamaResponse(apiKey, payload, settings, signal) {
-    const { local_llama_url } = settings;
+    const { llm_url } = settings;
     const headers = {
         "Content-Type": "application/json"
     };
@@ -693,7 +695,7 @@ async function fetchLocalLlamaResponse(apiKey, payload, settings, signal) {
 
     let response;
     try {
-        response = await fetch(local_llama_url, {
+        response = await fetch(llm_url, {
             method: "POST",
             headers,
             body: JSON.stringify(payload),
@@ -702,7 +704,7 @@ async function fetchLocalLlamaResponse(apiKey, payload, settings, signal) {
     } catch (error) {
         if (error.name === 'AbortError')
             throw error;
-        throw new Error(`Network Error: Could not connect to the AI server at ${local_llama_url}.`);
+        throw new Error(`Network Error: Could not connect to the AI server at ${llm_url}.`);
     }
 
     if (!response.ok) {

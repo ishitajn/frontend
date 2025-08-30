@@ -33,7 +33,9 @@ const DEFAULTS = {
     customInstruction: '',
     lastResponse: '',
     myProfile: `Jay, 35 – 6'0", Vice President at a financial institution, graduate degree from Illinois State University. Driven and grounded, with a strong career focus but a playful side—loves trying new cuisines and cooking for others. Enjoys occasional adventure, meaningful conversations, and believes in making a difference through small actions. Social drinker, non-smoker, exercises sometimes. Prefers genuine connection and meeting in person over endless chatting.`,
-    local_llama_url: 'http://localhost:8080/v1/chat/completions',
+    analysis_type: 'local',
+    analysis_url: '',
+    llm_url: 'http://localhost:8080/v1/chat/completions',
     local_model_name: 'llama3:latest',
     local_llama_api_key: '',
 };
