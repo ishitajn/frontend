@@ -374,6 +374,7 @@ function stopHeartbeat() {
 }
 
 function setupEventListeners() {
+    setupTabs();
     window.addEventListener('focus', refreshDataAndUI);
     document.getElementById(SELECTORS.generateBtn)?.addEventListener('click', handleGenerateClick);
     document.getElementById(SELECTORS.copyBtn)?.addEventListener('click', handleCopyClick);
@@ -424,6 +425,35 @@ function setupEventListeners() {
                 value: key,
                 text: loc.name
             })));
+}
+
+function setupTabs() {
+    const tabContainer = document.querySelector('.tab-bar');
+    if (!tabContainer) return;
+
+    tabContainer.addEventListener('click', (event) => {
+        const clickedTab = event.target.closest('.tab-link');
+        if (!clickedTab) return;
+
+        if (clickedTab.classList.contains('active')) {
+            return;
+        }
+
+        const targetTabName = clickedTab.dataset.tab;
+        const targetPanel = document.getElementById(targetTabName);
+
+        document.querySelectorAll('.tab-link').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        document.querySelectorAll('.tab-panel').forEach(panel => {
+            panel.classList.remove('active');
+        });
+
+        clickedTab.classList.add('active');
+        if (targetPanel) {
+            targetPanel.classList.add('active');
+        }
+    });
 }
 
 async function handleLocationChange() {
@@ -696,40 +726,49 @@ function getTooltipContent(tooltipId) {
 }
 
 async function updateGeoContextDisplay(geoContextData) {
-    if (!state.sessionMatchProfile || !state.sessionScrapedData)
-        return;
+    if (!state.sessionMatchProfile || !state.sessionScrapedData) return;
 
     const { myName } = state.sessionScrapedData;
     const { theirName, matchLocation } = state.sessionMatchProfile.metadata;
     const settings = await chrome.storage.local.get('userLocationChoice');
     const userLocationData = USER_LOCATIONS[settings.userLocationChoice || 'autodetect'];
-    const card = document.getElementById(SELECTORS.geoContextCard);
 
-    if (card)
-        card.hidden = !geoContextData;
-    if (!geoContextData)
-        return;
-
-    const dataMap = {
+    const dataMap = geoContextData ? {
         geoUserName: myName || 'User',
         geoMatchName: theirName || 'Match',
         userLocation: userLocationData.name.split(',')[0],
-        matchLocation: matchLocation,
+        matchLocation: matchLocation || 'N/A',
         userTimeOfDay: geoContextData.userTimeOfDay,
         matchTimeOfDay: geoContextData.matchTimeOfDay,
         userTimezone: geoContextData.userTimeZoneName || userLocationData.timeZone,
         matchCountry: geoContextData.matchCountry,
         userCountry: geoContextData.userCountry || userLocationData.country,
         timeDifference: geoContextData.timeZoneDifference !== null ? `${geoContextData.timeZoneDifference} hour(s)` : 'N/A',
-        distanceInfo: `${geoContextData.distance.miles} miles / ${geoContextData.distance.km} km`,
-        countryDifference: `${geoContextData.countryDifference}`
+        distanceInfo: geoContextData.distance ? `${geoContextData.distance.miles} miles / ${geoContextData.distance.km} km` : 'N/A',
+    } : {
+        geoUserName: myName || 'User',
+        geoMatchName: theirName || 'Match',
+        userLocation: 'N/A',
+        matchLocation: 'N/A',
+        userTimeOfDay: 'N/A',
+        matchTimeOfDay: 'N/A',
+        userTimezone: 'N/A',
+        matchCountry: 'N/A',
+        userCountry: 'N/A',
+        timeDifference: 'N/A',
+        distanceInfo: 'N/A',
     };
 
-    Object.entries(dataMap).forEach(([id, text]) => {
-        const el = document.getElementById(SELECTORS[id]);
-        if (el)
+    // Also need to clear the non-dataMap fields
+    document.getElementById('user-time').textContent = 'N/A';
+    document.getElementById('match-time').textContent = 'N/A';
+
+    for (const [key, text] of Object.entries(dataMap)) {
+        const el = document.getElementById(SELECTORS[key]);
+        if (el) {
             el.textContent = text || 'N/A';
-    });
+        }
+    }
 }
 
 function startTimer(startTime) {
@@ -1000,12 +1039,104 @@ function showErrorInResponseArea(message) {
     }
 }
 
+function renderKeyValueGrid(container, data) {
+    for (const [key, value] of Object.entries(data)) {
+        // Skip if value is null, undefined, or an empty array. Allow empty objects to be rendered as a key.
+        if (value === null || value === undefined || (Array.isArray(value) && value.length === 0)) {
+            continue;
+        }
+
+        const keyEl = document.createElement('div');
+        keyEl.className = 'key-value-key';
+        keyEl.textContent = key;
+        container.appendChild(keyEl);
+
+        const valueEl = document.createElement('div');
+        valueEl.className = 'key-value-value';
+
+        if (Array.isArray(value)) {
+            const ul = document.createElement('ul');
+            ul.className = 'value-list';
+            value.forEach(item => {
+                const li = document.createElement('li');
+                li.textContent = item;
+                ul.appendChild(li);
+            });
+            valueEl.appendChild(ul);
+        } else if (typeof value === 'object' && Object.keys(value).length > 0) {
+            const subGrid = document.createElement('div');
+            subGrid.className = 'key-value-grid sub-grid';
+            renderKeyValueGrid(subGrid, value);
+            valueEl.appendChild(subGrid);
+        } else if (typeof value === 'boolean') {
+            valueEl.textContent = value ? 'Yes' : 'No';
+        } else if (typeof value !== 'object') {
+            valueEl.textContent = value;
+        } else {
+             valueEl.textContent = 'N/A';
+        }
+
+        container.appendChild(valueEl);
+    }
+}
+
+function updateAnalysisTabs(analysis) {
+    if (!analysis) return;
+
+    // --- Populate Analysis Tab ---
+    const analysisResultsContent = document.getElementById('analysis-results-content');
+    if (analysisResultsContent) {
+        analysisResultsContent.innerHTML = ''; // Clear previous
+
+        const lastMessageAnalysis = analysis.lastMessageAnalysis || {};
+        const engagementAnalysis = analysis.analysis || {};
+
+        const resultsData = {
+            "Subtext": {
+                "Direct Question": lastMessageAnalysis.isDirectQuestion,
+                "Low Effort": lastMessageAnalysis.isLowEffort,
+                "Sarcastic": lastMessageAnalysis.isSarcastic,
+                "Vulnerable": lastMessageAnalysis.isVulnerable,
+                "Intents": lastMessageAnalysis.intents,
+            },
+            "Sentiment": {
+                "Valence": lastMessageAnalysis.valence,
+                "Arousal": lastMessageAnalysis.arousal,
+            },
+            "Engagement": {
+                "Pace": analysis.engagement?.pace,
+                "Power Dynamics": engagementAnalysis.powerDynamics?.summary,
+            }
+        };
+        renderKeyValueGrid(analysisResultsContent, resultsData);
+    }
+
+    // --- Populate Memory Tab ---
+    const memory = analysis.memory || {};
+    const dateArcPhaseDisplay = document.getElementById('date-arc-phase-display');
+    if (dateArcPhaseDisplay) {
+        dateArcPhaseDisplay.textContent = `Date Arc Phase: ${memory.dateArcPhase || 'N/A'}`;
+    }
+
+    const memoryContent = document.getElementById('memory-content');
+    if (memoryContent) {
+        memoryContent.innerHTML = ''; // Clear previous content
+        const memoryData = {
+            "Topics": memory.topics,
+            "Inside Jokes": memory.insideJokes,
+            "Avoided Topics": memory.avoidedTopics,
+            "Question History": memory.questionHistory
+        };
+        renderKeyValueGrid(memoryContent, memoryData);
+    }
+}
+
 function displayConversationState() {
     if (!state.sessionMatchProfile?.analysis)
         return;
     const analysis = state.sessionMatchProfile.analysis;
-    const convoState = analysis.conversationState;
-    const dateArcPhase = analysis.memory.dateArcPhase;
+    const convoState = analysis.state;
+    const dateArcPhase = analysis.memory?.dateArcPhase;
 
     const stateDisplayMap = {
         'OPENER': 'Status: New Conversation (Opener)',
@@ -1024,6 +1155,8 @@ function displayConversationState() {
         const showButton = dateArcPhase === 'escalation' || dateArcPhase === 'planning';
         dateIdeaBtn.classList.toggle('hidden', !showButton);
     }
+
+    updateAnalysisTabs(analysis);
 }
 
 function handleDateIdeaClick() {
