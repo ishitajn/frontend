@@ -642,25 +642,23 @@ function buildFinalPayload(data) {
     };
 }
 
-function deepMerge(source, fallback) {
+function deepMerge(primary, fallback) {
     const isObject = (item) => (item && typeof item === 'object' && !Array.isArray(item));
-    let output = { ...source };
 
-    if (isObject(source) && isObject(fallback)) {
-        Object.keys(fallback).forEach(key => {
-            if (isObject(fallback[key])) {
-                if (!(key in source)) {
-                    output[key] = fallback[key];
-                } else {
-                    output[key] = deepMerge(source[key], fallback[key]);
-                }
-            } else {
-                if (source[key] === null || source[key] === undefined || source[key] === '') {
-                    output[key] = fallback[key];
-                }
-            }
-        });
+    // Start with a shallow merge of properties. Primary properties overwrite fallback properties.
+    const output = { ...fallback, ...primary };
+
+    // Now, handle nested objects recursively.
+    for (const key in output) {
+        if (isObject(primary[key]) && isObject(fallback[key])) {
+            // If both primary and fallback have an object for this key, merge them.
+            output[key] = deepMerge(primary[key], fallback[key]);
+        } else if (primary[key] === null || primary[key] === undefined) {
+            // If the primary value is explicitly null or undefined, prefer the fallback value.
+            output[key] = fallback[key];
+        }
     }
+
     return output;
 }
 

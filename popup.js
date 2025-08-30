@@ -1168,13 +1168,20 @@ function renderMemoryTab(memoryData) {
 
     const memory = memoryData || {};
 
+    const getArrayAsText = (arr) => {
+        if (Array.isArray(arr)) {
+            return arr.join('\\n');
+        }
+        return ''; // Return an empty string if it's not an array
+    };
+
     const html = `
         <div class="card-subheader">Match Memory</div>
         <table class="payload-table">
             <tr><td>Date Arc Phase</td><td>${createSelect('memory-dateArcPhase', 'analysis.memory.dateArcPhase', DATE_ARC_PHASES, memory.dateArcPhase)}</td></tr>
-            <tr><td>Inside Jokes</td><td>${createTextarea('memory-insideJokes', 'analysis.memory.insideJokes', (memory.insideJokes || []).join('\\n'))}</td></tr>
-            <tr><td>Avoided Topics</td><td>${createTextarea('memory-avoidedTopics', 'analysis.memory.avoidedTopics', (memory.avoidedTopics || []).join('\\n'))}</td></tr>
-            <tr><td>Question History</td><td>${createTextarea('memory-questionHistory', 'analysis.memory.questionHistory', (memory.questionHistory || []).join('\\n'))}</td></tr>
+            <tr><td>Inside Jokes</td><td>${createTextarea('memory-insideJokes', 'analysis.memory.insideJokes', getArrayAsText(memoryData.insideJokes))}</td></tr>
+            <tr><td>Avoided Topics</td><td>${createTextarea('memory-avoidedTopics', 'analysis.memory.avoidedTopics', getArrayAsText(memoryData.avoidedTopics))}</td></tr>
+            <tr><td>Question History</td><td>${createTextarea('memory-questionHistory', 'analysis.memory.questionHistory', getArrayAsText(memoryData.questionHistory))}</td></tr>
         </table>
     `;
     container.innerHTML = html;
