@@ -1,7 +1,16 @@
 // popup.js (Re-architected for Manifest V3 Robustness with Heartbeat)
 import { scrapeBumblePage, pasteTextIntoBumbleInput, scrapeTinderPage, pasteTextIntoTinderInput } from './content-scraper.js';
-import { getToneDescription, getLengthDescription, getEmojiInstruction, getStyleDescription, determineConversationState, LINGUISTIC_STYLES } from './conversationHelpers.js';
+import { getToneDescription, getLengthDescription, getEmojiInstruction, getStyleDescription, determineConversationState, LINGUISTIC_STYLES, DATE_ARC_PHASES } from './conversationHelpers.js';
 import { showNlpModal, hideDebugModal } from './debug-modal.js';
+import {
+    setNestedValue,
+    createSelect,
+    createMultiSelect,
+    createTextarea,
+    createInput,
+    createCheckbox,
+    createSlider
+} from './ui-components.js';
 
 const DEBUG = {
     log: (category, message, data = null) => console.log(`[WINGMAN-POPUP-${category.toUpperCase()}] ${message}`, data ?? ''),
@@ -34,6 +43,9 @@ const MATCH_SPECIFIC_SETTINGS_KEYS = [
     'endWithQuestion', 'strictGoalOverride', 'geoContextToggle', 'newTopic',
     'customInstruction', 'lastResponse'
 ];
+
+const CONVERSATION_STATES = ['OPENER', 'EARLY_CONVO', 'ACTIVE_CONVO', 'REENGAGING_DAY', 'REENGAGING_WEEK', 'REENGAGING_MONTH'];
+const INTENT_OPTIONS = ['questioning', 'planning', 'reacting_to_humor', 'storytelling', 'flirting_or_sexual'];
 
 const EMOJI_STRATEGIES = {
     'auto': 'Auto (Recommended)',
@@ -494,28 +506,56 @@ function updateClearButtonVisibility(inputEl, clearBtnEl) {
 
 async function handleSettingChange(event) {
     const el = event.target;
+
+    // --- Handle UI-specific side effects ---
     if (el.id === SELECTORS.customInstruction) {
         updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearInstructionBtn));
     } else if (el.id === SELECTORS.responseArea) {
         updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearResponseBtn));
         document.getElementById(SELECTORS.refinementActions).classList.add('hidden');
-    }
-    const key = el.dataset.storageKey || (el.id === SELECTORS.responseArea ? 'lastResponse' : null);
-    if (!key)
+        await chrome.storage.local.set({ 'lastResponse': el.textContent });
         return;
-    const value = el.type === 'checkbox' ? el.checked : (el.id === SELECTORS.responseArea ? el.textContent : el.value);
-    if (MATCH_SPECIFIC_SETTINGS_KEYS.includes(key) && state.currentMatchUUID) {
-        const storageKey = getMatchSettingsKey(state.currentMatchUUID);
-        const result = await chrome.storage.local.get(storageKey);
-        const matchSettings = result[storageKey] || {};
-        matchSettings[key] = value;
-        await chrome.storage.local.set({
-            [storageKey]: matchSettings
-        });
-    } else {
-        await chrome.storage.local.set({
-            [key]: value
-        });
+    }
+
+    // --- Handle Analysis/Memory Overrides (updates in-memory state) ---
+    const dataPath = el.dataset.path;
+    if (dataPath) {
+        let value;
+        if (el.type === 'checkbox') {
+            value = el.checked;
+        } else if (el.type === 'range' || el.type === 'number') {
+            value = parseFloat(el.value);
+        } else if (el.multiple) {
+            value = Array.from(el.selectedOptions).map(opt => opt.value);
+        } else {
+            value = el.value;
+        }
+
+        if (dataPath.endsWith('insideJokes') || dataPath.endsWith('avoidedTopics') || dataPath.endsWith('questionHistory')) {
+            value = el.value.split('\n').filter(Boolean);
+        }
+
+        if (state.sessionMatchProfile) {
+            setNestedValue(state.sessionMatchProfile, dataPath, value);
+            DEBUG.log('STATE', `Updated ${dataPath} to`, value);
+        }
+        return;
+    }
+
+    // --- Handle Persistent Settings (updates chrome.storage.local) ---
+    const storageKey = el.dataset.storageKey;
+    if (storageKey) {
+        const value = el.type === 'checkbox' ? el.checked : el.value;
+
+        if (MATCH_SPECIFIC_SETTINGS_KEYS.includes(storageKey) && state.currentMatchUUID) {
+            const settingsStorageKey = getMatchSettingsKey(state.currentMatchUUID);
+            const result = await chrome.storage.local.get(settingsStorageKey);
+            const matchSettings = result[storageKey] || {};
+            matchSettings[storageKey] = value;
+            await chrome.storage.local.set({ [settingsStorageKey]: matchSettings });
+        } else {
+            await chrome.storage.local.set({ [storageKey]: value });
+        }
     }
 }
 
@@ -1039,96 +1079,68 @@ function showErrorInResponseArea(message) {
     }
 }
 
-function renderKeyValueGrid(container, data) {
-    for (const [key, value] of Object.entries(data)) {
-        // Skip if value is null, undefined, or an empty array. Allow empty objects to be rendered as a key.
-        if (value === null || value === undefined || (Array.isArray(value) && value.length === 0)) {
-            continue;
-        }
+function renderAnalysisTab(analysisData) {
+    const container = document.getElementById('analysis');
+    if (!container) return;
 
-        const keyEl = document.createElement('div');
-        keyEl.className = 'key-value-key';
-        keyEl.textContent = key;
-        container.appendChild(keyEl);
+    const conversationAnalysis = analysisData || {};
+    const lastMessageAnalysis = conversationAnalysis.lastMessageAnalysis || {};
+    const analysis = conversationAnalysis.analysis || {};
+    const engagement = conversationAnalysis.engagement || {};
+    const powerDynamics = analysis.powerDynamics || {};
 
-        const valueEl = document.createElement('div');
-        valueEl.className = 'key-value-value';
+    const valenceLabels = { '0': 'Negative', '0.5': 'Neutral', '1': 'Positive' };
+    const arousalLabels = { '0': 'Calm', '0.5': 'Neutral', '1': 'Aroused' };
+    const engagementOptions = ['low', 'medium', 'high'];
+    const paceOptions = ['slow', 'medium', 'fast'];
 
-        if (Array.isArray(value)) {
-            const ul = document.createElement('ul');
-            ul.className = 'value-list';
-            value.forEach(item => {
-                const li = document.createElement('li');
-                li.textContent = item;
-                ul.appendChild(li);
-            });
-            valueEl.appendChild(ul);
-        } else if (typeof value === 'object' && Object.keys(value).length > 0) {
-            const subGrid = document.createElement('div');
-            subGrid.className = 'key-value-grid sub-grid';
-            renderKeyValueGrid(subGrid, value);
-            valueEl.appendChild(subGrid);
-        } else if (typeof value === 'boolean') {
-            valueEl.textContent = value ? 'Yes' : 'No';
-        } else if (typeof value !== 'object') {
-            valueEl.textContent = value;
-        } else {
-             valueEl.textContent = 'N/A';
-        }
+    const html = `
+        <div class="card-subheader">Conversation Analysis</div>
+        <table class="payload-table">
+            <tr><td>Conversation State</td><td>${createSelect('analysis-state', 'analysis.state', CONVERSATION_STATES, conversationAnalysis.state)}</td></tr>
+            <tr><td>Suppress Greeting?</td><td>${createCheckbox('analysis-suppressGreeting', 'analysis.suppressGreeting', conversationAnalysis.suppressGreeting)}</td></tr>
+        </table>
+        <div class="card-subheader">Last Message Subtext</div>
+        <table class="payload-table">
+            <tr><td>Is Direct Question?</td><td>${createCheckbox('subtext-isDirectQuestion', 'analysis.lastMessageAnalysis.isDirectQuestion', lastMessageAnalysis.isDirectQuestion)}</td></tr>
+            <tr><td>Is Low Effort?</td><td>${createCheckbox('subtext-isLowEffort', 'analysis.lastMessageAnalysis.isLowEffort', lastMessageAnalysis.isLowEffort)}</td></tr>
+            <tr><td>Is Sarcastic?</td><td>${createCheckbox('subtext-isSarcastic', 'analysis.lastMessageAnalysis.isSarcastic', lastMessageAnalysis.isSarcastic)}</td></tr>
+            <tr><td>Valence</td><td>${createSlider('subtext-valence', 'analysis.lastMessageAnalysis.valence', lastMessageAnalysis.valence, 0, 1, 0.1, valenceLabels)}</td></tr>
+            <tr><td>Arousal</td><td>${createSlider('subtext-arousal', 'analysis.lastMessageAnalysis.arousal', lastMessageAnalysis.arousal, 0, 1, 0.1, arousalLabels)}</td></tr>
+            <tr><td>Intents</td><td>${createMultiSelect('subtext-intents', 'analysis.lastMessageAnalysis.intents', INTENT_OPTIONS, lastMessageAnalysis.intents)}</td></tr>
+        </table>
+        <div class="card-subheader">Engagement</div>
+        <table class="payload-table">
+            <tr><td>Engagement</td><td>${createSelect('analysis-engagement', 'analysis.analysis.engagement', engagementOptions, analysis.engagement)}</td></tr>
+            <tr><td>Pace</td><td>${createSelect('engagement-pace', 'analysis.engagement.pace', paceOptions, engagement.pace)}</td></tr>
+            <tr><td>Power Dynamics</td><td>${createInput('power-summary', 'analysis.analysis.powerDynamics.summary', powerDynamics.summary)}</td></tr>
+        </table>
+    `;
+    container.innerHTML = html;
+}
 
-        container.appendChild(valueEl);
-    }
+function renderMemoryTab(memoryData) {
+    const container = document.getElementById('memory');
+    if (!container) return;
+
+    const memory = memoryData || {};
+
+    const html = `
+        <div class="card-subheader">Match Memory</div>
+        <table class="payload-table">
+            <tr><td>Date Arc Phase</td><td>${createSelect('memory-dateArcPhase', 'analysis.memory.dateArcPhase', DATE_ARC_PHASES, memory.dateArcPhase)}</td></tr>
+            <tr><td>Inside Jokes</td><td>${createTextarea('memory-insideJokes', 'analysis.memory.insideJokes', (memory.insideJokes || []).join('\\n'))}</td></tr>
+            <tr><td>Avoided Topics</td><td>${createTextarea('memory-avoidedTopics', 'analysis.memory.avoidedTopics', (memory.avoidedTopics || []).join('\\n'))}</td></tr>
+            <tr><td>Question History</td><td>${createTextarea('memory-questionHistory', 'analysis.memory.questionHistory', (memory.questionHistory || []).join('\\n'))}</td></tr>
+        </table>
+    `;
+    container.innerHTML = html;
 }
 
 function updateAnalysisTabs(analysis) {
     if (!analysis) return;
-
-    // --- Populate Analysis Tab ---
-    const analysisResultsContent = document.getElementById('analysis-results-content');
-    if (analysisResultsContent) {
-        analysisResultsContent.innerHTML = ''; // Clear previous
-
-        const lastMessageAnalysis = analysis.lastMessageAnalysis || {};
-        const engagementAnalysis = analysis.analysis || {};
-
-        const resultsData = {
-            "Subtext": {
-                "Direct Question": lastMessageAnalysis.isDirectQuestion,
-                "Low Effort": lastMessageAnalysis.isLowEffort,
-                "Sarcastic": lastMessageAnalysis.isSarcastic,
-                "Vulnerable": lastMessageAnalysis.isVulnerable,
-                "Intents": lastMessageAnalysis.intents,
-            },
-            "Sentiment": {
-                "Valence": lastMessageAnalysis.valence,
-                "Arousal": lastMessageAnalysis.arousal,
-            },
-            "Engagement": {
-                "Pace": analysis.engagement?.pace,
-                "Power Dynamics": engagementAnalysis.powerDynamics?.summary,
-            }
-        };
-        renderKeyValueGrid(analysisResultsContent, resultsData);
-    }
-
-    // --- Populate Memory Tab ---
-    const memory = analysis.memory || {};
-    const dateArcPhaseDisplay = document.getElementById('date-arc-phase-display');
-    if (dateArcPhaseDisplay) {
-        dateArcPhaseDisplay.textContent = `Date Arc Phase: ${memory.dateArcPhase || 'N/A'}`;
-    }
-
-    const memoryContent = document.getElementById('memory-content');
-    if (memoryContent) {
-        memoryContent.innerHTML = ''; // Clear previous content
-        const memoryData = {
-            "Topics": memory.topics,
-            "Inside Jokes": memory.insideJokes,
-            "Avoided Topics": memory.avoidedTopics,
-            "Question History": memory.questionHistory
-        };
-        renderKeyValueGrid(memoryContent, memoryData);
-    }
+    renderAnalysisTab(analysis);
+    renderMemoryTab(analysis.memory);
 }
 
 function displayConversationState() {
