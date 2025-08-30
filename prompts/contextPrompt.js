@@ -17,8 +17,8 @@ export function buildContextPrompt(data, conversationAnalysis) {
     // --- 1. Metadata Generation (with simplified instruction) ---
     const geoContext = (includeGeoContext && geoContextData) ? `
 - **GEO-TEMPORAL CONTEXT:** (Use this info for planning/travel topics only. Otherwise, ignore it.)
-  - Your (User's) Time of Day: ${geoContextData.userTimeOfDay} in ${geoContextData.userTimezone}
-  - Their (Match's) Time of Day: ${geoContextData.matchTimeOfDay} in ${geoContextData.matchTimeZoneName}
+  - Your (User's) Time of Day: ${geoContextData.userTimeOfDay || 'N/A'} in ${geoContextData.userTimezone || 'N/A'}
+  - Their (Match's) Time of Day: ${geoContextData.matchTimeOfDay || 'N/A'} in ${geoContextData.matchTimeZoneName || 'N/A'}
   ${geoContextData.distance ? `- Approximate Distance: ${geoContextData.distance.miles} miles (${geoContextData.distance.km} km)` : ''}
   ${geoContextData.timeZoneDifference !== null ? `- Time Difference: ${geoContextData.timeZoneDifference} hour(s)` : ''}
   ${geoContextData.countryDifference ? `- Country Difference: ${geoContextData.countryDifference}` : ''}

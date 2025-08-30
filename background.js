@@ -309,6 +309,7 @@ chrome.runtime.onConnect.addListener((port) => {
                         };
                         apiResponse = await callNlpApi(settings.analysis_url, requestPayload);
                         DEBUG.log('DIAGNOSTIC', 'Step 11a: API call succeeded. Response:', apiResponse);
+                        DEBUG.log('GEO_DEBUG', 'API Response Geo:', apiResponse?.geo);
 
                         if (apiResponse && apiResponse.conversationAnalysis) {
                             DEBUG.log('DIAGNOSTIC', 'Step 11b: API response is valid. Merging with local analysis.');
@@ -333,6 +334,7 @@ chrome.runtime.onConnect.addListener((port) => {
 
                 if (apiResponse && apiResponse.geo) {
                     finalAnalysis.geo = apiResponse.geo;
+                    DEBUG.log('GEO_DEBUG', 'Assigned geo data to finalAnalysis.geo', finalAnalysis.geo);
                 }
 
                 matchProfile.analysis = finalAnalysis;
@@ -341,6 +343,7 @@ chrome.runtime.onConnect.addListener((port) => {
 
                 if (finalAnalysis.geo) {
                     matchProfile.memory.geoContextData = finalAnalysis.geo;
+                    DEBUG.log('GEO_DEBUG', 'Assigned finalAnalysis.geo to matchProfile.memory.geoContextData', matchProfile.memory.geoContextData);
                 }
 
                 matchProfile.metadata.lastUpdated = new Date().toISOString();

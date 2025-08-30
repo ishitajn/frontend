@@ -339,6 +339,7 @@ async function handleNlpAnalysisResponse(message) {
     }
 
     state.sessionMatchProfile = message.matchProfile;
+    DEBUG.log('GEO_DEBUG', 'Received matchProfile.memory.geoContextData in popup', state.sessionMatchProfile.memory?.geoContextData);
     if (state.sessionMatchProfile.analysis?.error === 'api_failed') {
         showToast('Backend analysis failed, using local fallback.', 'warning');
     }
@@ -765,6 +766,7 @@ function getTooltipContent(tooltipId) {
 }
 
 async function updateGeoContextDisplay(geoContextData) {
+    DEBUG.log('GEO_DEBUG', 'updateGeoContextDisplay called with:', geoContextData);
     if (!state.sessionMatchProfile || !state.sessionScrapedData) return;
 
     const { myName } = state.sessionScrapedData;
@@ -777,11 +779,11 @@ async function updateGeoContextDisplay(geoContextData) {
         geoMatchName: theirName || 'Match',
         userLocation: userLocationData.name.split(',')[0],
         matchLocation: matchLocation || 'N/A',
-        userTimeOfDay: geoContextData.userTimeOfDay,
-        matchTimeOfDay: geoContextData.matchTimeOfDay,
-        userTimezone: geoContextData.userTimeZoneName || userLocationData.timeZone,
-        matchCountry: geoContextData.matchCountry,
-        userCountry: geoContextData.userCountry || userLocationData.country,
+        userTimeOfDay: geoContextData.userTimeOfDay || 'N/A',
+        matchTimeOfDay: geoContextData.matchTimeOfDay || 'N/A',
+        userTimezone: geoContextData.userTimeZoneName || userLocationData.timeZone || 'N/A',
+        matchCountry: geoContextData.matchCountry || 'N/A',
+        userCountry: geoContextData.userCountry || userLocationData.country || 'N/A',
         timeDifference: geoContextData.timeZoneDifference !== null ? `${geoContextData.timeZoneDifference} hour(s)` : 'N/A',
         distanceInfo: geoContextData.distance ? `${geoContextData.distance.miles} miles / ${geoContextData.distance.km} km` : 'N/A',
     } : {
