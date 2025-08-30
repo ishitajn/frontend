@@ -558,6 +558,7 @@ async function handleSettingChange(event) {
         } else {
             await chrome.storage.local.set({ [storageKey]: value });
         }
+        showToast('Settings saved');
     }
 }
 
@@ -943,15 +944,13 @@ function handleCancelClick() {
 
 function handleCopyClick() {
     const responseArea = document.getElementById(SELECTORS.responseArea);
-    const copyBtn = document.getElementById(SELECTORS.copyBtn);
-    if (!responseArea || !copyBtn || !responseArea.textContent)
-        return;
+    if (!responseArea || !responseArea.textContent) return;
+
     navigator.clipboard.writeText(responseArea.textContent).then(() => {
-        const originalHTML = copyBtn.innerHTML;
-        copyBtn.textContent = 'Copied!';
-        setTimeout(() => {
-            copyBtn.innerHTML = originalHTML;
-        }, 1500);
+        showToast('Copied to clipboard');
+    }).catch(err => {
+        showToast('Failed to copy text', 'error');
+        DEBUG.error('COPY', 'Failed to copy text to clipboard', err);
     });
 }
 
@@ -1079,6 +1078,21 @@ function showErrorInResponseArea(message) {
             }));
         responseArea.classList.add('error');
     }
+}
+
+function showToast(message, type = 'success') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.remove();
+    }, 3000);
 }
 
 function renderAnalysisTab(analysisData) {
