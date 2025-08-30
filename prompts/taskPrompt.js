@@ -10,7 +10,7 @@ export function buildTaskPrompt(instructions, data, conversationAnalysis) {
     // FIX: Use the explicit conversationAnalysis parameter, providing a fallback.
     const { suppressGreeting, memory, lastMessageAnalysis } = conversationAnalysis || {};
 
-    const { theirProfile, myProfile, conversationHistory, isVerified, timeSinceLastMessageInHours, geoContextData, includeGeoContext,  } = data;
+    const { conversationHistory } = data;
 
     const emojiInstruction = getEmojiInstruction(emojiStrategy, flirtyValue, linguisticStyle);
 

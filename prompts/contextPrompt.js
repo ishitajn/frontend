@@ -12,7 +12,7 @@ export function buildContextPrompt(data, conversationAnalysis) {
     const { conversationState, lastMessageAnalysis } = conversationAnalysis;
     const state = conversationState; // for brevity
 
-    const { theirProfile, myProfile, conversationHistory, myName, theirName, isVerified, timeSinceLastMessageInHours, geoContextData, includeGeoContext,  } = data;
+    const { theirProfile, myProfile, conversationHistory, myName, theirName, geoContextData, includeGeoContext,  } = data;
 
     // --- 1. Metadata Generation (with simplified instruction) ---
     const geoContext = (includeGeoContext && geoContextData) ? `

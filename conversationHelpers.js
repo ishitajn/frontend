@@ -436,19 +436,6 @@ function suggestStyleFromText(text) {
     return 'casual';
 }
 
-export function hasRecentGreeting(conversationHistory) {
-    if (!conversationHistory || conversationHistory.length === 0)
-        return false;
-    const todayDateString = new Date().toISOString().split('T')[0];
-    const GREETING_KEYWORDS = ['hey', 'hi', 'hello', 'yo', 'sup', 'hiya', 'heya', 'howdy', 'wassup', 'what up', 'what\'s up', 'greetings', 'salutations', 'aloha', 'ahoy', 'good morning', 'morning', "'morning", 'good afternoon', 'afternoon', 'good evening', 'evening', 'good day', 'how are you', 'how are ya', 'how you doing', 'how you doin', 'how\'s it going', 'hows it going', 'how is it going', 'how have you been', 'how\'s things', 'how\'s life', 'what\'s new', 'what\'s good', 'what\'s goodie', 'what\'s happening', 'what\'s crackin', 'what\'s poppin', 'long time no see', 'nice to see you', 'nice to meet you', 'pleasure to meet you', 'dear', 'to whom it may concern', 'attention', 'welcome', 'gm', 'gn', 'yerrr', 'o/', '\\o', 'hewwo', 'henlo', 'g\'day', 'howzit', 'alright?', 'u alright?', 'wagwan', 'ey up', 'what\'s the craic?', 'cheers', 'hiya pal', 'top of the morning to ya', 'oi', 'psst', 'ahem', 'excuse me', 'yo, asshole', 'hey, fucker', 'sup, bitches', 'look here', 'what do you want', ];
-    return conversationHistory.some(msg => {
-        if (!msg.date || !msg.date.startsWith(todayDateString))
-            return false;
-        const firstWord = msg.content.trim().toLowerCase().split(' ')[0].replace(/[.,!?-]/g, '');
-        return GREETING_KEYWORDS.includes(firstWord);
-    });
-}
-
 export function getToneDescription(value) {
     const levels = {
         100: 'Be explicitly sexual and daring.',

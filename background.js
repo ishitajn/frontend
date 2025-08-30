@@ -464,20 +464,31 @@ chrome.runtime.onConnect.addListener((port) => {
                 return;
             }
 
+            const settings = await chrome.storage.local.get(['local_model_name', 'myProfile']);
+            const myProfile = settings.myProfile || DEFAULTS.myProfile;
+            const modelName = settings.local_model_name || DEFAULTS.local_model_name;
+
             const { metadata, memory } = matchProfile;
+
+            const geoContextString = memory.geoContextData ? `
+- **Geo-Context:**
+  - Approximate Distance: ${memory.geoContextData.distance.miles} miles
+  - Their Location: ${matchProfile.metadata.matchLocation || 'Unknown'}
+` : '';
+
             const systemPrompt = `You are a creative and thoughtful date planner. Your goal is to generate a single, unique, and compelling date idea based on the provided context about two people. The idea should be specific, actionable, and tailored to their personalities and shared interests. You must return the response in a valid JSON object with three keys: "title" (a short, catchy name for the date), "description" (a 2-3 sentence explanation of the date), and "reasoning" (a 1-2 sentence explanation of why this is a good idea for them specifically).`;
             const userPrompt = `Based on the following context, generate one unique date idea.
 
+- **My Profile:** ${myProfile}
 - **Their Name:** ${metadata.theirName}
 - **Their Profile & Interests:** ${metadata.theirProfile}
 - **Shared Conversation Topics:** ${Object.keys(memory.topics || {}).join(', ')}
 - **Inside Jokes:** ${memory.insideJokes.join(', ')}
-- **Geo-Context:** ${JSON.stringify(memory.geoContextData)}
-
+${geoContextString}
 Generate one date idea in the specified JSON format.`;
 
             const payload = {
-                model: "llama3:latest",
+                model: modelName,
                 messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
                 temperature: 0.8,
                 response_format: { type: "json_object" }
@@ -503,13 +514,16 @@ Generate one date idea in the specified JSON format.`;
         "refineAIResponse": async(request) => {
             const { originalResponse, refinementType, uuid, generationId } = request.data;
 
+            const settings = await chrome.storage.local.get(['local_model_name']);
+            const modelName = settings.local_model_name || DEFAULTS.local_model_name;
+
             const systemPrompt = `You are a message editor. Your task is to rewrite a given message based on a specific instruction (e.g., "make it funnier", "make it shorter"). You must only return the rewritten message text, without any extra commentary, labels, or quotation marks.`;
             const userPrompt = `Rewrite the following message to be **${refinementType}**:
 
 "${originalResponse}"`;
 
             const payload = {
-                model: "llama3:latest",
+                model: modelName,
                 messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
                 temperature: 0.6,
             };
@@ -563,18 +577,15 @@ function buildFinalPayload(data) {
 
 function deepMerge(primary, fallback) {
     const isObject = (item) => (item && typeof item === 'object' && !Array.isArray(item));
+    const output = { ...fallback };
 
-    // Start with a shallow merge of properties. Primary properties overwrite fallback properties.
-    const output = { ...fallback, ...primary };
-
-    // Now, handle nested objects recursively.
-    for (const key in output) {
-        if (isObject(primary[key]) && isObject(fallback[key])) {
-            // If both primary and fallback have an object for this key, merge them.
-            output[key] = deepMerge(primary[key], fallback[key]);
-        } else if (primary[key] === null || primary[key] === undefined) {
-            // If the primary value is explicitly null or undefined, prefer the fallback value.
-            output[key] = fallback[key];
+    for (const key in primary) {
+        if (Object.prototype.hasOwnProperty.call(primary, key)) {
+            if (isObject(primary[key]) && key in fallback && isObject(fallback[key])) {
+                output[key] = deepMerge(primary[key], fallback[key]);
+            } else {
+                output[key] = primary[key];
+            }
         }
     }
 
