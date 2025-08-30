@@ -370,7 +370,7 @@ chrome.runtime.onConnect.addListener((port) => {
                 await memoryManager.saveMatchProfile(uuid, matchProfile);
                 DEBUG.log('DIAGNOSTIC', 'Step 13: Saved updated match profile to storage.');
 
-                DEBUG.log('DIAGNOSTIC', 'Step 14: Analysis complete. Sending response to popup.');
+                DEBUG.log('DIAGNOSTIC', 'Step 14: Analysis complete. Sending response to popup.', { matchProfile });
                 port.postMessage({
                     action: 'nlpAnalysisResponse',
                     matchProfile

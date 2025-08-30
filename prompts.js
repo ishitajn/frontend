@@ -18,7 +18,7 @@ export function generatePrompts(data) {
         throw new Error("generatePrompts failed: conversationAnalysis object is missing.");
     }
 
-    const state = conversationAnalysis.conversationState;
+    const state = conversationAnalysis.state;
 
     // Geo-context inclusion logic
     const lastMessageFromMatch = conversationHistory?.filter(msg => msg.role === 'assistant').pop()?.content || '';

@@ -329,6 +329,7 @@ sendMessage({
 }
 
 async function handleNlpAnalysisResponse(message) {
+    DEBUG.log('NLP_RESPONSE', 'Received NLP analysis response', message);
     if (message.error) {
         showError('Analysis Failed', `There was a problem analyzing the conversation: ${message.error}`);
         return;
