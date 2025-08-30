@@ -244,8 +244,11 @@ async function initializePopup() {
 }
 
 async function refreshDataAndUI() {
-    if (state.isRefreshing)
+    if (state.isRefreshing) {
+        DEBUG.log('REFRESH', 'Refresh already in progress. Skipping.');
         return;
+    }
+    state.isRefreshing = true;
 
     sendMessage({
         action: "getGenerationState",
@@ -277,10 +280,10 @@ async function refreshDataAndUI() {
 
     if (generationState.isGenerating) {
         syncUIWithState(generationState);
+        state.isRefreshing = false; // Reset flag before returning
         return;
     }
 
-    state.isRefreshing = true;
     setUIRefreshingState(true);
 
     try {
