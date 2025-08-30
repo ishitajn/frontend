@@ -78,7 +78,7 @@ function renderContextView() {
     `).join('');
 
     return `
-        <h3>View 1: Profiles & History</h3>
+        <h3>View 2: Profiles & History</h3>
         <table class="payload-table">
             <tr><td>My Name</td><td>${createInput('context-myName', 'myName', modalState.myName)}</td></tr>
             <tr><td>Their Name</td><td>${createInput('context-theirName', 'theirName', modalState.theirName)}</td></tr>
@@ -110,7 +110,7 @@ function renderFinalPayloadView() {
     modalState.finalPayload = finalPayload;
 
     return `
-        <h3>View 2: Final Payload Review</h3>
+        <h3>View 3: Final Payload Review</h3>
         <p>This is the exact data that will be sent to the AI. You can make final edits to the messages below.</p>
         <div class="messages-container">
             <div class="message-card">
