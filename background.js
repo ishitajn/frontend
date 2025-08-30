@@ -300,10 +300,30 @@ chrome.runtime.onConnect.addListener((port) => {
                 // If API analysis is enabled, call it and merge results.
                 if (settings.analysis_type !== 'local') {
                     try {
-                        // (API call logic remains the same)
-                        // ...
-                        // On success, merge with localAnalysis as the fallback.
-                        // finalAnalysis = deepMerge(apiResponse.conversationAnalysis, localAnalysis);
+                        const requestPayload = {
+                            matchId: uuid,
+                            scraped_data: {
+                                myName: scrapedData.myName,
+                                theirName: scrapedData.theirName,
+                                theirProfile: scrapedData.theirProfile,
+                                theirLocationString: scrapedData.matchLocation,
+                                conversationHistory: scrapedData.conversationHistory,
+                            },
+                            ui_settings: {
+                                useEnhancedNlp: settings.analysis_type === 'enhanced',
+                                myLocation: settings.userLocationChoice,
+                                myProfile: settings.myProfile,
+                                local_model_name: settings.local_model_name,
+                            }
+                        };
+                        const apiResponse = await callNlpApi(settings.analysis_url, requestPayload);
+
+                        if (apiResponse && apiResponse.conversationAnalysis) {
+                            DEBUG.log('NLP-API', 'API Success, merging results.', apiResponse.conversationAnalysis);
+                            finalAnalysis = deepMerge(apiResponse.conversationAnalysis, localAnalysis);
+                        } else {
+                            DEBUG.log('NLP-API', 'API response was empty or invalid, using local analysis.');
+                        }
                     } catch (error) {
                         DEBUG.error('NLP-API', 'API call failed, falling back to local analysis.', error);
                     }
