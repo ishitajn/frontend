@@ -1,6 +1,6 @@
 // popup.js (Re-architected for Manifest V3 Robustness with Heartbeat)
 import { scrapeBumblePage, pasteTextIntoBumbleInput, scrapeTinderPage, pasteTextIntoTinderInput } from './content-scraper.js';
-import { getToneDescription, getLengthDescription, getEmojiInstruction, getStyleDescription, determineConversationState, LINGUISTIC_STYLES, DATE_ARC_PHASES } from './conversationHelpers.js';
+import { getToneDescription, getLengthDescription, getEmojiInstruction, getStyleDescription, LINGUISTIC_STYLES, DATE_ARC_PHASES } from './conversationHelpers.js';
 import { showNlpModal, hideDebugModal } from './debug-modal.js';
 import {
     setNestedValue,
