@@ -323,13 +323,15 @@ sendMessage({
 } catch (e) {
     showError('Initialization Failed', e.message);
     DEBUG.error('INIT', 'Refresh failed', e);
-} finally {
     state.isRefreshing = false;
     setUIRefreshingState(false);
 }
 }
 
 async function handleNlpAnalysisResponse(message) {
+    state.isRefreshing = false;
+    setUIRefreshingState(false);
+
     if (message.error) {
         showError('NLP Analysis Failed', message.error);
         return;
