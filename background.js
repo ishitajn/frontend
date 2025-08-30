@@ -305,7 +305,7 @@ chrome.runtime.onConnect.addListener((port) => {
 
                 DEBUG.log('DIAGNOSTIC', 'Step 9: Calling `runFullConversationAnalysis`...');
                 const localAnalysis = runFullConversationAnalysis(matchProfile.conversationHistory, matchProfile.memory);
-                DEBUG.log('DIAGNOSTIC', 'Step 10: `runFullConversationAnalysis` completed.');
+                DEBUG.log('DIAGNOSTIC', 'Step 10: `runFullConversationAnalysis` completed.', localAnalysis);
 
                 let finalAnalysis = localAnalysis;
 
@@ -329,15 +329,17 @@ chrome.runtime.onConnect.addListener((port) => {
                             }
                         };
                         const apiResponse = await callNlpApi(settings.analysis_url, requestPayload);
+                        DEBUG.log('DIAGNOSTIC', 'Step 11a: API call succeeded. Response:', apiResponse);
 
                         if (apiResponse && apiResponse.conversationAnalysis) {
-                            DEBUG.log('DIAGNOSTIC', 'Step 11a: API Success, merging results.');
+                            DEBUG.log('DIAGNOSTIC', 'Step 11b: API response is valid. Merging with local analysis.');
                             finalAnalysis = deepMerge(apiResponse.conversationAnalysis, localAnalysis);
+                            DEBUG.log('DIAGNOSTIC', 'Step 11c: Merge complete. Final analysis object:', finalAnalysis);
                         } else {
-                            DEBUG.log('DIAGNOSTIC', 'Step 11b: API response was empty or invalid, using local analysis.');
+                            DEBUG.log('DIAGNOSTIC', 'Step 11b: API response was empty or invalid. Using local analysis as fallback.', apiResponse);
                         }
                     } catch (error) {
-                        DEBUG.error('DIAGNOSTIC', 'Step 11 FAILED: API call failed, falling back to local analysis.', error);
+                        DEBUG.error('DIAGNOSTIC', 'Step 11 FAILED: API call threw an error. Using local analysis as fallback.', error);
                     }
                 } else {
                      DEBUG.log('DIAGNOSTIC', 'Step 11: Analysis type is local. Skipping external API call.');
