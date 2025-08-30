@@ -213,9 +213,6 @@ function setupPort() {
         case 'nlpAnalysisResponse':
             handleNlpAnalysisResponse(message);
             break;
-        case 'geoCalculationsResponse':
-            handleGeoCalculationsResponse(message);
-            break;
         case 'finalPayloadResponse':
             handleFinalPayloadResponse(message);
             break;
@@ -339,17 +336,12 @@ async function handleNlpAnalysisResponse(message) {
     state.currentMatchUUID = message.matchProfile.uuid;
 
     await loadAndApplySettings();
-    await handleLocationChange();
+
+    // The geo context data now arrives with the main analysis, so we update the display here.
+    updateGeoContextDisplay(state.sessionMatchProfile.memory.geoContextData);
 
     displayConversationState();
     showView(SELECTORS.mainView);
-}
-
-function handleGeoCalculationsResponse(message) {
-    if (state.sessionMatchProfile) {
-        state.sessionMatchProfile.memory.geoContextData = message.geoContext || null;
-    }
-    updateGeoContextDisplay(message.geoContext);
 }
 
 function handleFinalPayloadResponse(message) {
@@ -409,7 +401,6 @@ function setupEventListeners() {
     document.getElementById('main-view')?.addEventListener('change', handleSettingChange);
     document.getElementById('settings-view')?.addEventListener('input', handleSettingChange);
     document.getElementById('settings-view')?.addEventListener('change', handleSettingChange);
-    document.getElementById(SELECTORS.userLocationSelect)?.addEventListener('change', handleLocationChange);
     document.getElementById(SELECTORS.clearResponseBtn)?.addEventListener('click', () => {
         const area = document.getElementById(SELECTORS.responseArea);
         area.textContent = '';
@@ -467,37 +458,6 @@ function setupTabs() {
         if (targetPanel) {
             targetPanel.classList.add('active');
         }
-    });
-}
-
-async function handleLocationChange() {
-    const select = document.getElementById(SELECTORS.userLocationSelect);
-    const choice = select.value;
-    let messageData = {
-        uuid: state.currentMatchUUID
-    };
-    if (choice === 'autodetect') {
-        try {
-            const position = await new Promise((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(resolve, reject, {
-                    timeout: 5000
-                });
-            });
-            messageData.userCoords = {
-                latitude: position.coords.latitude,
-                longitude: position.coords.longitude
-            };
-        } catch (error) {
-            showErrorInResponseArea(`Geolocation failed: ${error.message}`);
-            updateGeoContextDisplay(null);
-            return;
-        }
-    } else {
-        messageData.userLocation = USER_LOCATIONS[choice];
-    }
-    sendMessage({
-        action: "getGeoCalculations",
-        data: messageData
     });
 }
 
