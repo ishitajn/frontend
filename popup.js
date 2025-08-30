@@ -227,6 +227,9 @@ function setupPort() {
         }
     });
 
+    // Keep service worker alive during popup interaction
+    startHeartbeat();
+
     port.onDisconnect.addListener(() => {
         DEBUG.log('PORT', 'Port disconnected from popup side.');
         stopHeartbeat();
@@ -326,21 +329,18 @@ sendMessage({
 }
 }
 
-async function handleNlpAnalysisResponse(message) {
-    if (message.error) {
-        showError('NLP Analysis Failed', message.error);
-        return;
+async function handleNlpAnalysisResponse(response) {
+    if (response.error) {
+        showError('Backend unavailable. Using local analysis.');
+    } else if (response.partialFallback) {
+        showWarning('Some values are from local analysis due to missing backend data.');
+    } else {
+        hideError();
     }
-
-    state.sessionMatchProfile = message.matchProfile;
-    state.currentMatchUUID = message.matchProfile.uuid;
-
+    state.sessionMatchProfile = response.matchProfile;
+    state.currentMatchUUID = response.matchProfile.uuid;
     await loadAndApplySettings();
-
-    // The geo context data now arrives with the main analysis, so we update the display here.
-    updateGeoContextDisplay(state.sessionMatchProfile.memory.geoContextData);
-
-    displayConversationState();
+    updateUIFromState(); // <-- Add this
     showView(SELECTORS.mainView);
 }
 
@@ -755,471 +755,231 @@ function getTooltipContent(tooltipId) {
     }
 }
 
+// --- Toast: Prevent duplicates, solid background, improved readability ---
+let lastToastMsg = null;
+let lastToastTimeout = null;
+function showToast(message, type = 'success') {
+    if (lastToastMsg === message) return; // Prevent duplicate toasts
+    lastToastMsg = message;
+    clearTimeout(lastToastTimeout);
+
+    let toast = document.getElementById('wingman-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'wingman-toast';
+        document.body.appendChild(toast);
+    }
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    toast.style.display = 'block';
+    toast.style.background = type === 'error' ? '#c62828' : type === 'warning' ? '#f9a825' : '#1976d2';
+    toast.style.color = '#fff';
+    toast.style.padding = '12px 20px';
+    toast.style.borderRadius = '8px';
+    toast.style.position = 'fixed';
+    toast.style.bottom = '24px';
+    toast.style.left = '50%';
+    toast.style.transform = 'translateX(-50%)';
+    toast.style.zIndex = 9999;
+    toast.style.fontWeight = 'bold';
+    toast.style.boxShadow = '0 2px 12px rgba(0,0,0,0.18)';
+    toast.style.maxWidth = '90vw';
+    toast.style.textAlign = 'center';
+
+    lastToastTimeout = setTimeout(() => {
+        toast.style.display = 'none';
+        lastToastMsg = null;
+    }, 3200);
+}
+
+// --- Geo Tab: Only show fallback toast if backend is truly unavailable ---
 async function updateGeoContextDisplay(geoContextData) {
     if (!state.sessionMatchProfile || !state.sessionScrapedData) return;
 
     const { myName } = state.sessionScrapedData;
-    const { theirName, matchLocation } = state.sessionMatchProfile.metadata;
+    const { theirName, matchLocation } = state.sessionMatchProfile.metadata || {};
     const settings = await chrome.storage.local.get('userLocationChoice');
     const userLocationData = USER_LOCATIONS[settings.userLocationChoice || 'autodetect'];
 
-    const dataMap = geoContextData ? {
-        geoUserName: myName || 'User',
-        geoMatchName: theirName || 'Match',
-        userLocation: userLocationData.name.split(',')[0],
-        matchLocation: matchLocation || 'N/A',
-        userTimeOfDay: geoContextData.userTimeOfDay,
-        matchTimeOfDay: geoContextData.matchTimeOfDay,
-        userTimezone: geoContextData.userTimeZoneName || userLocationData.timeZone,
-        matchCountry: geoContextData.matchCountry,
-        userCountry: geoContextData.userCountry || userLocationData.country,
-        timeDifference: geoContextData.timeZoneDifference !== null ? `${geoContextData.timeZoneDifference} hour(s)` : 'N/A',
-        distanceInfo: geoContextData.distance ? `${geoContextData.distance.miles} miles / ${geoContextData.distance.km} km` : 'N/A',
-    } : {
-        geoUserName: myName || 'User',
-        geoMatchName: theirName || 'Match',
-        userLocation: 'N/A',
-        matchLocation: 'N/A',
-        userTimeOfDay: 'N/A',
-        matchTimeOfDay: 'N/A',
-        userTimezone: 'N/A',
-        matchCountry: 'N/A',
-        userCountry: 'N/A',
-        timeDifference: 'N/A',
-        distanceInfo: 'N/A',
-    };
+    // Fallback logic
+    const isBackend = !!geoContextData && geoContextData.source === 'backend';
+    const sourceLabel = isBackend ? '<span class="source-label backend">Backend</span>' : '<span class="source-label local">Local</span>';
 
-    // Also need to clear the non-dataMap fields
-    document.getElementById('user-time').textContent = 'N/A';
-    document.getElementById('match-time').textContent = 'N/A';
+    document.getElementById('geo-user-name').innerHTML = (myName || 'User') + sourceLabel;
+    document.getElementById('geo-match-name').innerHTML = (theirName || 'Match') + sourceLabel;
+    document.getElementById('user-location').textContent = userLocationData?.name?.split(',')[0] || 'N/A';
+    document.getElementById('match-location').textContent = matchLocation || 'N/A';
+    document.getElementById('user-time').textContent = geoContextData?.userTime || 'N/A';
+    document.getElementById('match-time').textContent = geoContextData?.matchTime || 'N/A';
+    document.getElementById('user-time-of-day').textContent = geoContextData?.userTimeOfDay || 'N/A';
+    document.getElementById('match-time-of-day').textContent = geoContextData?.matchTimeOfDay || 'N/A';
+    document.getElementById('user-timezone').textContent = geoContextData?.userTimeZoneName || userLocationData?.timeZone || 'N/A';
+    document.getElementById('match-timezone').textContent = geoContextData?.matchTimeZoneName || 'N/A';
+    document.getElementById('user-country').textContent = geoContextData?.userCountry || userLocationData?.country || 'N/A';
+    document.getElementById('match-country').textContent = geoContextData?.matchCountry || 'N/A';
+    document.getElementById('time-difference').textContent = geoContextData?.timeZoneDifference !== null && geoContextData?.timeZoneDifference !== undefined
+        ? `${geoContextData.timeZoneDifference} hour(s)` : 'N/A';
+    document.getElementById('distance-info').textContent = geoContextData?.distance
+        ? `${geoContextData.distance.miles} miles / ${geoContextData.distance.km} km` : 'N/A';
 
-    for (const [key, text] of Object.entries(dataMap)) {
-        const el = document.getElementById(SELECTORS[key]);
-        if (el) {
-            el.textContent = text || 'N/A';
-        }
+    // Only show fallback toast if backend is truly unavailable
+    if (!geoContextData || geoContextData.source === 'local') {
+        showToast('Using local analysis (backend unavailable)', 'warning');
     }
 }
 
-function startTimer(startTime) {
-    stopTimer();
-    if (!startTime)
-        return;
-    timerStartTime = startTime;
-    const timerEl = document.getElementById(SELECTORS.responseTimer);
-    if (timerEl) {
-        updateTimerDisplay();
-        timerInterval = setInterval(updateTimerDisplay, 1000);
-    }
-}
+// --- Settings Tab: Add backend test buttons ---
+function addBackendTestButtons() {
+    const settingsTab = document.getElementById('settings');
+    if (!settingsTab) return;
 
-function stopTimer() {
-    if (timerInterval)
-        clearInterval(timerInterval);
-    timerInterval = null;
-}
-
-function updateTimerDisplay() {
-    const timerEl = document.getElementById(SELECTORS.responseTimer);
-    if (timerEl && timerStartTime > 0) {
-        const elapsedSeconds = Math.floor((Date.now() - timerStartTime) / 1000);
-        timerEl.textContent = `${String(Math.floor(elapsedSeconds / 60)).padStart(2, '0')}:${String(elapsedSeconds % 60).padStart(2, '0')}`;
-    }
-}
-
-function resetTimerDisplay() {
-    const timerEl = document.getElementById(SELECTORS.responseTimer);
-    if (timerEl) {
-        timerEl.textContent = '00:00';
-    }
-    timerStartTime = 0;
-}
-
-async function handleGenerateClick() {
-    if (!state.sessionMatchProfile || !state.currentMatchUUID || !state.sessionMatchProfile.analysis) {
-        showErrorInResponseArea("Error: Conversation analysis is not complete. Please wait a moment and try again.");
-        if (!state.isRefreshing) {
-            refreshDataAndUI();
-        }
-        return;
-    }
-
-    const dataForBackground = await gatherCoreDataForGeneration();
-    if (document.getElementById(SELECTORS.debugModeToggle).checked) {
-        const fullGenerationData = {
-            ...state.sessionScrapedData,
-            ...state.sessionMatchProfile.metadata,
-            myProfile: dataForBackground.myProfile,
-            conversationHistory: state.sessionMatchProfile.conversationHistory,
-            conversationAnalysis: state.sessionMatchProfile.analysis,
-            geoContextData: state.sessionMatchProfile.memory.geoContextData,
-            forceIncludeGeoContext: dataForBackground.forceIncludeGeoContext,
-            taskInstructions: dataForBackground.taskInstructions,
-        };
-        const debugCallbacks = {
-            sendFinalPayloadToAI: (payload) => {
-                sendMessage({
-                    action: "getAIResponse",
-                    data: {
-                        payload,
-                        generationId: Date.now(),
-                        uuid: state.currentMatchUUID,
-                        logData: {
-                            uuid: state.currentMatchUUID,
-                            analysis: state.sessionMatchProfile.analysis,
-                            payload: payload
-                        }
+    // Add test buttons next to each backend URL input
+    [
+        { id: 'llm-url', label: 'Test LLM URL' },
+        { id: 'analysis-url', label: 'Test Analysis URL' }
+    ].forEach(({ id, label }) => {
+        const input = document.getElementById(id);
+        if (input && !input.nextSibling?.classList?.contains('test-backend-btn')) {
+            const btn = document.createElement('button');
+            btn.textContent = label;
+            btn.className = 'test-backend-btn';
+            btn.style.marginLeft = '8px';
+            btn.onclick = async () => {
+                btn.disabled = true;
+                btn.textContent = 'Testing...';
+                try {
+                    const url = input.value;
+                    const resp = await fetch(url, { method: 'POST', body: JSON.stringify({ test: true }), headers: { 'Content-Type': 'application/json' } });
+                    if (resp.ok) {
+                        showToast(`${label} succeeded!`, 'success');
+                    } else {
+                        showToast(`${label} failed (${resp.status})`, 'error');
                     }
-                });
-            },
-            setUIGeneratingState,
-            showErrorInResponseArea,
-            hideDebugModal,
-            startTimer,
-            stopTimer,
-            resetTimerDisplay
-        };
-        showNlpModal(fullGenerationData, debugCallbacks);
-    } else {
-        sendMessage({
-            action: "getFinalPayload",
-            data: dataForBackground
-        });
-    }
-}
-
-async function gatherCoreDataForGeneration() {
-    const settings = await chrome.storage.local.get('myProfile');
-    const myProfile = settings.myProfile || DEFAULTS.myProfile;
-    const myName = state.sessionScrapedData?.myName || DEFAULTS.myProfile.split(',')[0].trim();
-    const theirName = state.sessionMatchProfile?.metadata?.theirName || 'Match';
-
-    const taskInstructions = {
-        myName: myName,
-        theirName: theirName,
-        goal: document.getElementById(SELECTORS.customInstruction).value.trim(),
-        flirtyValue: Number(document.getElementById(SELECTORS.flirtySlider).value),
-        lengthValue: Number(document.getElementById(SELECTORS.lengthSlider).value),
-        linguisticStyle: document.getElementById(SELECTORS.linguisticStyleSelect).value,
-        emojiStrategy: document.getElementById(SELECTORS.emojiStrategySelect).value,
-        temperature: parseFloat(document.getElementById(SELECTORS.temperatureSlider).value),
-        top_p: parseFloat(document.getElementById(SELECTORS.topPSlider).value),
-        endWithQuestion: document.getElementById(SELECTORS.questionToggleCheckbox).checked,
-        strictGoalOverride: document.getElementById(SELECTORS.strictGoalToggle).checked,
-        forceNewTopic: document.getElementById(SELECTORS.newTopicToggle).checked,
-        local_model_name: document.getElementById(SELECTORS.localModelName).value,
-    };
-
-    return {
-        uuid: state.currentMatchUUID,
-        taskInstructions: taskInstructions,
-        myProfile: myProfile,
-        forceIncludeGeoContext: document.getElementById(SELECTORS.geoContextToggle).checked,
-    };
-}
-
-function handleCancelClick() {
-    if (state.currentMatchUUID) {
-        sendMessage({
-            action: "cancelGeneration",
-            data: {
-                uuid: state.currentMatchUUID
-            }
-        });
-    }
-}
-
-function handleCopyClick() {
-    const responseArea = document.getElementById(SELECTORS.responseArea);
-    if (!responseArea || !responseArea.textContent) return;
-
-    navigator.clipboard.writeText(responseArea.textContent).then(() => {
-        showToast('Copied to clipboard');
-    }).catch(err => {
-        showToast('Failed to copy text', 'error');
-        DEBUG.error('COPY', 'Failed to copy text to clipboard', err);
+                } catch (e) {
+                    showToast(`${label} failed (network error)`, 'error');
+                }
+                btn.disabled = false;
+                btn.textContent = label;
+            };
+            input.parentNode.insertBefore(btn, input.nextSibling);
+        }
     });
 }
+document.addEventListener('DOMContentLoaded', addBackendTestButtons);
 
-async function autoType(text) {
-    if (!state.pasterFn)
-        return;
-    try {
-        const [tab] = await chrome.tabs.query({
-            active: true,
-            currentWindow: true
-        });
-        if (tab?.id) {
-            chrome.scripting.executeScript({
-                target: {
-                    tabId: tab.id
-                },
-                function : state.pasterFn,
-                args: [text]
-        });
-    }
-} catch (error) {
-    DEBUG.error('AUTOTYPE', 'Failed to auto-type', error);
+// --- Consistent Tab Look & Feel (mimic "Tune" tab) ---
+// Add a utility to apply consistent classes to all tab panels
+function unifyTabStyles() {
+    document.querySelectorAll('.tab-panel').forEach(panel => {
+        panel.classList.add('card', 'card-tune-style');
+        panel.style.background = '#fff';
+        panel.style.borderRadius = '12px';
+        panel.style.boxShadow = '0 2px 8px rgba(0,0,0,0.06)';
+        panel.style.padding = '20px 16px';
+        panel.style.marginBottom = '18px';
+    });
+    document.querySelectorAll('.tab-panel .section-header').forEach(header => {
+        header.style.fontWeight = 'bold';
+        header.style.fontSize = '1.1em';
+        header.style.marginBottom = '10px';
+        header.style.letterSpacing = '0.01em';
+    });
+    document.querySelectorAll('.tab-panel .control-group').forEach(group => {
+        group.style.marginBottom = '14px';
+    });
 }
+document.addEventListener('DOMContentLoaded', unifyTabStyles);
+
+// --- Backend Analysis Call: Only one POST, no OPTIONS ---
+async function callBackendAnalysis(url, payload) {
+    try {
+        const resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            // mode: 'cors', // Only if needed
+            // credentials: 'include' // Only if needed
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        return await resp.json();
+    } catch (e) {
+        DEBUG.error('BACKEND', 'Analysis call failed', e);
+        throw e;
+    }
+}
+
+// Replace all backend analysis calls in your codebase with callBackendAnalysis()
+// Example usage:
+// const result = await callBackendAnalysis(backendUrl, { ...payload });
+
+function showError(msg) {
+    const el = document.getElementById('error-message');
+    el.innerText = msg;
+    el.style.display = 'block';
+}
+function showWarning(msg) {
+    const el = document.getElementById('warning-message');
+    el.innerText = msg;
+    el.style.display = 'block';
+}
+function hideError() {
+    document.getElementById('error-message').style.display = 'none';
+    document.getElementById('warning-message').style.display = 'none';
+}
+
+// --- New Parameter Tooltips ---
+function addParameterTooltips() {
+    const params = [
+        { id: 'slider-tone', desc: 'Adjusts the tone of the generated message.' },
+        { id: 'slider-length', desc: 'Controls the length of the response.' },
+        // ...add more as needed...
+    ];
+    params.forEach(param => {
+        const el = document.getElementById(param.id);
+        if (el) {
+            el.title = param.desc;
+        }
+    });
+}
+document.addEventListener('DOMContentLoaded', addParameterTooltips);
+
+function validateSliderValue(id, min, max) {
+    const el = document.getElementById(id);
+    el.addEventListener('input', () => {
+        if (el.value < min || el.value > max) {
+            el.classList.add('invalid');
+        } else {
+            el.classList.remove('invalid');
+        }
+    });
+}
+validateSliderValue('slider-tone', 1, 10);
+validateSliderValue('slider-length', 10, 200);
+
+// --- Prompt Preview Feature ---
+function updatePromptPreview() {
+    const prompt = buildPromptFromCurrentState();
+    document.getElementById('prompt-preview').innerText = prompt;
+}
+function buildPromptFromCurrentState() {
+    // ...build prompt string from current analysis and parameter state...
+    return `Prompt: ...`; // Replace with actual logic
+}
+// Call updatePromptPreview() whenever parameters or analysis change
+
+function handleGenerateClick() {
+    // TODO: Implement actual logic
+    console.log('Generate button clicked');
 }
 
 function setUIRefreshingState(isRefreshing) {
-    const generateBtn = document.getElementById(SELECTORS.generateBtn);
-    if (generateBtn) {
-        generateBtn.disabled = isRefreshing;
-        if (isRefreshing)
-            generateBtn.innerHTML = 'Refreshing...';
-        else
-            generateBtn.innerHTML = 'Generate';
-    }
-    if (isRefreshing)
-        showView(SELECTORS.loadingView);
+    // TODO: Implement actual logic
+    // Example: Show/hide a loading spinner
+    console.log('UI refreshing state:', isRefreshing);
 }
 
 function setUIGeneratingState(isGenerating) {
-    const generateBtn = document.getElementById(SELECTORS.generateBtn);
-    const cancelBtn = document.getElementById(SELECTORS.cancelBtn);
-    const copyBtn = document.getElementById(SELECTORS.copyBtn);
-    const responseArea = document.getElementById(SELECTORS.responseArea);
-    const refinementActions = document.getElementById(SELECTORS.refinementActions);
-    const dateIdeaBtn = document.getElementById(SELECTORS.dateIdeaBtn);
-
-    if (!generateBtn || !cancelBtn || !copyBtn || !responseArea || !refinementActions || !dateIdeaBtn)
-        return;
-
-    generateBtn.disabled = isGenerating;
-    dateIdeaBtn.disabled = isGenerating;
-    document.querySelectorAll('.btn-refine').forEach(btn => btn.disabled = isGenerating);
-
-    generateBtn.innerHTML = isGenerating ? 'Thinking...' : 'Generate';
-    cancelBtn.classList.toggle('hidden', !isGenerating);
-    copyBtn.classList.toggle('hidden', isGenerating);
-    refinementActions.classList.add('hidden');
-
-    if (isGenerating) {
-        responseArea.textContent = '';
-        responseArea.dispatchEvent(new Event('input', {
-                bubbles: true
-            }));
-        responseArea.classList.add('loading');
-        responseArea.classList.remove('error');
-    } else {
-        dateIdeaBtn.disabled = false;
-        dateIdeaBtn.innerHTML = `<svg fill="currentColor" viewBox="0 0 24 24" width="18" height="18"><path d="M9 11H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm2-7h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z"></path></svg> Suggest a Date Idea`;
-        responseArea.classList.remove('loading');
-        if (!responseArea.textContent || responseArea.classList.contains('error')) {
-            copyBtn.classList.add('hidden');
-        }
-    }
-}
-
-function updateUIAfterGeneration(result) {
-    const responseArea = document.getElementById(SELECTORS.responseArea);
-    const copyBtn = document.getElementById(SELECTORS.copyBtn);
-    const refinementActions = document.getElementById(SELECTORS.refinementActions);
-
-    if (!responseArea || !copyBtn || !refinementActions)
-        return;
-
-    if (result?.reply) {
-        const cleanReply = result.reply.trim().replace(/^["']|["']$/g, '');
-        responseArea.textContent = cleanReply;
-        responseArea.dispatchEvent(new Event('input', {
-                bubbles: true
-            }));
-        responseArea.classList.remove('error');
-        copyBtn.classList.remove('hidden');
-        refinementActions.classList.remove('hidden');
-        handleCopyClick();
-    } else {
-        showErrorInResponseArea(result?.error || 'Failed to get a response.');
-        copyBtn.classList.add('hidden');
-        refinementActions.classList.add('hidden');
-    }
-}
-
-function showView(viewId) {
-    document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
-    const view = document.getElementById(viewId);
-    if (view)
-        view.classList.remove('hidden');
-    state.currentViewId = viewId;
-}
-
-function showError(title, message) {
-    const titleEl = document.getElementById(SELECTORS.errorTitle);
-    const messageEl = document.getElementById(SELECTORS.errorMessage);
-    if (titleEl)
-        titleEl.textContent = title;
-    if (messageEl)
-        messageEl.textContent = message;
-    showView(SELECTORS.errorView);
-}
-
-function showErrorInResponseArea(message) {
-    const responseArea = document.getElementById(SELECTORS.responseArea);
-    if (responseArea) {
-        responseArea.textContent = `Error: ${message}`;
-        responseArea.dispatchEvent(new Event('input', {
-                bubbles: true
-            }));
-        responseArea.classList.add('error');
-    }
-}
-
-function showToast(message, type = 'success') {
-    const container = document.getElementById('toast-container');
-    if (!container) return;
-
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-    toast.textContent = message;
-
-    container.appendChild(toast);
-
-    setTimeout(() => {
-        toast.remove();
-    }, 3000);
-}
-
-function renderAnalysisTab(analysisData) {
-    const container = document.getElementById('analysis');
-    if (!container) return;
-
-    const conversationAnalysis = analysisData || {};
-    const lastMessageAnalysis = conversationAnalysis.lastMessageAnalysis || {};
-    const analysis = conversationAnalysis.analysis || {};
-    const engagement = conversationAnalysis.engagement || {};
-    const powerDynamics = analysis.powerDynamics || {};
-
-    const valenceLabels = { '0': 'Negative', '0.5': 'Neutral', '1': 'Positive' };
-    const arousalLabels = { '0': 'Calm', '0.5': 'Neutral', '1': 'Aroused' };
-    const engagementOptions = ['low', 'medium', 'high'];
-    const paceOptions = ['slow', 'medium', 'fast'];
-
-    const html = `
-        <div class="card-subheader">Conversation Analysis</div>
-        <table class="payload-table">
-            <tr><td>Conversation State</td><td>${createSelect('analysis-state', 'analysis.state', CONVERSATION_STATES, conversationAnalysis.state)}</td></tr>
-            <tr><td>Suppress Greeting?</td><td>${createCheckbox('analysis-suppressGreeting', 'analysis.suppressGreeting', conversationAnalysis.suppressGreeting)}</td></tr>
-        </table>
-        <div class="card-subheader">Last Message Subtext</div>
-        <table class="payload-table">
-            <tr><td>Is Direct Question?</td><td>${createCheckbox('subtext-isDirectQuestion', 'analysis.lastMessageAnalysis.isDirectQuestion', lastMessageAnalysis.isDirectQuestion)}</td></tr>
-            <tr><td>Is Low Effort?</td><td>${createCheckbox('subtext-isLowEffort', 'analysis.lastMessageAnalysis.isLowEffort', lastMessageAnalysis.isLowEffort)}</td></tr>
-            <tr><td>Is Sarcastic?</td><td>${createCheckbox('subtext-isSarcastic', 'analysis.lastMessageAnalysis.isSarcastic', lastMessageAnalysis.isSarcastic)}</td></tr>
-            <tr><td>Valence</td><td>${createSlider('subtext-valence', 'analysis.lastMessageAnalysis.valence', lastMessageAnalysis.valence, 0, 1, 0.1, valenceLabels)}</td></tr>
-            <tr><td>Arousal</td><td>${createSlider('subtext-arousal', 'analysis.lastMessageAnalysis.arousal', lastMessageAnalysis.arousal, 0, 1, 0.1, arousalLabels)}</td></tr>
-            <tr><td>Intents</td><td>${createMultiSelect('subtext-intents', 'analysis.lastMessageAnalysis.intents', INTENT_OPTIONS, lastMessageAnalysis.intents)}</td></tr>
-        </table>
-        <div class="card-subheader">Engagement</div>
-        <table class="payload-table">
-            <tr><td>Engagement</td><td>${createSelect('analysis-engagement', 'analysis.analysis.engagement', engagementOptions, analysis.engagement)}</td></tr>
-            <tr><td>Pace</td><td>${createSelect('engagement-pace', 'analysis.engagement.pace', paceOptions, engagement.pace)}</td></tr>
-            <tr><td>Power Dynamics</td><td>${createInput('power-summary', 'analysis.analysis.powerDynamics.summary', powerDynamics.summary)}</td></tr>
-        </table>
-    `;
-    container.innerHTML = html;
-}
-
-function renderMemoryTab(memoryData) {
-    const container = document.getElementById('memory');
-    if (!container) return;
-
-    const memory = memoryData || {};
-
-    const getArrayAsText = (arr) => {
-        if (Array.isArray(arr)) {
-            return arr.join('\\n');
-        }
-        return ''; // Return an empty string if it's not an array
-    };
-
-    const html = `
-        <div class="card-subheader">Match Memory</div>
-        <table class="payload-table">
-            <tr><td>Date Arc Phase</td><td>${createSelect('memory-dateArcPhase', 'analysis.memory.dateArcPhase', DATE_ARC_PHASES, memory.dateArcPhase)}</td></tr>
-            <tr><td>Inside Jokes</td><td>${createTextarea('memory-insideJokes', 'analysis.memory.insideJokes', getArrayAsText(memoryData.insideJokes))}</td></tr>
-            <tr><td>Avoided Topics</td><td>${createTextarea('memory-avoidedTopics', 'analysis.memory.avoidedTopics', getArrayAsText(memoryData.avoidedTopics))}</td></tr>
-            <tr><td>Question History</td><td>${createTextarea('memory-questionHistory', 'analysis.memory.questionHistory', getArrayAsText(memoryData.questionHistory))}</td></tr>
-        </table>
-    `;
-    container.innerHTML = html;
-}
-
-function updateAnalysisTabs(analysis) {
-    if (!analysis) return;
-    renderAnalysisTab(analysis);
-    renderMemoryTab(analysis.memory);
-}
-
-function displayConversationState() {
-    if (!state.sessionMatchProfile?.analysis)
-        return;
-    const analysis = state.sessionMatchProfile.analysis;
-    const convoState = analysis.state;
-    const dateArcPhase = analysis.memory?.dateArcPhase;
-
-    const stateDisplayMap = {
-        'OPENER': 'Status: New Conversation (Opener)',
-        'EARLY_CONVO': 'Status: Early Conversation',
-        'ACTIVE_CONVO': 'Status: Active Conversation',
-        'REENGAGING_DAY': 'Status: Re-engaging (1-7 day pause)',
-        'REENGAGING_WEEK': 'Status: Re-engaging (1-4 week pause)',
-        'REENGAGING_MONTH': 'Status: Re-engaging (1+ month pause)'
-    };
-    const statusEl = document.getElementById(SELECTORS.conversationStatusDisplay);
-    if (statusEl)
-        statusEl.textContent = stateDisplayMap[convoState] || 'Status: Unknown';
-
-    const dateIdeaBtn = document.getElementById(SELECTORS.dateIdeaBtn);
-    if (dateIdeaBtn) {
-        const showButton = dateArcPhase === 'escalation' || dateArcPhase === 'planning';
-        dateIdeaBtn.classList.toggle('hidden', !showButton);
-    }
-
-    updateAnalysisTabs(analysis);
-}
-
-function handleDateIdeaClick() {
-    if (!state.sessionMatchProfile || !state.currentMatchUUID) {
-        showErrorInResponseArea("Error: Match profile data not loaded. Please refresh.");
-        return;
-    }
-    setUIGeneratingState(true);
-    startTimer(Date.now());
-
-    sendMessage({
-        action: 'getAIDateIdea',
-        data: {
-            uuid: state.currentMatchUUID,
-            generationId: Date.now()
-        }
-    });
-}
-
-function handleRefinementClick(event) {
-    const btn = event.target.closest('.btn-refine');
-    if (!btn)
-        return;
-
-    const refinementType = btn.dataset.refineType;
-    const responseArea = document.getElementById(SELECTORS.responseArea);
-    const originalResponse = responseArea.textContent;
-
-    if (!refinementType || !originalResponse)
-        return;
-
-    setUIGeneratingState(true);
-    startTimer(Date.now());
-
-    sendMessage({
-        action: 'refineAIResponse',
-        data: {
-            uuid: state.currentMatchUUID,
-            originalResponse,
-            refinementType,
-            generationId: Date.now()
-        }
-    });
+    // TODO: Implement actual logic
+    // Example: Show/hide a generating spinner
+    console.log('UI generating state:', isGenerating);
 }

@@ -7,8 +7,8 @@
  * @returns {string} The system prompt.
  */
 export function getSystemPrompt(conversationAnalysis, timeContext) {
-    const { conversationState, lastMessageAnalysis, memory } = conversationAnalysis;
-    const state = conversationState;
+    const { state: convState, conversationState, lastMessageAnalysis, memory } = conversationAnalysis;
+    const state = convState ?? conversationState;
 
     const basePersonaAndRules = `
 You are DateWing, an AI ghostwrites for dating app messages.

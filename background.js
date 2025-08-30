@@ -205,6 +205,23 @@ async function geocodeLocation(locationString) {
     }
 }
 
+const analysisCache = {};
+
+async function getAnalysis(conversationId, conversationData) {
+    const hash = hashConversation(conversationData);
+    if (analysisCache[conversationId] && analysisCache[conversationId].hash === hash) {
+        return analysisCache[conversationId].result;
+    }
+    const result = await fetchAnalysis(conversationData);
+    analysisCache[conversationId] = { hash, result };
+    return result;
+}
+
+function hashConversation(data) {
+    // Simple hash function for demo purposes
+    return btoa(JSON.stringify(data)).substring(0, 16);
+}
+
 async function handleAITask(uuid, generationId, payload, port, options = {}) {
     if (abortControllers.has(uuid)) {
         abortControllers.get(uuid).abort("A new generation request was started.");
@@ -556,29 +573,36 @@ function buildFinalPayload(data) {
                 content: userMessage
             }
         ],
-        temperature: data.taskInstructions.temperature,
-        top_p: data.taskInstructions.top_p
+        // Fallback to popup field names if not present
+        temperature: (data.taskInstructions.temperature ?? data.taskInstructions.modelTemperature ?? 0.5),
+        top_p: (data.taskInstructions.top_p ?? data.taskInstructions.topPValue ?? 1.0)
     };
 }
 
+/**
+ * Merges backend and local analysis results.
+ * For any missing/null/empty value in backend, fills from local analysis.
+ * Adds a '_source' property to indicate if value is from local analysis.
+ */
 function deepMerge(primary, fallback) {
-    const isObject = (item) => (item && typeof item === 'object' && !Array.isArray(item));
-
-    // Start with a shallow merge of properties. Primary properties overwrite fallback properties.
-    const output = { ...fallback, ...primary };
-
-    // Now, handle nested objects recursively.
-    for (const key in output) {
-        if (isObject(primary[key]) && isObject(fallback[key])) {
-            // If both primary and fallback have an object for this key, merge them.
-            output[key] = deepMerge(primary[key], fallback[key]);
-        } else if (primary[key] === null || primary[key] === undefined) {
-            // If the primary value is explicitly null or undefined, prefer the fallback value.
-            output[key] = fallback[key];
+    if (typeof primary !== 'object' || primary === null) return (primary ?? fallback);
+    const result = Array.isArray(primary) ? [...primary] : { ...primary };
+    for (const key in fallback) {
+        if (
+            result[key] === undefined ||
+            result[key] === null ||
+            (typeof result[key] === 'string' && result[key].trim() === '')
+        ) {
+            result[key] = fallback[key];
+            // Mark source for UI
+            if (typeof result === 'object') {
+                result[key + '_source'] = 'local';
+            }
+        } else if (typeof result[key] === 'object' && typeof fallback[key] === 'object') {
+            result[key] = deepMerge(result[key], fallback[key]);
         }
     }
-
-    return output;
+    return result;
 }
 
 async function callNlpApi(apiUrl, payload) {

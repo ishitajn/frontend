@@ -371,3 +371,75 @@ footer { padding: 8px 12px; font-size: 10px; color: var(--text-muted); text-alig
     85% { opacity: 1; transform: translateY(0); }
     100% { opacity: 0; transform: translateY(-20px); }
 }
+
+.source-label {
+    font-size: 10px;
+    margin-left: 4px;
+    padding: 2px 4px;
+    border-radius: 3px;
+    vertical-align: middle;
+}
+.source-label.backend { background: #e0f7fa; color: #00796b; }
+.source-label.local { background: #fff3e0; color: #e65100; }
+
+.error-banner {
+    background: #ffe0e0;
+    color: #b71c1c;
+    padding: 6px 10px;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    font-size: 12px;
+}
+
+/* Toast style */
+#wingman-toast.toast {
+    background: #1976d2 !important;
+    color: #fff !important;
+    padding: 12px 20px !important;
+    border-radius: 8px !important;
+    font-weight: bold !important;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.18) !important;
+    z-index: 9999 !important;
+    opacity: 0.98 !important;
+    max-width: 90vw !important;
+    text-align: center !important;
+}
+
+/* Test backend button style */
+.test-backend-btn {
+    background: #1976d2;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 4px 12px;
+    margin-left: 8px;
+    font-size: 0.95em;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.test-backend-btn:disabled {
+    background: #b0bec5;
+    cursor: not-allowed;
+}
+
+/* Consistent card style for all tabs */
+.card.card-tune-style {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    padding: 20px 16px;
+    margin-bottom: 18px;
+}
+
+.fallback-badge {
+    background: #ffe0b2;
+    color: #b26a00;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 0.8em;
+    margin-left: 6px;
+}
+
+.invalid {
+    border: 2px solid #b00020;
+}

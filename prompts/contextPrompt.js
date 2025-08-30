@@ -9,8 +9,8 @@
  * @returns {string} The fully assembled context prompt.
  */
 export function buildContextPrompt(data, conversationAnalysis) {
-    const { conversationState, lastMessageAnalysis } = conversationAnalysis;
-    const state = conversationState; // for brevity
+    const { state: convState, conversationState, lastMessageAnalysis } = conversationAnalysis;
+    const state = convState ?? conversationState; // for brevity
 
     const { theirProfile, myProfile, conversationHistory, myName, theirName, isVerified, timeSinceLastMessageInHours, geoContextData, includeGeoContext,  } = data;
 
