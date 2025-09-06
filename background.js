@@ -104,11 +104,29 @@ async function setGenerationState(uuid, newState, port) {
     }
 }
 
-class MatchMemory {
+export class MatchMemory {
     async _getMatchUUID(name, profile) {
-        const safeName = name || 'unknown_name';
-        const safeProfile = profile || 'no_profile';
-        const identifier = `${safeName.trim()}-${safeProfile.trim().substring(0, 100)}`;
+        const safeName = (name || 'unknown_name').trim();
+        const safeProfile = (profile || 'no_profile').trim();
+
+        // Create a stable string representation of the profile.
+        // This handles cases where profile might be a string or an object.
+        let profileString;
+        if (typeof safeProfile === 'object' && safeProfile !== null) {
+            // Sort keys to ensure consistent hash for the same profile data
+            const sortedProfile = Object.keys(safeProfile).sort().reduce(
+                (obj, key) => {
+                    obj[key] = safeProfile[key];
+                    return obj;
+                },
+                {}
+            );
+            profileString = JSON.stringify(sortedProfile);
+        } else {
+            profileString = safeProfile;
+        }
+
+        const identifier = `${safeName}-${profileString}`;
         const encoder = new TextEncoder();
         const data = encoder.encode(identifier);
         const hashBuffer = await crypto.subtle.digest('SHA-1', data);
@@ -302,6 +320,7 @@ chrome.runtime.onConnect.addListener((port) => {
                 if (settings.analysis_type !== 'local' && settings.apiConsent) {
                     DEBUG.log('DIAGNOSTIC', `Step 11: Analysis type is '${settings.analysis_type}' and user has consented. Calling external API.`);
                     try {
+                        const { userGeoData } = await chrome.storage.local.get('userGeoData');
                         const requestPayload = {
                             matchId: uuid,
                             scraped_data: {
@@ -315,6 +334,7 @@ chrome.runtime.onConnect.addListener((port) => {
                                 useEnhancedNlp: settings.analysis_type === 'enhanced',
                                 myLocation: settings.userLocationChoice || 'autodetect',
                                 myProfile: settings.myProfile || '',
+                                ...(userGeoData && { userGeo: userGeoData })
                             }
                         };
                         apiResponse = await callNlpApi(settings.analysis_url, requestPayload, controller.signal);
@@ -524,6 +544,17 @@ Generate one date idea in the specified JSON format.`;
             await handleAITask(uuid, generationId, payload, port, options);
         },
 
+        "updateUserGeo": async (request) => {
+            const { latitude, longitude } = request.data;
+            if (latitude && longitude) {
+                const geoData = await fetchTimezoneFromCoords(latitude, longitude);
+                if (geoData) {
+                    await chrome.storage.local.set({ userGeoData: geoData });
+                    DEBUG.log('GEO', 'User geo data updated and saved.', geoData);
+                }
+            }
+        },
+
         "refineAIResponse": async(request) => {
             const { originalResponse, refinementType, uuid, generationId } = request.data;
 
@@ -594,12 +625,13 @@ export function deepMerge(primary, fallback) {
 
     for (const key in fallback) {
         if (Object.prototype.hasOwnProperty.call(fallback, key)) {
-            // If the key is missing in the output or is null/undefined, use the fallback value
             if (output[key] === null || output[key] === undefined) {
                 output[key] = fallback[key];
-            }
-            // If both are objects, merge them recursively
-            else if (isObject(output[key]) && isObject(fallback[key])) {
+            } else if (Array.isArray(output[key]) && Array.isArray(fallback[key])) {
+                // Concatenate arrays and remove duplicates
+                const combined = [...output[key], ...fallback[key]];
+                output[key] = Array.from(new Set(combined.map(JSON.stringify))).map(JSON.parse);
+            } else if (isObject(output[key]) && isObject(fallback[key])) {
                 output[key] = deepMerge(output[key], fallback[key]);
             }
         }

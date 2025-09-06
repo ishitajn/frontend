@@ -38,7 +38,7 @@ const DEFAULTS = {
     userLocationChoice: 'autodetect',
     customInstruction: '',
     lastResponse: '',
-    myProfile: `Jay, 35 – 6'0", Vice President at a financial institution, graduate degree from Illinois State University. Driven and grounded, with a strong career focus but a playful side—loves trying new cuisines and cooking for others. Enjoys occasional adventure, meaningful conversations, and believes in making a difference through small actions. Social drinker, non-smoker, exercises sometimes. Prefers genuine connection and meeting in person over endless chatting.`,
+    myProfile: `I am a [Your Job] who enjoys [Your Hobbies]. I'm looking for someone who is [Qualities in a partner]. I value meaningful connections and enjoy activities like [Examples of dates you like].`,
     analysis_type: 'local',
     analysis_url: '',
     llm_url: 'http://localhost:8080/v1/chat/completions',
@@ -246,6 +246,23 @@ async function initializePopup() {
     setupEventListeners();
     setupPort();
     await loadAndApplySettings();
+
+    // --- NEW: Auto-detect location ---
+    const settings = await chrome.storage.local.get(['userLocationChoice', 'apiConsent']);
+    if (settings.userLocationChoice === 'autodetect' && settings.apiConsent) {
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const { latitude, longitude } = position.coords;
+                sendMessage({ action: 'updateUserGeo', data: { latitude, longitude } });
+            },
+            (error) => {
+                console.warn('Could not get user location:', error.message);
+                showToast('Could not auto-detect location.', 'warning');
+            },
+            { enableHighAccuracy: false, timeout: 10000, maximumAge: 1000 * 60 * 30 }
+        );
+    }
+
     await refreshDataAndUI();
 }
 
@@ -331,7 +348,10 @@ sendMessage({
 });
 
 } catch (e) {
-    showError('Initialization Failed', e.message);
+    const errorMessage = e.message.includes('Could not read page')
+        ? "The scraper could not read the page content. The dating site may have updated its design. Please check for an extension update or report the issue if it persists."
+        : e.message;
+    showError('Scraping Failed', errorMessage);
     DEBUG.error('INIT', 'Refresh failed', e);
 } finally {
     state.isRefreshing = false;
@@ -498,68 +518,77 @@ function updateClearButtonVisibility(inputEl, clearBtnEl) {
 
 async function handleSettingChange(event) {
     const el = event.target;
+    handleUISideEffects(el);
+    handleMemoryOverride(el);
+    await handlePersistentSetting(el);
+}
 
-    // --- Handle UI-specific side effects ---
+function handleUISideEffects(el) {
     if (el.id === SELECTORS.customInstruction) {
         updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearInstructionBtn));
     } else if (el.id === SELECTORS.responseArea) {
         updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearResponseBtn));
         document.getElementById(SELECTORS.refinementActions).classList.add('hidden');
+    }
+}
+
+function handleMemoryOverride(el) {
+    const dataPath = el.dataset.path;
+    if (!dataPath) return;
+
+    let value;
+    if (el.type === 'checkbox') {
+        value = el.checked;
+    } else if (el.type === 'range' || el.type === 'number') {
+        value = parseFloat(el.value);
+    } else if (el.multiple) {
+        value = Array.from(el.selectedOptions).map(opt => opt.value);
+    } else {
+        value = el.value;
+    }
+
+    if (dataPath.endsWith('insideJokes') || dataPath.endsWith('avoidedTopics') || dataPath.endsWith('questionHistory')) {
+        value = el.value.split('\n').filter(Boolean);
+    }
+
+    if (state.sessionMatchProfile) {
+        setNestedValue(state.sessionMatchProfile, dataPath, value);
+        DEBUG.log('STATE', `Updated ${dataPath} to`, value);
+    }
+}
+
+async function handlePersistentSetting(el) {
+    const storageKey = el.dataset.storageKey;
+    if (!storageKey) return;
+
+    if (el.id === 'analysisUrl' || el.id === 'llmUrl') {
+        if (el.value && !isValidUrl(el.value)) {
+            el.classList.add('invalid');
+            showToast('Please enter a valid URL.', 'error');
+            return;
+        } else {
+            el.classList.remove('invalid');
+        }
+    }
+
+    // Special handling for response area which is not a standard persistent setting
+    if (el.id === SELECTORS.responseArea) {
         await chrome.storage.local.set({ 'lastResponse': el.textContent });
         return;
     }
 
-    // --- Handle Analysis/Memory Overrides (updates in-memory state) ---
-    const dataPath = el.dataset.path;
-    if (dataPath) {
-        let value;
-        if (el.type === 'checkbox') {
-            value = el.checked;
-        } else if (el.type === 'range' || el.type === 'number') {
-            value = parseFloat(el.value);
-        } else if (el.multiple) {
-            value = Array.from(el.selectedOptions).map(opt => opt.value);
-        } else {
-            value = el.value;
-        }
+    const value = el.type === 'checkbox' ? el.checked : el.value;
 
-        if (dataPath.endsWith('insideJokes') || dataPath.endsWith('avoidedTopics') || dataPath.endsWith('questionHistory')) {
-            value = el.value.split('\n').filter(Boolean);
-        }
-
-        if (state.sessionMatchProfile) {
-            setNestedValue(state.sessionMatchProfile, dataPath, value);
-            DEBUG.log('STATE', `Updated ${dataPath} to`, value);
-        }
-        return;
+    if (MATCH_SPECIFIC_SETTINGS_KEYS.includes(storageKey) && state.currentMatchUUID) {
+        const settingsStorageKey = getMatchSettingsKey(state.currentMatchUUID);
+        const result = await chrome.storage.local.get(settingsStorageKey);
+        const matchSettings = result[settingsStorageKey] || {};
+        matchSettings[storageKey] = value;
+        await chrome.storage.local.set({ [settingsStorageKey]: matchSettings });
+    } else {
+        await chrome.storage.local.set({ [storageKey]: value });
     }
-
-    // --- Handle Persistent Settings (updates chrome.storage.local) ---
-    const storageKey = el.dataset.storageKey;
-    if (storageKey) {
-        if (el.id === 'analysisUrl' || el.id === 'llmUrl') {
-            if (el.value && !isValidUrl(el.value)) {
-                el.classList.add('invalid');
-                showToast('Please enter a valid URL.', 'error');
-                return; // Prevent saving invalid URL
-            } else {
-                el.classList.remove('invalid');
-            }
-        }
-
-        const value = el.type === 'checkbox' ? el.checked : el.value;
-
-        if (MATCH_SPECIFIC_SETTINGS_KEYS.includes(storageKey) && state.currentMatchUUID) {
-            const settingsStorageKey = getMatchSettingsKey(state.currentMatchUUID);
-            const result = await chrome.storage.local.get(settingsStorageKey);
-            const matchSettings = result[storageKey] || {};
-            matchSettings[storageKey] = value;
-            await chrome.storage.local.set({ [settingsStorageKey]: matchSettings });
-        } else {
-            await chrome.storage.local.set({ [storageKey]: value });
-        }
-        showToast('Settings saved');
-    }
+    showToast('Settings saved');
 }
 
 function isValidUrl(string) {

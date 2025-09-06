@@ -28,14 +28,25 @@ function analyzeMessageSubtext(doc) {
 
     const sexualEmojis = /😏|😈|🔥|💦|🥵|😜|😉|💋|👅|🍑|🍆|🛏️|🤤|😇|👀|💅|✨|🫦|👉|👌|👇|👆|💦|💨|♋️|69|💥|💫|✨|🌶️|🍭|🍦|🍩|🌮|🌭|🍌|🍒|🍾|🥂|⛓️|🔗|🪢|🪚|🔨|📍|📌| handcuffs | whip |🕯️|🔑|🔐|🍼| kitten | puppy | bull | top | bottom /;
     const text = doc.text('text');
-    Object.entries(positiveWords).forEach(([word, score]) => {
-        if (doc.has(word))
-            subtext.valence += score;
+
+    // Context-aware valence calculation
+    doc.sentences().forEach(sentence => {
+        const isNegative = sentence.has('#Negative');
+        let sentenceValence = 0;
+
+        Object.entries(positiveWords).forEach(([word, score]) => {
+            if (sentence.has(word)) {
+                sentenceValence += isNegative ? -score : score;
+            }
+        });
+        Object.entries(negativeWords).forEach(([word, score]) => {
+            if (sentence.has(word)) {
+                sentenceValence += isNegative ? -score : score;
+            }
+        });
+        subtext.valence += sentenceValence;
     });
-    Object.entries(negativeWords).forEach(([word, score]) => {
-        if (doc.has(word))
-            subtext.valence += score;
-    });
+
     Object.entries(arousalWords).forEach(([word, score]) => {
         if (text.includes(word))
             subtext.arousal += score;
