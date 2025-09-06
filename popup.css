@@ -94,12 +94,27 @@ details[open] > .card-header::after { transform: rotate(180deg); }
 .response-timer.hidden { display: none; }
 
 textarea, input[type="text"], select { background-color: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px; color: var(--text-primary); font-family: var(--font-family); font-size: 13px; width: 100%; }
+textarea.invalid, input[type="text"].invalid { border-color: var(--danger-color); }
 textarea { resize: vertical; min-height: 60px; }
 textarea:focus, input:focus, select:focus { outline: none; border-color: var(--accent-primary); }
 label { font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; }
 
 .info-display { padding: 8px 12px; background-color: var(--bg-tertiary); color: var(--text-secondary); font-size: 12px; font-style: italic; border-bottom: 1px solid var(--border-color); }
-.control-group { display: flex; flex-direction: row; gap: 12px; align-items: center; }
+.control-group {
+    display: flex;
+    flex-direction: row;
+    gap: 12px;
+    align-items: center;
+    padding: 4px 6px;
+    border-radius: 4px;
+    transition: background-color 0.2s ease-in-out;
+    margin: 0 -6px; /* Offset padding */
+}
+
+.control-group.overridden {
+    background-color: #3e3822; /* Muted yellow */
+}
+
 .control-group.stacked { flex-direction: column; gap: 8px; align-items: stretch; }
 .label-with-info { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-secondary); flex-basis: 45%; flex-shrink: 0; }
 .label-with-info .value-label { margin-left: auto; font-weight: normal; color: var(--text-primary); }

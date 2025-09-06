@@ -10,8 +10,13 @@ import {
     createInput,
     createCheckbox,
     createSlider,
-    createAnalysisView
+    createAnalysisView,
+    formatTime
 } from './ui-components.js';
+import spacetime from './lib/spacetime.min.js';
+import informal from './lib/spacetime-informal.min.js';
+
+spacetime.extend(informal);
 
 const DEBUG = {
     log: (category, message, data = null) => console.log(`[WINGMAN-POPUP-${category.toUpperCase()}] ${message}`, data ?? ''),
@@ -140,6 +145,7 @@ const SELECTORS = {
     myProfileSetting: 'my-profile-setting',
     infoTooltip: 'info-tooltip',
     responseTimer: 'response-timer',
+    loadingMessage: 'loading-message',
     geoContextCard: 'geo-context-card',
     geoUserName: 'geo-user-name',
     geoMatchName: 'geo-match-name',
@@ -285,6 +291,7 @@ async function refreshDataAndUI() {
     }
 
     setUIRefreshingState(true);
+    updateLoadingMessage('Scraping page...');
 
     try {
         const [tab] = await chrome.tabs.query({
@@ -315,6 +322,7 @@ if (!pageData || pageData.error) {
 }
 
 state.sessionScrapedData = pageData;
+updateLoadingMessage('Analyzing conversation...');
 sendMessage({
     action: "getNlpAnalysis",
     data: {
@@ -350,8 +358,20 @@ async function handleNlpAnalysisResponse(message) {
     // The geo context data now arrives with the main analysis, so we update the display here.
     updateGeoContextDisplay(state.sessionMatchProfile.memory.geoContextData);
 
+    const geoTabButton = document.querySelector('.tab-link[data-tab="geo"]');
+    if (geoTabButton) {
+        geoTabButton.style.display = state.sessionMatchProfile.memory?.geoContextData ? '' : 'none';
+    }
+
     displayConversationState();
     showView(SELECTORS.mainView);
+}
+
+function updateLoadingMessage(message) {
+    const el = document.getElementById(SELECTORS.loadingMessage);
+    if (el) {
+        el.textContent = message;
+    }
 }
 
 function handleFinalPayloadResponse(message) {
@@ -517,6 +537,16 @@ async function handleSettingChange(event) {
     // --- Handle Persistent Settings (updates chrome.storage.local) ---
     const storageKey = el.dataset.storageKey;
     if (storageKey) {
+        if (el.id === 'analysisUrl' || el.id === 'llmUrl') {
+            if (el.value && !isValidUrl(el.value)) {
+                el.classList.add('invalid');
+                showToast('Please enter a valid URL.', 'error');
+                return; // Prevent saving invalid URL
+            } else {
+                el.classList.remove('invalid');
+            }
+        }
+
         const value = el.type === 'checkbox' ? el.checked : el.value;
 
         if (MATCH_SPECIFIC_SETTINGS_KEYS.includes(storageKey) && state.currentMatchUUID) {
@@ -529,6 +559,15 @@ async function handleSettingChange(event) {
             await chrome.storage.local.set({ [storageKey]: value });
         }
         showToast('Settings saved');
+    }
+}
+
+function isValidUrl(string) {
+    try {
+        new URL(string);
+        return true;
+    } catch (_) {
+        return false;
     }
 }
 
@@ -574,21 +613,14 @@ function updateOverrideIndicators(matchSettings) {
     document.querySelectorAll('[data-storage-key]').forEach(el => {
         const key = el.dataset.storageKey;
         if (MATCH_SPECIFIC_SETTINGS_KEYS.includes(key)) {
-            const label = el.closest('.control-group')?.querySelector('.label-with-info');
-            if (label) {
-                let indicator = label.querySelector('.override-indicator');
+            const controlGroup = el.closest('.control-group');
+            if (controlGroup) {
                 if (matchSettings.hasOwnProperty(key)) {
-                    if (!indicator) {
-                        indicator = document.createElement('span');
-                        indicator.className = 'override-indicator';
-                        indicator.textContent = '●';
-                        indicator.title = 'This setting is specific to this match.';
-                        label.appendChild(indicator);
-                    }
+                    controlGroup.classList.add('overridden');
+                    controlGroup.title = 'This setting is specific to this match.';
                 } else {
-                    if (indicator) {
-                        indicator.remove();
-                    }
+                    controlGroup.classList.remove('overridden');
+                    controlGroup.title = '';
                 }
             }
         }
@@ -809,6 +841,34 @@ async function updateGeoContextDisplay(geoContextData) {
         if (el) {
             el.textContent = text || 'N/A';
         }
+    }
+
+    // --- NEW: Time Display Logic ---
+    const userTimeEl = document.getElementById('user-time');
+    const matchTimeEl = document.getElementById('match-time');
+    const userTz = geoContextData?.userTimeZoneName || userLocationData?.timeZone;
+    const matchTz = geoContextData?.matchTimezone;
+
+    if (userTz) {
+        try {
+            userTimeEl.textContent = spacetime.now(userTz).format('h:mm a');
+        } catch (e) {
+            console.warn(`Invalid user timezone: ${userTz}`);
+            userTimeEl.textContent = formatTime(new Date());
+        }
+    } else {
+        userTimeEl.textContent = formatTime(new Date());
+    }
+
+    if (matchTz) {
+        try {
+            matchTimeEl.textContent = spacetime.now(matchTz).format('h:mm a');
+        } catch(e) {
+            console.warn(`Invalid match timezone: ${matchTz}`);
+            matchTimeEl.textContent = 'N/A';
+        }
+    } else {
+        matchTimeEl.textContent = 'N/A';
     }
 }
 

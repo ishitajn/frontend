@@ -60,6 +60,17 @@ export function createSlider(id, dataPath, value, min, max, step, labelMap) {
     `;
 }
 
+export function formatTime(date) {
+    if (!date) return 'N/A';
+    let hours = date.getHours();
+    let minutes = date.getMinutes();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12; // the hour '0' should be '12'
+    minutes = minutes < 10 ? '0' + minutes : minutes;
+    return `${hours}:${minutes} ${ampm}`;
+}
+
 function createFallbackIndicator(dataPath, fallbackKeys) {
     if (fallbackKeys && fallbackKeys.includes(dataPath)) {
         return '<span class="fallback-indicator" title="This value was generated locally as a fallback.">L</span>';

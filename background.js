@@ -21,6 +21,7 @@ const DEFAULTS = {
 };
 
 const abortControllers = new Map();
+const analysisAbortControllers = new Map();
 
 // --- NEW: Performance Logger ---
 class PerformanceLogger {
@@ -252,6 +253,9 @@ chrome.runtime.onConnect.addListener((port) => {
 
     const messageHandlers = {
         "getNlpAnalysis": async (request) => {
+            let uuid; // Declare uuid here to be accessible in catch/finally
+            const controller = new AbortController();
+
             try {
                 DEBUG.log('DIAGNOSTIC', 'Step 1: `getNlpAnalysis` handler started.');
                 const { scrapedData } = request.data;
@@ -261,8 +265,14 @@ chrome.runtime.onConnect.addListener((port) => {
                 }
                 DEBUG.log('DIAGNOSTIC', 'Step 2: Scraped data received.', { theirName: scrapedData.theirName, historyLength: scrapedData.conversationHistory.length });
 
-                const uuid = await memoryManager._getMatchUUID(scrapedData.theirName, scrapedData.theirProfile);
+                uuid = await memoryManager._getMatchUUID(scrapedData.theirName, scrapedData.theirProfile);
                 DEBUG.log('DIAGNOSTIC', `Step 3: Generated/Retrieved UUID: ${uuid}`);
+
+                if (analysisAbortControllers.has(uuid)) {
+                    analysisAbortControllers.get(uuid).abort('New analysis requested.');
+                    DEBUG.log('ANALYSIS_ABORT', `Aborted previous analysis for ${uuid}`);
+                }
+                analysisAbortControllers.set(uuid, controller);
 
                 let matchProfile = await memoryManager.getMatchProfile(uuid);
                 DEBUG.log('DIAGNOSTIC', 'Step 4: Retrieved match profile from storage.', { profileExists: !!matchProfile });
@@ -307,7 +317,7 @@ chrome.runtime.onConnect.addListener((port) => {
                                 myProfile: settings.myProfile || '',
                             }
                         };
-                        apiResponse = await callNlpApi(settings.analysis_url, requestPayload);
+                        apiResponse = await callNlpApi(settings.analysis_url, requestPayload, controller.signal);
                         DEBUG.log('DIAGNOSTIC', 'Step 11a: API call succeeded. Response:', apiResponse);
                         DEBUG.log('GEO_DEBUG', 'API Response Geo:', apiResponse?.geo);
 
@@ -323,6 +333,10 @@ chrome.runtime.onConnect.addListener((port) => {
                             finalAnalysis.fallbackKeys = Object.keys(finalAnalysis);
                         }
                     } catch (error) {
+                        if (error.name === 'AbortError') {
+                            DEBUG.log('ANALYSIS_ABORT', `Analysis for ${uuid} was cancelled.`);
+                            return; // Stop execution
+                        }
                         DEBUG.error('DIAGNOSTIC', 'Step 11 FAILED: API call threw an error. Using local analysis as fallback.', error);
                         finalAnalysis.fallbackKeys = Object.keys(finalAnalysis);
                         finalAnalysis.error = 'api_failed';
@@ -356,11 +370,18 @@ chrome.runtime.onConnect.addListener((port) => {
                     matchProfile
                 });
             } catch (error) {
-                DEBUG.error('DIAGNOSTIC', '`getNlpAnalysis` handler FAILED', error);
-                port.postMessage({
-                    action: 'nlpAnalysisResponse',
-                    error: error.message
-                });
+                if (error.name !== 'AbortError') {
+                    DEBUG.error('DIAGNOSTIC', '`getNlpAnalysis` handler FAILED', error);
+                    port.postMessage({
+                        action: 'nlpAnalysisResponse',
+                        error: error.message
+                    });
+                }
+            } finally {
+                if (uuid && analysisAbortControllers.get(uuid) === controller) {
+                    analysisAbortControllers.delete(uuid);
+                    DEBUG.log('ANALYSIS_ABORT', `Cleaned up analysis controller for ${uuid}`);
+                }
             }
         },
 
@@ -605,7 +626,7 @@ function getFallbackKeys(merged, primary, parentKey = '') {
     return Array.from(keys);
 }
 
-async function callNlpApi(apiUrl, payload) {
+async function callNlpApi(apiUrl, payload, signal) {
     if (!apiUrl) {
         throw new Error("Analysis URL is not configured in settings.");
     }
@@ -613,7 +634,8 @@ async function callNlpApi(apiUrl, payload) {
         const response = await fetch(apiUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
+            body: JSON.stringify(payload),
+            signal // Pass the abort signal to fetch
         });
         if (!response.ok) {
             const errorBody = await response.text();
@@ -621,7 +643,11 @@ async function callNlpApi(apiUrl, payload) {
         }
         return await response.json();
     } catch (error) {
-        DEBUG.error('NLP-API', 'Failed to call NLP API', error);
+        if (error.name === 'AbortError') {
+            DEBUG.log('NLP-API', 'NLP API call was aborted.');
+        } else {
+            DEBUG.error('NLP-API', 'Failed to call NLP API', error);
+        }
         throw error;
     }
 }
