@@ -1,5 +1,5 @@
-import { SELECTORS, DEFAULTS, USER_LOCATIONS, LINGUISTIC_STYLES, EMOJI_STRATEGIES, CONVERSATION_STATES, INTENT_OPTIONS, DATE_ARC_PHASES } from './constants.js';
-import { getToneDescription, getLengthDescription, getEmojiInstruction, getStyleDescription } from '../conversationHelpers.js';
+import { SELECTORS, DEFAULTS, USER_LOCATIONS, LINGUISTIC_STYLES, EMOJI_STRATEGIES, CONVERSATION_STATES, INTENT_OPTIONS } from './constants.js';
+import { getToneDescription, getLengthDescription, getEmojiInstruction, getStyleDescription, DATE_ARC_PHASES } from '../conversationHelpers.js';
 import { state, tooltipTimeout, setTooltipTimeout, timerInterval, setTimerInterval, timerStartTime, setTimerStartTime } from './state.js';
 import { createAnalysisView, formatTime } from '../ui-components.js';
 import spacetime from '../lib/spacetime.min.js';
