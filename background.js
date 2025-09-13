@@ -11,7 +11,26 @@ const DEBUG = {
     error: (category, message, error = null) => console.error(`[WINGMAN-BG-${category.toUpperCase()}-ERROR] ${message}`, error ?? ''),
 };
 
-// --- NEW: Default configuration to prevent undefined settings ---
+// --- REFACTOR: Structured Error Handling ---
+class WingmanError extends Error {
+    constructor(code, message, details = '') {
+        super(message);
+        this.name = 'WingmanError';
+        this.code = code;
+        this.details = details;
+    }
+
+    toJSON() {
+        return {
+            isWingmanError: true,
+            code: this.code,
+            message: this.message,
+            details: this.details,
+        };
+    }
+}
+
+
 const DEFAULTS = {
     analysis_type: 'local',
     analysis_url: '',
@@ -23,7 +42,6 @@ const DEFAULTS = {
 const abortControllers = new Map();
 const analysisAbortControllers = new Map();
 
-// --- NEW: Performance Logger ---
 class PerformanceLogger {
     constructor(logKey = 'performanceLogs', maxEntries = 100) {
         this.LOG_KEY = logKey;
@@ -33,19 +51,14 @@ class PerformanceLogger {
     async log(logData) {
         try {
             const { [this.LOG_KEY]: logs = [] } = await chrome.storage.local.get(this.LOG_KEY);
-
             const newLogEntry = {
                 timestamp: new Date().toISOString(),
                 ...logData
             };
-
             logs.push(newLogEntry);
-
-            // Trim the array if it exceeds the max size
             if (logs.length > this.MAX_LOG_ENTRIES) {
                 logs.splice(0, logs.length - this.MAX_LOG_ENTRIES);
             }
-
             await chrome.storage.local.set({ [this.LOG_KEY]: logs });
             DEBUG.log('PERFLOG', `Performance log saved. Total entries: ${logs.length}`);
         } catch (e) {
@@ -59,45 +72,22 @@ const performanceLogger = new PerformanceLogger();
 const getGenerationStateKey = (uuid) => `generationState_${uuid}`;
 
 async function getGenerationState(uuid) {
-    if (!uuid)
-        return {
-            isGenerating: false,
-            response: null,
-            error: null,
-            generationId: null,
-            generationStartTime: null
-        };
+    if (!uuid) return { isGenerating: false, response: null, error: null, generationId: null, generationStartTime: null };
     const key = getGenerationStateKey(uuid);
     const result = await chrome.storage.local.get(key);
-    return result[key] || {
-        isGenerating: false,
-        response: null,
-        error: null,
-        generationId: null,
-        generationStartTime: null
-    };
+    return result[key] || { isGenerating: false, response: null, error: null, generationId: null, generationStartTime: null };
 }
 
 async function setGenerationState(uuid, newState, port) {
-    if (!uuid)
-        return;
+    if (!uuid) return;
     const key = getGenerationStateKey(uuid);
     const currentState = await getGenerationState(uuid);
-    const updatedState = {
-        ...currentState,
-        ...newState
-    };
-    await chrome.storage.local.set({
-        [key]: updatedState
-    });
+    const updatedState = { ...currentState, ...newState };
+    await chrome.storage.local.set({ [key]: updatedState });
     DEBUG.log('STATE', `Set generation state for ${uuid}`, updatedState);
     if (port && port.postMessage) {
         try {
-            port.postMessage({
-                action: 'generationUpdate',
-                uuid,
-                state: updatedState
-            });
+            port.postMessage({ action: 'generationUpdate', uuid, state: updatedState });
         } catch (e) {
             DEBUG.error('PORT', 'Failed to post message, port may be disconnected.', e);
         }
@@ -108,24 +98,16 @@ export class MatchMemory {
     async _getMatchUUID(name, profile) {
         const safeName = (name || 'unknown_name').trim();
         const safeProfile = (profile || 'no_profile').trim();
-
-        // Create a stable string representation of the profile.
-        // This handles cases where profile might be a string or an object.
         let profileString;
         if (typeof safeProfile === 'object' && safeProfile !== null) {
-            // Sort keys to ensure consistent hash for the same profile data
-            const sortedProfile = Object.keys(safeProfile).sort().reduce(
-                (obj, key) => {
-                    obj[key] = safeProfile[key];
-                    return obj;
-                },
-                {}
-            );
+            const sortedProfile = Object.keys(safeProfile).sort().reduce((obj, key) => {
+                obj[key] = safeProfile[key];
+                return obj;
+            }, {});
             profileString = JSON.stringify(sortedProfile);
         } else {
             profileString = safeProfile;
         }
-
         const identifier = `${safeName}-${profileString}`;
         const encoder = new TextEncoder();
         const data = encoder.encode(identifier);
@@ -140,9 +122,7 @@ export class MatchMemory {
     }
     async saveMatchProfile(uuid, profileData) {
         const key = `match_${uuid}`;
-        await chrome.storage.local.set({
-            [key]: profileData
-        });
+        await chrome.storage.local.set({ [key]: profileData });
     }
     createInitialProfile(scrapedData) {
         return {
@@ -173,13 +153,9 @@ async function fetchTimezoneFromCoords(lat, lon) {
     const url = `https://timeapi.io/api/time/current/coordinate?latitude=${lat}&longitude=${lon}`;
     try {
         const response = await fetch(url);
-        if (!response.ok)
-            throw new Error(`timeapi.io failed: ${response.status}`);
+        if (!response.ok) throw new Error(`timeapi.io failed: ${response.status}`);
         const data = await response.json();
-        return {
-            timeZone: data?.timeZone || null,
-            country: data?.countryName || null,
-        };
+        return { timeZone: data?.timeZone || null, country: data?.countryName || null };
     } catch (error) {
         DEBUG.error('TIMEAPI', 'Failed to fetch timezone', error);
         return null;
@@ -187,13 +163,11 @@ async function fetchTimezoneFromCoords(lat, lon) {
 }
 
 async function geocodeLocation(locationString) {
-    if (!locationString || locationString.toLowerCase() === 'not specified')
-        return null;
+    if (!locationString || locationString.toLowerCase() === 'not specified') return null;
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationString)}&format=json&limit=1&extratags=1&addressdetails=1`;
     try {
         const response = await fetch(url);
-        if (!response.ok)
-            throw new Error(`Nominatim API failed: ${response.status}`);
+        if (!response.ok) throw new Error(`Nominatim API failed: ${response.status}`);
         const data = await response.json();
         if (data && data.length > 0) {
             const { lat, lon, display_name, extratags, address } = data[0];
@@ -225,37 +199,30 @@ async function handleAITask(uuid, generationId, payload, port, options = {}) {
     try {
         const storedSettings = await chrome.storage.local.get(Object.keys(DEFAULTS));
         const settings = { ...DEFAULTS, ...storedSettings };
-
         const responseText = await fetchLocalLlamaResponse(settings.local_llama_api_key, payload, settings, controller.signal);
-
         const currentState = await getGenerationState(uuid);
         if (currentState.generationId !== generationId) {
             DEBUG.log('AI', `Stale generation response ignored for ${uuid}.`);
             return;
         }
-
         const finalResponse = options.onSuccess ? options.onSuccess(responseText) : cleanAIResponse(responseText);
-
         await setGenerationState(uuid, { isGenerating: false, response: finalResponse, generationStartTime: null }, port);
         if (options.logData) {
             await performanceLogger.log({ ...options.logData, response: finalResponse });
         }
-
     } catch (error) {
         const currentState = await getGenerationState(uuid);
         if (currentState.generationId !== generationId) {
             DEBUG.log('AI', `Stale generation error ignored for ${uuid}.`);
             return;
         }
-
         if (error.name === 'AbortError') {
-            DEBUG.log('AI', `Task for ${uuid} was cancelled by disconnect or new request. State already handled.`);
+            DEBUG.log('AI', `Task for ${uuid} was cancelled. State already handled.`);
             return;
         }
-
         DEBUG.error('AI-TASK', `Task failed for ${uuid}`, error);
-        await setGenerationState(uuid, { isGenerating: false, error: error.message, generationStartTime: null }, port);
-
+        const structuredError = (error instanceof WingmanError) ? error.toJSON() : new WingmanError('UNKNOWN_AI_ERROR', error.message, error.stack).toJSON();
+        await setGenerationState(uuid, { isGenerating: false, error: structuredError, generationStartTime: null }, port);
     } finally {
         if (abortControllers.get(uuid) === controller) {
             abortControllers.delete(uuid);
@@ -263,160 +230,219 @@ async function handleAITask(uuid, generationId, payload, port, options = {}) {
     }
 }
 
-chrome.runtime.onConnect.addListener((port) => {
-    if (port.name !== "wingman-popup")
-        return;
+async function _getOrCreateMatchProfile(scrapedData) {
+    const uuid = await memoryManager._getMatchUUID(scrapedData.theirName, scrapedData.theirProfile);
+    DEBUG.log('DIAGNOSTIC', `Generated/Retrieved UUID: ${uuid}`);
+    let matchProfile = await memoryManager.getMatchProfile(uuid);
+    DEBUG.log('DIAGNOSTIC', 'Retrieved match profile from storage.', { profileExists: !!matchProfile });
+    if (!matchProfile) {
+        DEBUG.log('DIAGNOSTIC', `No existing profile found for ${uuid}. Creating new one.`);
+        matchProfile = memoryManager.createInitialProfile(scrapedData);
+        matchProfile.uuid = uuid;
+    }
+    matchProfile.conversationHistory = scrapedData.conversationHistory;
+    matchProfile.metadata.theirProfile = scrapedData.theirProfile;
+    matchProfile.metadata.matchLocation = scrapedData.matchLocation;
+    DEBUG.log('DIAGNOSTIC', 'Updated match profile with new scraped data.');
+    return { uuid, matchProfile };
+}
 
+function _runLocalAnalysis(conversationHistory, memory) {
+    DEBUG.log('DIAGNOSTIC', 'Running local conversation analysis...');
+    const localAnalysis = runFullConversationAnalysis(conversationHistory, memory);
+    DEBUG.log('DIAGNOSTIC', 'Local conversation analysis completed.', localAnalysis);
+    return localAnalysis;
+}
+
+async function _runApiAnalysis(settings, scrapedData, uuid, signal) {
+    DEBUG.log('DIAGNOSTIC', `Analysis type is '${settings.analysis_type}'. Calling external API.`);
+    try {
+        const { userGeoData } = await chrome.storage.local.get('userGeoData');
+        const requestPayload = {
+            matchId: uuid,
+            scraped_data: {
+                myName: scrapedData.myName || '',
+                theirName: scrapedData.theirName || '',
+                theirProfile: scrapedData.theirProfile || '',
+                theirLocationString: scrapedData.matchLocation || '',
+                conversationHistory: scrapedData.conversationHistory || [],
+            },
+            ui_settings: {
+                useEnhancedNlp: settings.analysis_type === 'enhanced',
+                myLocation: settings.userLocationChoice || 'autodetect',
+                myProfile: settings.myProfile || '',
+                ...(userGeoData && { userGeo: userGeoData })
+            }
+        };
+        const apiResponse = await callNlpApi(settings.analysis_url, requestPayload, signal);
+        DEBUG.log('DIAGNOSTIC', 'API call succeeded. Response:', apiResponse);
+        return apiResponse;
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            DEBUG.log('ANALYSIS_ABORT', `Analysis for ${uuid} was cancelled.`);
+            throw error;
+        }
+        DEBUG.error('DIAGNOSTIC', 'API call threw an error.', error);
+        return { error: 'api_failed', details: error.message };
+    }
+}
+
+function _mergeAnalyses(localAnalysis, apiResponse) {
+    if (apiResponse && apiResponse.conversationAnalysis) {
+        DEBUG.log('DIAGNOSTIC', 'API response is valid. Merging with local analysis.');
+        const finalAnalysis = deepMerge(apiResponse.conversationAnalysis, localAnalysis);
+        finalAnalysis.fallbackKeys = getFallbackKeys(finalAnalysis, apiResponse.conversationAnalysis);
+        if (apiResponse.geo) {
+            finalAnalysis.geo = apiResponse.geo;
+        }
+        DEBUG.log('DIAGNOSTIC', 'Merge complete.', { finalAnalysis });
+        return finalAnalysis;
+    }
+    DEBUG.log('DIAGNOSTIC', 'API response was empty, invalid, or failed. Using local analysis as fallback.', apiResponse);
+    const finalAnalysis = { ...localAnalysis };
+    finalAnalysis.fallbackKeys = Object.keys(finalAnalysis);
+    if (apiResponse && apiResponse.error) {
+        finalAnalysis.error = apiResponse.error;
+    }
+    return finalAnalysis;
+}
+
+async function handleTextGeneration(uuid, generationId, payload, port, logData) {
+    DEBUG.log('AI', `Received text generation request for UUID ${uuid}`, { generationId });
+    if (!uuid || !payload) {
+        const error = new WingmanError('BAD_REQUEST', 'Cannot generate a response without a payload.', { uuid });
+        DEBUG.error('AI', error.message, error.details);
+        await setGenerationState(uuid, { isGenerating: false, error: error.toJSON() }, port);
+        return;
+    }
+    await handleAITask(uuid, generationId, payload, port, { logData });
+}
+
+async function handleDateIdeaGeneration(uuid, generationId, port) {
+    const matchProfile = await memoryManager.getMatchProfile(uuid);
+    if (!matchProfile) {
+        const error = new WingmanError('NOT_FOUND', 'Match profile not found for date idea generation.', { uuid });
+        await setGenerationState(uuid, { isGenerating: false, error: error.toJSON() }, port);
+        return;
+    }
+    const settings = await chrome.storage.local.get(['local_model_name', 'myProfile']);
+    const myProfile = settings.myProfile || DEFAULTS.myProfile;
+    const modelName = settings.local_model_name || DEFAULTS.local_model_name;
+    const { metadata, memory } = matchProfile;
+    const geoContextString = memory.geoContextData ? `- **Geo-Context:**\n  - Approximate Distance: ${memory.geoContextData.distance.miles} miles\n  - Their Location: ${matchProfile.metadata.matchLocation || 'Unknown'}\n` : '';
+    const systemPrompt = `You are a creative and thoughtful date planner. Your goal is to generate a single, unique, and compelling date idea based on the provided context about two people. The idea should be specific, actionable, and tailored to their personalities and shared interests. You must return the response in a valid JSON object with three keys: "title" (a short, catchy name for the date), "description" (a 2-3 sentence explanation of the date), and "reasoning" (a 1-2 sentence explanation of why this is a good idea for them specifically).`;
+    const userPrompt = `Based on the following context, generate one unique date idea.
+
+- **My Profile:** ${myProfile}
+- **Their Name:** ${metadata.theirName}
+- **Their Profile & Interests:** ${metadata.theirProfile}
+- **Shared Conversation Topics:** ${Object.keys(memory.topics || {}).join(', ')}
+- **Inside Jokes:** ${memory.insideJokes.join(', ')}
+${geoContextString}
+Generate one date idea in the specified JSON format.`;
+    const payload = {
+        model: modelName,
+        messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
+        temperature: 0.8,
+        response_format: { type: "json_object" }
+    };
+    const options = {
+        onSuccess: (responseText) => {
+            let idea;
+            try {
+                idea = JSON.parse(responseText);
+                if (!idea || typeof idea.title !== 'string' || typeof idea.description !== 'string' || typeof idea.reasoning !== 'string') {
+                    throw new WingmanError('INVALID_RESPONSE', "AI returned invalid JSON structure for date idea.", responseText);
+                }
+            } catch (parseError) {
+                throw new WingmanError('INVALID_RESPONSE', `AI response was not valid JSON. Raw: ${responseText.substring(0, 100)}...`, parseError);
+            }
+            return `Date Idea: ${idea.title}\n\n${idea.description}\n\n(Why it's a good idea: ${idea.reasoning})`;
+        }
+    };
+    await handleAITask(uuid, generationId, payload, port, options);
+}
+
+async function handleRefineResponse(uuid, generationId, originalResponse, refinementType, port) {
+    const settings = await chrome.storage.local.get(['local_model_name']);
+    const modelName = settings.local_model_name || DEFAULTS.local_model_name;
+    const systemPrompt = `You are a message editor. Your task is to rewrite a given message based on a specific instruction (e.g., "make it funnier", "make it shorter"). You must only return the rewritten message text, without any extra commentary, labels, or quotation marks.`;
+    const userPrompt = `Rewrite the following message to be **${refinementType}**:
+
+"${originalResponse}"`;
+    const payload = {
+        model: modelName,
+        messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
+        temperature: 0.6,
+    };
+    await handleAITask(uuid, generationId, payload, port);
+}
+
+chrome.runtime.onConnect.addListener((port) => {
+    if (port.name !== "wingman-popup") return;
     DEBUG.log('PORT', 'Popup connected');
 
     const messageHandlers = {
         "getNlpAnalysis": async (request) => {
-            let uuid; // Declare uuid here to be accessible in catch/finally
+            let uuid;
             const controller = new AbortController();
-
             try {
-                DEBUG.log('DIAGNOSTIC', 'Step 1: `getNlpAnalysis` handler started.');
+                DEBUG.log('DIAGNOSTIC', '`getNlpAnalysis` handler started.');
                 const { scrapedData } = request.data;
                 if (!scrapedData) {
-                    DEBUG.error('DIAGNOSTIC', 'Step 1 FAILED: No scrapedData provided.');
-                    throw new Error("getNlpAnalysis received no scrapedData.");
+                    throw new WingmanError('BAD_REQUEST', 'No conversation data was received from the page.');
                 }
-                DEBUG.log('DIAGNOSTIC', 'Step 2: Scraped data received.', { theirName: scrapedData.theirName, historyLength: scrapedData.conversationHistory.length });
-
-                uuid = await memoryManager._getMatchUUID(scrapedData.theirName, scrapedData.theirProfile);
-                DEBUG.log('DIAGNOSTIC', `Step 3: Generated/Retrieved UUID: ${uuid}`);
-
+                DEBUG.log('DIAGNOSTIC', 'Scraped data received.', { theirName: scrapedData.theirName });
+                const { uuid: matchUuid, matchProfile } = await _getOrCreateMatchProfile(scrapedData);
+                uuid = matchUuid;
                 if (analysisAbortControllers.has(uuid)) {
                     analysisAbortControllers.get(uuid).abort('New analysis requested.');
                     DEBUG.log('ANALYSIS_ABORT', `Aborted previous analysis for ${uuid}`);
                 }
                 analysisAbortControllers.set(uuid, controller);
-
-                let matchProfile = await memoryManager.getMatchProfile(uuid);
-                DEBUG.log('DIAGNOSTIC', 'Step 4: Retrieved match profile from storage.', { profileExists: !!matchProfile });
-
-                if (!matchProfile) {
-                    DEBUG.log('DIAGNOSTIC', `Step 4a: No existing profile found for ${uuid}. Creating new one.`);
-                    matchProfile = memoryManager.createInitialProfile(scrapedData);
-                    matchProfile.uuid = uuid;
-                }
-
-                const storedSettings = await chrome.storage.local.get(['analysis_url', 'analysis_type', 'local_model_name', 'myProfile', 'userLocationChoice', 'apiConsent']);
+                const localAnalysis = _runLocalAnalysis(matchProfile.conversationHistory, matchProfile.memory);
+                const storedSettings = await chrome.storage.local.get(['analysis_url', 'analysis_type', 'myProfile', 'userLocationChoice', 'apiConsent']);
                 const settings = { ...DEFAULTS, ...storedSettings };
-                DEBUG.log('DIAGNOSTIC', 'Step 6: Loaded settings.', settings);
-
-                matchProfile.conversationHistory = scrapedData.conversationHistory;
-                matchProfile.metadata.theirProfile = scrapedData.theirProfile;
-                matchProfile.metadata.matchLocation = scrapedData.matchLocation;
-                DEBUG.log('DIAGNOSTIC', 'Step 8: Updated match profile with new scraped data.');
-
-                DEBUG.log('DIAGNOSTIC', 'Step 9: Calling `runFullConversationAnalysis`...');
-                const localAnalysis = runFullConversationAnalysis(matchProfile.conversationHistory, matchProfile.memory);
-                DEBUG.log('DIAGNOSTIC', 'Step 10: `runFullConversationAnalysis` completed.', localAnalysis);
-
-                let finalAnalysis = localAnalysis;
-                let apiResponse = null;
-
+                DEBUG.log('DIAGNOSTIC', 'Loaded settings.', settings);
+                let finalAnalysis;
                 if (settings.analysis_type !== 'local' && settings.apiConsent) {
-                    DEBUG.log('DIAGNOSTIC', `Step 11: Analysis type is '${settings.analysis_type}' and user has consented. Calling external API.`);
-                    try {
-                        const { userGeoData } = await chrome.storage.local.get('userGeoData');
-                        const requestPayload = {
-                            matchId: uuid,
-                            scraped_data: {
-                                myName: scrapedData.myName || '',
-                                theirName: scrapedData.theirName || '',
-                                theirProfile: scrapedData.theirProfile || '',
-                                theirLocationString: scrapedData.matchLocation || '',
-                                conversationHistory: scrapedData.conversationHistory || [],
-                            },
-                            ui_settings: {
-                                useEnhancedNlp: settings.analysis_type === 'enhanced',
-                                myLocation: settings.userLocationChoice || 'autodetect',
-                                myProfile: settings.myProfile || '',
-                                ...(userGeoData && { userGeo: userGeoData })
-                            }
-                        };
-                        apiResponse = await callNlpApi(settings.analysis_url, requestPayload, controller.signal);
-                        DEBUG.log('DIAGNOSTIC', 'Step 11a: API call succeeded. Response:', apiResponse);
-                        DEBUG.log('GEO_DEBUG', 'API Response Geo:', apiResponse?.geo);
-
-                        if (apiResponse && apiResponse.conversationAnalysis) {
-                            DEBUG.log('DIAGNOSTIC', 'Step 11b: API response is valid. Merging with local analysis.');
-                            const mergeResult = deepMerge(apiResponse.conversationAnalysis, localAnalysis);
-                            finalAnalysis = mergeResult;
-                            const fallbackKeys = getFallbackKeys(finalAnalysis, apiResponse.conversationAnalysis);
-                            finalAnalysis.fallbackKeys = fallbackKeys;
-                            DEBUG.log('DIAGNOSTIC', 'Step 11c: Merge complete.', { finalAnalysis, fallbackKeys });
-                        } else {
-                            DEBUG.log('DIAGNOSTIC', 'Step 11b: API response was empty or invalid. Using local analysis as fallback.', apiResponse);
-                            finalAnalysis.fallbackKeys = Object.keys(finalAnalysis);
-                        }
-                    } catch (error) {
-                        if (error.name === 'AbortError') {
-                            DEBUG.log('ANALYSIS_ABORT', `Analysis for ${uuid} was cancelled.`);
-                            return; // Stop execution
-                        }
-                        DEBUG.error('DIAGNOSTIC', 'Step 11 FAILED: API call threw an error. Using local analysis as fallback.', error);
-                        finalAnalysis.fallbackKeys = Object.keys(finalAnalysis);
-                        finalAnalysis.error = 'api_failed';
-                    }
+                    const apiResponse = await _runApiAnalysis(settings, scrapedData, uuid, controller.signal);
+                    finalAnalysis = _mergeAnalyses(localAnalysis, apiResponse);
                 } else {
-                     DEBUG.log('DIAGNOSTIC', 'Step 11: Analysis type is local. Skipping external API call.');
-                     finalAnalysis.fallbackKeys = [];
+                    finalAnalysis = localAnalysis;
+                    finalAnalysis.fallbackKeys = [];
                 }
-
-                if (apiResponse && apiResponse.geo) {
-                    finalAnalysis.geo = apiResponse.geo;
-                    DEBUG.log('GEO_DEBUG', 'Assigned geo data to finalAnalysis.geo', finalAnalysis.geo);
-                }
-
                 matchProfile.analysis = finalAnalysis;
                 matchProfile.memory = finalAnalysis.memory;
-                DEBUG.log('DIAGNOSTIC', 'Step 12: Assigned new analysis and memory to profile.');
-
                 if (finalAnalysis.geo) {
                     matchProfile.memory.geoContextData = finalAnalysis.geo;
-                    DEBUG.log('GEO_DEBUG', 'Assigned finalAnalysis.geo to matchProfile.memory.geoContextData', matchProfile.memory.geoContextData);
                 }
-
                 matchProfile.metadata.lastUpdated = new Date().toISOString();
                 await memoryManager.saveMatchProfile(uuid, matchProfile);
-                DEBUG.log('DIAGNOSTIC', 'Step 13: Saved updated match profile to storage.');
-
-                DEBUG.log('DIAGNOSTIC', 'Step 14: Analysis complete. Sending response to popup.', { matchProfile });
-                port.postMessage({
-                    action: 'nlpAnalysisResponse',
-                    matchProfile
-                });
+                DEBUG.log('DIAGNOSTIC', 'Analysis complete. Sending response to popup.', { matchProfile });
+                port.postMessage({ action: 'nlpAnalysisResponse', matchProfile });
             } catch (error) {
                 if (error.name !== 'AbortError') {
                     DEBUG.error('DIAGNOSTIC', '`getNlpAnalysis` handler FAILED', error);
-                    port.postMessage({
-                        action: 'nlpAnalysisResponse',
-                        error: error.message
-                    });
+                    const structuredError = (error instanceof WingmanError) ? error.toJSON() : new WingmanError('UNKNOWN_ANALYSIS_ERROR', error.message, error.stack).toJSON();
+                    port.postMessage({ action: 'nlpAnalysisResponse', error: structuredError });
                 }
             } finally {
                 if (uuid && analysisAbortControllers.get(uuid) === controller) {
                     analysisAbortControllers.delete(uuid);
-                    DEBUG.log('ANALYSIS_ABORT', `Cleaned up analysis controller for ${uuid}`);
                 }
             }
         },
-
-        "getFinalPayload": async(request) => {
+        "getFinalPayload": async (request) => {
             try {
                 const { uuid, taskInstructions, myProfile, forceIncludeGeoContext } = request.data;
                 if (!uuid || !taskInstructions) {
-                    throw new Error("getFinalPayload requires a UUID and taskInstructions.");
+                    throw new WingmanError('BAD_REQUEST', 'Missing required data for AI generation.');
                 }
-
                 const matchProfile = await memoryManager.getMatchProfile(uuid);
                 if (!matchProfile) {
-                    throw new Error(`No match profile found for UUID: ${uuid}`);
+                    throw new WingmanError('NOT_FOUND', `Could not find a profile for this match.`, { uuid });
                 }
-
                 const generationData = {
                     myName: taskInstructions.myName,
                     theirName: matchProfile.metadata.theirName,
@@ -428,154 +454,52 @@ chrome.runtime.onConnect.addListener((port) => {
                     forceIncludeGeoContext: forceIncludeGeoContext,
                     conversationAnalysis: matchProfile.analysis,
                 };
-
                 const finalPayload = buildFinalPayload(generationData);
-                DEBUG.log('PAYLOAD', 'Final payload generated.', finalPayload);
-                port.postMessage({
-                    action: 'finalPayloadResponse',
-                    payload: finalPayload,
-                    logData: {
-                        uuid,
-                        analysis: matchProfile.analysis,
-                        payload: finalPayload
-                    }
-                });
+                port.postMessage({ action: 'finalPayloadResponse', payload: finalPayload, logData: { uuid, analysis: matchProfile.analysis, payload: finalPayload } });
             } catch (error) {
                 DEBUG.error('PAYLOAD', 'Build failed', error);
-                port.postMessage({
-                    action: 'finalPayloadResponse',
-                    error: error.message
-                });
+                const structuredError = (error instanceof WingmanError) ? error.toJSON() : new WingmanError('UNKNOWN_PAYLOAD_ERROR', error.message, error.stack).toJSON();
+                port.postMessage({ action: 'finalPayloadResponse', error: structuredError });
             }
         },
-
-        "getAIResponse": async(request) => {
+        "getAIResponse": (request) => {
             const { payload, generationId, uuid, logData } = request.data;
-            DEBUG.log('AI', `Received getAIResponse request for UUID ${uuid}`, { generationId });
-            if (!uuid || !payload) {
-                DEBUG.error('AI', `Request for ${uuid} aborted due to empty payload.`);
-                await setGenerationState(uuid, { isGenerating: false, error: 'Internal error: Payload was empty.' }, port);
-                return;
-            }
-            await handleAITask(uuid, generationId, payload, port, { logData });
+            handleTextGeneration(uuid, generationId, payload, port, logData);
         },
-
-        "cancelGeneration": async(request) => {
+        "cancelGeneration": async (request) => {
             const { uuid } = request.data;
             DEBUG.log('CANCEL', `Received cancel request for ${uuid}`);
             if (abortControllers.has(uuid)) {
                 abortControllers.get(uuid).abort("Cancelled by user.");
                 abortControllers.delete(uuid);
             }
-            await setGenerationState(uuid, {
-                isGenerating: false,
-                error: 'Generation cancelled.',
-                generationId: null,
-                generationStartTime: null
-            }, port);
+            const error = new WingmanError('CANCELLED', 'Generation cancelled by user.');
+            await setGenerationState(uuid, { isGenerating: false, error: error.toJSON(), generationId: null, generationStartTime: null }, port);
         },
-
-        "getGenerationState": async(request) => {
+        "getGenerationState": async (request) => {
             const { uuid } = request.data;
             const state = await getGenerationState(uuid);
-            DEBUG.log('STATE', `Received getGenerationState request for ${uuid}, returning state.`, state);
-            port.postMessage({
-                action: 'generationStateResponse',
-                state
-            });
+            port.postMessage({ action: 'generationStateResponse', state });
         },
-
-        "heartbeat": () => {
-            DEBUG.log('HEARTBEAT', 'Received heartbeat.');
-        },
-
-        "getAIDateIdea": async(request) => {
+        "heartbeat": () => DEBUG.log('HEARTBEAT', 'Received heartbeat.'),
+        "getAIDateIdea": (request) => {
             const { uuid, generationId } = request.data;
-            const matchProfile = await memoryManager.getMatchProfile(uuid);
-            if (!matchProfile) {
-                await setGenerationState(uuid, { isGenerating: false, error: 'Match profile not found.' }, port);
-                return;
-            }
-
-            const settings = await chrome.storage.local.get(['local_model_name', 'myProfile']);
-            const myProfile = settings.myProfile || DEFAULTS.myProfile;
-            const modelName = settings.local_model_name || DEFAULTS.local_model_name;
-
-            const { metadata, memory } = matchProfile;
-
-            const geoContextString = memory.geoContextData ? `
-- **Geo-Context:**
-  - Approximate Distance: ${memory.geoContextData.distance.miles} miles
-  - Their Location: ${matchProfile.metadata.matchLocation || 'Unknown'}
-` : '';
-
-            const systemPrompt = `You are a creative and thoughtful date planner. Your goal is to generate a single, unique, and compelling date idea based on the provided context about two people. The idea should be specific, actionable, and tailored to their personalities and shared interests. You must return the response in a valid JSON object with three keys: "title" (a short, catchy name for the date), "description" (a 2-3 sentence explanation of the date), and "reasoning" (a 1-2 sentence explanation of why this is a good idea for them specifically).`;
-            const userPrompt = `Based on the following context, generate one unique date idea.
-
-- **My Profile:** ${myProfile}
-- **Their Name:** ${metadata.theirName}
-- **Their Profile & Interests:** ${metadata.theirProfile}
-- **Shared Conversation Topics:** ${Object.keys(memory.topics || {}).join(', ')}
-- **Inside Jokes:** ${memory.insideJokes.join(', ')}
-${geoContextString}
-Generate one date idea in the specified JSON format.`;
-
-            const payload = {
-                model: modelName,
-                messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
-                temperature: 0.8,
-                response_format: { type: "json_object" }
-            };
-
-            const options = {
-                onSuccess: (responseText) => {
-                    let idea;
-                    try {
-                        idea = JSON.parse(responseText);
-                        if (!idea || typeof idea.title !== 'string' || typeof idea.description !== 'string' || typeof idea.reasoning !== 'string') {
-                            throw new Error("AI returned invalid JSON structure for date idea.");
-                        }
-                    } catch (parseError) {
-                        throw new Error(`AI response was not valid JSON. Raw: ${responseText.substring(0, 100)}...`);
-                    }
-                    return `Date Idea: ${idea.title}\n\n${idea.description}\n\n(Why it's a good idea: ${idea.reasoning})`;
-                }
-            };
-            await handleAITask(uuid, generationId, payload, port, options);
+            handleDateIdeaGeneration(uuid, generationId, port);
         },
-
         "updateUserGeo": async (request) => {
             const { latitude, longitude } = request.data;
             if (latitude && longitude) {
                 const geoData = await fetchTimezoneFromCoords(latitude, longitude);
                 if (geoData) {
                     await chrome.storage.local.set({ userGeoData: geoData });
-                    DEBUG.log('GEO', 'User geo data updated and saved.', geoData);
                 }
             }
         },
-
-        "refineAIResponse": async(request) => {
+        "refineAIResponse": (request) => {
             const { originalResponse, refinementType, uuid, generationId } = request.data;
-
-            const settings = await chrome.storage.local.get(['local_model_name']);
-            const modelName = settings.local_model_name || DEFAULTS.local_model_name;
-
-            const systemPrompt = `You are a message editor. Your task is to rewrite a given message based on a specific instruction (e.g., "make it funnier", "make it shorter"). You must only return the rewritten message text, without any extra commentary, labels, or quotation marks.`;
-            const userPrompt = `Rewrite the following message to be **${refinementType}**:
-
-"${originalResponse}"`;
-
-            const payload = {
-                model: modelName,
-                messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
-                temperature: 0.6,
-            };
-
-            await handleAITask(uuid, generationId, payload, port);
+            handleRefineResponse(uuid, generationId, originalResponse, refinementType, port);
         }
     };
-
     port.onMessage.addListener((request) => {
         DEBUG.log('PORT', 'Message received from popup', request);
         const handler = messageHandlers[request.action];
@@ -585,18 +509,13 @@ Generate one date idea in the specified JSON format.`;
             DEBUG.error('PORT', 'No handler found for action', request.action);
         }
     });
-
     port.onDisconnect.addListener(() => {
         DEBUG.log('PORT', 'Popup disconnected. Cleaning up all active tasks.');
         abortControllers.forEach((controller, uuid) => {
             DEBUG.log('PORT', `Aborting active generation for UUID: ${uuid} due to popup closure.`);
             controller.abort("Popup was closed.");
-            setGenerationState(uuid, {
-                isGenerating: false,
-                error: 'Cancelled: Popup closed.',
-                generationId: null,
-                generationStartTime: null
-            }, null);
+            const error = new WingmanError('CANCELLED', 'Popup was closed during generation.');
+            setGenerationState(uuid, { isGenerating: false, error: error.toJSON(), generationId: null, generationStartTime: null }, null);
         });
         abortControllers.clear();
     });
@@ -606,14 +525,7 @@ function buildFinalPayload(data) {
     const { systemMessage, userMessage } = generatePrompts(data);
     return {
         model: data.taskInstructions.local_model_name,
-        messages: [{
-                role: "system",
-                content: systemMessage
-            }, {
-                role: "user",
-                content: userMessage
-            }
-        ],
+        messages: [{ role: "system", content: systemMessage }, { role: "user", content: userMessage }],
         temperature: data.taskInstructions.temperature,
         top_p: data.taskInstructions.top_p
     };
@@ -622,13 +534,11 @@ function buildFinalPayload(data) {
 export function deepMerge(primary, fallback) {
     const isObject = (item) => (item && typeof item === 'object' && !Array.isArray(item));
     const output = { ...primary };
-
     for (const key in fallback) {
         if (Object.prototype.hasOwnProperty.call(fallback, key)) {
             if (output[key] === null || output[key] === undefined) {
                 output[key] = fallback[key];
             } else if (Array.isArray(output[key]) && Array.isArray(fallback[key])) {
-                // Concatenate arrays and remove duplicates
                 const combined = [...output[key], ...fallback[key]];
                 output[key] = Array.from(new Set(combined.map(JSON.stringify))).map(JSON.parse);
             } else if (isObject(output[key]) && isObject(fallback[key])) {
@@ -642,11 +552,9 @@ export function deepMerge(primary, fallback) {
 function getFallbackKeys(merged, primary, parentKey = '') {
     const keys = new Set();
     const isObject = (item) => (item && typeof item === 'object' && !Array.isArray(item));
-
     for (const key in merged) {
         if (Object.prototype.hasOwnProperty.call(merged, key)) {
             const currentKey = parentKey ? `${parentKey}.${key}` : key;
-
             if (!Object.prototype.hasOwnProperty.call(primary, key) || primary[key] === null || primary[key] === undefined) {
                 keys.add(currentKey);
             } else if (isObject(merged[key]) && isObject(primary[key])) {
@@ -660,18 +568,18 @@ function getFallbackKeys(merged, primary, parentKey = '') {
 
 async function callNlpApi(apiUrl, payload, signal) {
     if (!apiUrl) {
-        throw new Error("Analysis URL is not configured in settings.");
+        throw new WingmanError('CONFIG_ERROR', 'The Analysis URL is not configured in settings.');
     }
     try {
         const response = await fetch(apiUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
-            signal // Pass the abort signal to fetch
+            signal
         });
         if (!response.ok) {
             const errorBody = await response.text();
-            throw new Error(`NLP API error: ${response.status} - ${errorBody}`);
+            throw new WingmanError('API_ERROR', 'The NLP analysis service returned an error.', { status: response.status, body: errorBody });
         }
         return await response.json();
     } catch (error) {
@@ -685,8 +593,7 @@ async function callNlpApi(apiUrl, payload, signal) {
 }
 
 function cleanAIResponse(rawResponse) {
-    if (typeof rawResponse !== 'string' || !rawResponse)
-        return '';
+    if (typeof rawResponse !== 'string' || !rawResponse) return '';
     const stopTokens = ['<|im_end|>', '<|eot_id|>', '</s>', '[INST]', '---'];
     let earliestStopIndex = -1;
     for (const token of stopTokens) {
@@ -700,44 +607,30 @@ function cleanAIResponse(rawResponse) {
 
 async function fetchLocalLlamaResponse(apiKey, payload, settings, signal) {
     const { llm_url } = settings;
-    const headers = {
-        "Content-Type": "application/json"
-    };
-    if (apiKey)
-        headers["Authorization"] = `Bearer ${apiKey}`;
-
+    const headers = { "Content-Type": "application/json" };
+    if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
     let response;
     try {
-        response = await fetch(llm_url, {
-            method: "POST",
-            headers,
-            body: JSON.stringify(payload),
-            signal
-        });
+        response = await fetch(llm_url, { method: "POST", headers, body: JSON.stringify(payload), signal });
     } catch (error) {
-        if (error.name === 'AbortError')
-            throw error;
-        throw new Error(`Network Error: Could not connect to the AI server at ${llm_url}.`);
+        if (error.name === 'AbortError') throw error;
+        throw new WingmanError('NETWORK_ERROR', `Could not connect to the AI server at ${llm_url}.`, { url: llm_url });
     }
-
     if (!response.ok) {
         let errorBody = await response.text();
         let errorMessage = errorBody;
         try {
             const errorJson = JSON.parse(errorBody);
             errorMessage = errorJson.error?.message || errorJson.error || JSON.stringify(errorJson);
-        } catch (e) { /* Not JSON */
-        }
-        throw new Error(`Local server error: ${response.status} - ${errorMessage}`);
+        } catch (e) { /* Not JSON */ }
+        throw new WingmanError('API_ERROR', `The local AI server returned an error: ${errorMessage}`, { status: response.status });
     }
-
     const responseData = await response.json();
     if (payload.response_format?.type === "json_object") {
         return responseData.choices[0].message.content;
     }
     if (!responseData.choices?.[0]?.message?.content) {
-        throw new Error('Local server returned an unexpected response format.');
+        throw new WingmanError('API_ERROR', 'The local AI server returned a response in an unexpected format.');
     }
-
     return responseData.choices[0].message.content.trim();
 }

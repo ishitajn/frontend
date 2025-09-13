@@ -50,6 +50,15 @@
         import './test-conversationHelpers.js';
         import './test-ui-components.js';
         import './test-background-helpers.js';
+
+        console.log("--- Testing popup.js initialization ---");
+        try {
+            await import('../popup.js');
+            console.log("popup.js loaded and initialized without errors.");
+        } catch (e) {
+            console.error("Failed to load or initialize popup.js", e);
+        }
+        console.log("--- End of popup.js test ---");
     </script>
 </body>
 </html>
