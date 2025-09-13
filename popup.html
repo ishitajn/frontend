@@ -68,8 +68,8 @@
                     <div class="generate-actions">
                         <div class="action-bar">
                             <button id="generate-btn" class="btn btn-primary">Generate</button>
-                            <button id="copy-btn" class="icon-btn btn-secondary"><svg fill="currentColor" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"></path></svg></button>
-                            <button id="cancel-btn" class="icon-btn btn-danger hidden"><svg fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z"></path></svg></button>
+                            <button id="copy-btn" class="icon-btn btn-secondary" aria-label="Copy response to clipboard" title="Copy response"><svg fill="currentColor" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"></path></svg></button>
+                            <button id="cancel-btn" class="icon-btn btn-danger hidden" aria-label="Cancel AI generation" title="Cancel generation"><svg fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z"></path></svg></button>
                         </div>
                         <div id="response-timer" class="response-timer">00:00</div>
                         <div class="debug-toggle-container">
@@ -106,13 +106,23 @@
                             <label class="label-with-info"><span>Emoji Strategy</span><span class="info-icon" data-tooltip-id="emoji-info">i</span></label>
                             <select id="emoji-strategy-select" data-storage-key="emojiStrategy"></select>
                         </div>
+
                         <div class="control-group">
-                            <label class="label-with-info"><span>Creativity</span><span id="temperature-value-label" class="value-label"></span></label>
-                            <input type="range" id="temperature-slider" data-storage-key="modelTemperature" min="0" max="2" step="0.1">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="advanced-settings-toggle">
+                                <span>Show Advanced LLM Settings</span>
+                            </label>
                         </div>
-                        <div class="control-group">
-                            <label class="label-with-info"><span>Focus</span><span id="top-p-value-label" class="value-label"></span></label>
-                            <input type="range" id="top-p-slider" data-storage-key="topPValue" min="0" max="1" step="0.05">
+
+                        <div id="advanced-settings" class="hidden">
+                            <div class="control-group">
+                                <label class="label-with-info"><span>Creativity</span><span id="temperature-value-label" class="value-label"></span></label>
+                                <input type="range" id="temperature-slider" data-storage-key="modelTemperature" min="0" max="2" step="0.1">
+                            </div>
+                            <div class="control-group">
+                                <label class="label-with-info"><span>Focus</span><span id="top-p-value-label" class="value-label"></span></label>
+                                <input type="range" id="top-p-slider" data-storage-key="topPValue" min="0" max="1" step="0.05">
+                            </div>
                         </div>
                     </div>
                     <div id="analysis" class="tab-panel">
@@ -166,7 +176,7 @@
                         </select>
                     </div>
                     <div class="control-group stacked">
-                        <label class="toggle-switch">
+                        <label class="toggle-switch" for="api-consent-checkbox">
                             <input type="checkbox" id="api-consent-checkbox" data-storage-key="apiConsent">
                             <span>Allow sending conversation data to backend for analysis</span>
                         </label>
@@ -187,7 +197,7 @@
                     </div>
                     <div class="control-group stacked">
                         <label for="localLlamaApiKey">API Key (Optional)</label>
-                        <input type="text" id="localLlamaApiKey" data-storage-key="local_llama_api_key">
+                        <input type="password" id="localLlamaApiKey" data-storage-key="local_llama_api_key">
                     </div>
                 </div>
             </div>

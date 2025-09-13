@@ -9,6 +9,13 @@ import { setNestedValue } from '../ui-components.js';
 
 // --- Event Handlers ---
 
+function handleAdvancedSettingsToggle(event) {
+    const advancedSettings = document.getElementById('advanced-settings');
+    if (advancedSettings) {
+        advancedSettings.classList.toggle('hidden', !event.target.checked);
+    }
+}
+
 async function handleGenerateClick() {
     if (!state.sessionMatchProfile || !state.currentMatchUUID || !state.sessionMatchProfile.analysis) {
         showErrorInResponseArea("Error: Conversation analysis is not complete. Please wait a moment and try again.");
@@ -188,4 +195,5 @@ export function setupEventListeners(refreshDataAndUI) {
     });
     document.getElementById(SELECTORS.dateIdeaBtn)?.addEventListener('click', handleDateIdeaClick);
     document.getElementById(SELECTORS.refinementActions)?.addEventListener('click', handleRefinementClick);
+    document.getElementById('advanced-settings-toggle')?.addEventListener('click', handleAdvancedSettingsToggle);
 }

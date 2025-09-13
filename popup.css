@@ -113,6 +113,11 @@ label { font-size: 12px; font-weight: 600; color: var(--text-secondary); display
 
 .control-group.overridden {
     background-color: #3e3822; /* Muted yellow */
+    border-left: 3px solid var(--accent-primary);
+    /* The margin and padding adjustments make the border flush with the card edge */
+    margin-left: -12px;
+    margin-right: -12px;
+    padding-left: 9px;
 }
 
 .control-group.stacked { flex-direction: column; gap: 8px; align-items: stretch; }
