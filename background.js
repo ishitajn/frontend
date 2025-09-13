@@ -283,6 +283,7 @@ async function _runApiAnalysis(settings, scrapedData, uuid, signal) {
                 ...(userGeoData && { userGeo: userGeoData })
             }
         };
+        DEBUG.log('NLP-API', 'Payload for /analyze endpoint:', requestPayload);
         const apiResponse = await callNlpApi(settings.analysis_url, requestPayload, signal);
         DEBUG.log('DIAGNOSTIC', 'API call succeeded. Response:', apiResponse);
         return apiResponse;
