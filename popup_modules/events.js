@@ -3,11 +3,28 @@ import { state } from './state.js';
 import { sendMessage } from './api.js';
 import { showView, updateSliderLabels, updateSliderValueLabel, handleTooltipShow, handleTooltipHide, updateClearButtonVisibility, showErrorInResponseArea, setUIGeneratingState, startTimer } from './ui.js';
 import { handlePersistentSetting, handleMatchReset, handleMasterReset } from './settings.js';
-import { showNlpModal, hideDebugModal } from '../debug-modal.js';
 import { setNestedValue } from '../ui-components.js';
 
 
 // --- Event Handlers ---
+
+/**
+ * Throttles a function so it only runs at most once every `limit` milliseconds.
+ * @param {Function} func The function to throttle.
+ * @param {number} limit The timeout limit in milliseconds.
+ */
+function throttle(func, limit) {
+    let inThrottle;
+    return function() {
+        const args = arguments;
+        const context = this;
+        if (!inThrottle) {
+            func.apply(context, args);
+            inThrottle = true;
+            setTimeout(() => inThrottle = false, limit);
+        }
+    }
+}
 
 function handleAdvancedSettingsToggle(event) {
     const advancedSettings = document.getElementById('advanced-settings');
@@ -25,6 +42,7 @@ async function handleGenerateClick() {
 
     const dataForBackground = await gatherCoreDataForGeneration();
     if (document.getElementById(SELECTORS.debugModeToggle).checked) {
+        const { showNlpModal, hideDebugModal } = await import('../debug-modal.js');
         const fullGenerationData = {
             ...state.sessionScrapedData,
             ...state.sessionMatchProfile.metadata,
@@ -171,10 +189,17 @@ export function setupEventListeners(refreshDataAndUI) {
     document.getElementById(SELECTORS.backBtn)?.addEventListener('click', () => showView(SELECTORS.mainView));
     document.getElementById(SELECTORS.masterResetBtn)?.addEventListener('click', handleMasterReset);
     document.getElementById(SELECTORS.resetMatchBtn)?.addEventListener('click', handleMatchReset);
-    document.getElementById(SELECTORS.flirtySlider)?.addEventListener('input', updateSliderLabels);
-    document.getElementById(SELECTORS.lengthSlider)?.addEventListener('input', updateSliderLabels);
-    document.getElementById(SELECTORS.temperatureSlider)?.addEventListener('input', () => updateSliderValueLabel(SELECTORS.temperatureSlider, SELECTORS.temperatureValueLabel));
-    document.getElementById(SELECTORS.topPSlider)?.addEventListener('input', () => updateSliderValueLabel(SELECTORS.topPSlider, SELECTORS.topPValueLabel, 2));
+
+    // Throttle slider inputs to prevent excessive UI updates
+    const throttledUpdateSliderLabels = throttle(updateSliderLabels, 100);
+    const throttledUpdateTempLabel = throttle(() => updateSliderValueLabel(SELECTORS.temperatureSlider, SELECTORS.temperatureValueLabel), 100);
+    const throttledUpdateTopPLabel = throttle(() => updateSliderValueLabel(SELECTORS.topPSlider, SELECTORS.topPValueLabel, 2), 100);
+
+    document.getElementById(SELECTORS.flirtySlider)?.addEventListener('input', throttledUpdateSliderLabels);
+    document.getElementById(SELECTORS.lengthSlider)?.addEventListener('input', throttledUpdateSliderLabels);
+    document.getElementById(SELECTORS.temperatureSlider)?.addEventListener('input', throttledUpdateTempLabel);
+    document.getElementById(SELECTORS.topPSlider)?.addEventListener('input', throttledUpdateTopPLabel);
+
     document.querySelectorAll('.info-icon, [data-tooltip-id]').forEach(icon => {
         icon.addEventListener('mouseenter', handleTooltipShow);
         icon.addEventListener('mouseleave', handleTooltipHide);
