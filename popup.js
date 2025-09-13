@@ -3,7 +3,7 @@ import { scrapeBumblePage, pasteTextIntoBumbleInput, scrapeTinderPage, pasteText
 import { EMOJI_STRATEGIES, USER_LOCATIONS, SELECTORS, DEBUG } from './popup_modules/constants.js';
 import { LINGUISTIC_STYLES } from './conversationHelpers.js';
 import { state } from './popup_modules/state.js';
-import { initializeApi, sendMessage } from './popup_modules/api.js';
+import { initializeApi, sendMessage, startHeartbeat, stopHeartbeat } from './popup_modules/api.js';
 import { loadAndApplySettings } from './popup_modules/settings.js';
 import { setupEventListeners } from './popup_modules/events.js';
 import {
