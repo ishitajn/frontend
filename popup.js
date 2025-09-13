@@ -107,8 +107,37 @@ async function refreshDataAndUI() {
     }
     state.isRefreshing = true;
 
-    // Check if a generation is already in progress for this match
-    sendMessage({ action: "getGenerationState", data: { uuid: state.currentMatchUUID } });
+    // Await the generation state before proceeding to prevent UI flicker.
+    const generationState = await new Promise(resolve => {
+        const port = state.port;
+        if (!port) {
+            resolve({ isGenerating: false });
+            return;
+        }
+
+        const listener = (msg) => {
+            if (msg.action === 'generationStateResponse' && (!state.currentMatchUUID || msg.uuid === state.currentMatchUUID)) {
+                port.onMessage.removeListener(listener);
+                clearTimeout(timeoutId);
+                resolve(msg.state);
+            }
+        };
+
+        const timeoutId = setTimeout(() => {
+            port.onMessage.removeListener(listener);
+            console.warn("getGenerationState timed out.");
+            resolve({ isGenerating: false });
+        }, 500);
+
+        port.onMessage.addListener(listener);
+        sendMessage({ action: "getGenerationState", data: { uuid: state.currentMatchUUID } });
+    });
+
+    if (generationState && generationState.isGenerating) {
+        syncUIWithState(generationState);
+        state.isRefreshing = false; // Reset flag
+        return; // Stop execution here, preventing the loading screen from showing.
+    }
 
     setUIRefreshingState(true);
     updateLoadingMessage('Scraping page...');

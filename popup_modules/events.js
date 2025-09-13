@@ -1,4 +1,4 @@
-import { SELECTORS } from './constants.js';
+import { SELECTORS, DEFAULTS } from './constants.js';
 import { state } from './state.js';
 import { sendMessage } from './api.js';
 import { showView, updateSliderLabels, updateSliderValueLabel, handleTooltipShow, handleTooltipHide, updateClearButtonVisibility, showErrorInResponseArea, setUIGeneratingState, startTimer } from './ui.js';
