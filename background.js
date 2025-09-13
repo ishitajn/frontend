@@ -97,17 +97,26 @@ async function setGenerationState(uuid, newState, port) {
 export class MatchMemory {
     async _getMatchUUID(name, profile) {
         const safeName = (name || 'unknown_name').trim();
-        const safeProfile = (profile || 'no_profile').trim();
+
         let profileString;
-        if (typeof safeProfile === 'object' && safeProfile !== null) {
-            const sortedProfile = Object.keys(safeProfile).sort().reduce((obj, key) => {
-                obj[key] = safeProfile[key];
-                return obj;
-            }, {});
+        if (typeof profile === 'string') {
+            profileString = profile.trim();
+        } else if (typeof profile === 'object' && profile !== null) {
+            // Sort keys to ensure consistent hash for the same profile data
+            const sortedProfile = Object.keys(profile).sort().reduce(
+                (obj, key) => {
+                    // Ensure nested values are also serializable
+                    const value = profile[key];
+                    obj[key] = (typeof value === 'object' && value !== null) ? JSON.stringify(value) : value;
+                    return obj;
+                },
+                {}
+            );
             profileString = JSON.stringify(sortedProfile);
         } else {
-            profileString = safeProfile;
+            profileString = 'no_profile';
         }
+
         const identifier = `${safeName}-${profileString}`;
         const encoder = new TextEncoder();
         const data = encoder.encode(identifier);
