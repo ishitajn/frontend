@@ -6,9 +6,54 @@ import { state } from './popup_modules/state.js';
 import { initializeApi, sendMessage } from './popup_modules/api.js';
 import { loadAndApplySettings } from './popup_modules/settings.js';
 import { setupEventListeners } from './popup_modules/events.js';
-import { showView, showError, updateLoadingMessage, setUIRefreshingState, showErrorInResponseArea, syncUIWithState, displayConversationState, updateGeoContextDisplay, populateSelect } from './popup_modules/ui.js';
+import {
+    showView, showError, updateLoadingMessage, setUIRefreshingState, showErrorInResponseArea,
+    displayConversationState, updateGeoContextDisplay, populateSelect, setUIGeneratingState,
+    startTimer, stopTimer, resetTimerDisplay, updateUIAfterGeneration
+} from './popup_modules/ui.js';
 
 // --- Main Application Logic ---
+
+// This function is now defined in the main popup.js file as it orchestrates multiple modules.
+function syncUIWithState(generationState) {
+    if (!generationState) return;
+
+    setUIGeneratingState(generationState.isGenerating);
+
+    if (generationState.isGenerating) {
+        startHeartbeat();
+        if (generationState.generationStartTime) {
+            showView(SELECTORS.mainView);
+            startTimer(generationState.generationStartTime);
+        }
+    } else {
+        stopHeartbeat();
+        stopTimer();
+        resetTimerDisplay();
+        if (generationState.response) {
+            updateUIAfterGeneration({ reply: generationState.response });
+            autoType(generationState.response);
+        } else if (generationState.error) {
+            updateUIAfterGeneration({ error: generationState.error });
+        }
+    }
+}
+
+async function autoType(text) {
+    if (!state.pasterFn) return;
+    try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab?.id) {
+            chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                function: state.pasterFn,
+                args: [text]
+            });
+        }
+    } catch (error) {
+        DEBUG.error('AUTOTYPE', 'Failed to auto-type', error);
+    }
+}
 
 /**
  * Initializes the entire popup application.
