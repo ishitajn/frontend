@@ -1,5 +1,5 @@
 import nlp from './lib/compromise.js';
-import { positiveWords, negativeWords, arousalWords, vulnerableWords, sexualWords, genericNouns } from '../dictionaries/wordLists.js';
+import { positiveWords, negativeWords, arousalWords, vulnerableWords, sexualWords, genericNouns } from './dictionaries/wordLists.js';
 
 const DEBUG = {
     log: (category, message, data = null) => console.log(`[WINGMAN-HELPER-${category.toUpperCase()}] ${message}`, data ?? ''),

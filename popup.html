@@ -206,6 +206,17 @@
                  <div class="card-content">
                     <div class="control-group stacked"><label for="user-location-select">Your Location (for distance calculation)</label><select id="user-location-select" data-storage-key="userLocationChoice"></select></div>
                     <div class="control-group stacked" style="margin-top: 16px;"><label for="my-profile-setting">My Profile</label><textarea id="my-profile-setting" data-storage-key="myProfile" placeholder="Describe yourself, your interests, and what you're looking for. This will be used as context for the AI."></textarea></div>
+
+                    <div class="card-subheader" style="margin-top: 16px;">Chat Template</div>
+                    <div class="control-group stacked">
+                        <label for="chatMessageTemplate">Message Template (use {role} and {content})</label>
+                        <textarea id="chatMessageTemplate" data-storage-key="chatMessageTemplate" rows="4"></textarea>
+                    </div>
+                    <div class="control-group stacked">
+                        <label for="assistantPromptTemplate">Assistant Prompt Template</label>
+                        <textarea id="assistantPromptTemplate" data-storage-key="assistantPromptTemplate" rows="2"></textarea>
+                    </div>
+
                     <button id="master-reset-btn" class="btn btn-secondary" style="margin-top: 16px;">Reset All Global Defaults</button>
                 </div>
             </div>

@@ -42,6 +42,9 @@ export function generatePrompts(data) {
         conversationBreakDetected: state.startsWith('REENGAGING'),
     };
 
+    // Pass chat template down to context prompt
+    contextData.chatMessageTemplate = taskInstructions.chatMessageTemplate;
+
     const systemMessage = getSystemPrompt(conversationAnalysis, timeContext);
     const contextMessage = buildContextPrompt(contextData, conversationAnalysis);
     // FIX: Pass conversationAnalysis explicitly to buildTaskPrompt

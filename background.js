@@ -453,13 +453,19 @@ chrome.runtime.onConnect.addListener((port) => {
                 if (!matchProfile) {
                     throw new WingmanError('NOT_FOUND', `Could not find a profile for this match.`, { uuid });
                 }
+                // Get chat template settings
+                const templateSettings = await chrome.storage.local.get(['chatMessageTemplate', 'assistantPromptTemplate']);
+
                 const generationData = {
                     myName: taskInstructions.myName,
                     theirName: matchProfile.metadata.theirName,
                     myProfile: myProfile,
                     theirProfile: matchProfile.metadata.theirProfile,
                     conversationHistory: matchProfile.conversationHistory,
-                    taskInstructions: taskInstructions,
+                    taskInstructions: {
+                        ...taskInstructions,
+                        ...templateSettings // Add templates to task instructions
+                    },
                     geoContextData: matchProfile.memory.geoContextData,
                     forceIncludeGeoContext: forceIncludeGeoContext,
                     conversationAnalysis: matchProfile.analysis,
@@ -548,9 +554,6 @@ export function deepMerge(primary, fallback) {
         if (Object.prototype.hasOwnProperty.call(fallback, key)) {
             if (output[key] === null || output[key] === undefined) {
                 output[key] = fallback[key];
-            } else if (Array.isArray(output[key]) && Array.isArray(fallback[key])) {
-                const combined = [...output[key], ...fallback[key]];
-                output[key] = Array.from(new Set(combined.map(JSON.stringify))).map(JSON.parse);
             } else if (isObject(output[key]) && isObject(fallback[key])) {
                 output[key] = deepMerge(output[key], fallback[key]);
             }

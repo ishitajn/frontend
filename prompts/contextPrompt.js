@@ -12,7 +12,7 @@ export function buildContextPrompt(data, conversationAnalysis) {
     const { conversationState, lastMessageAnalysis } = conversationAnalysis;
     const state = conversationState; // for brevity
 
-    const { theirProfile, myProfile, conversationHistory, myName, theirName, geoContextData, includeGeoContext,  } = data;
+    const { theirProfile, myProfile, conversationHistory, myName, theirName, geoContextData, includeGeoContext, chatMessageTemplate } = data;
 
     // --- 1. Metadata Generation (with simplified instruction) ---
     const geoContext = (includeGeoContext && geoContextData) ? `
@@ -53,7 +53,14 @@ export function buildContextPrompt(data, conversationAnalysis) {
             }
 
             const formattedMessages = history.map(msg => {
-                const prefix = msg.role === 'assistant' ? `${theirName || 'Match'}:` : `${myName || 'You'}:`;
+                const roleName = msg.role === 'assistant' ? (theirName || 'Match') : (myName || 'You');
+                if (chatMessageTemplate) {
+                    return chatMessageTemplate
+                        .replace('{role}', roleName)
+                        .replace('{content}', msg.content);
+                }
+                // Fallback to original format
+                const prefix = `${roleName}:`;
                 return `[${msg.date}] ${prefix} ${msg.content}`;
             }).join('\n').trim();
 

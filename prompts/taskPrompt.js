@@ -5,10 +5,10 @@ import { getToneDescription, getLengthDescription, getStyleDescription, getEmoji
 // FIX: Accept conversationAnalysis as the third parameter
 export function buildTaskPrompt(instructions, data, conversationAnalysis) {
     // FIX: Destructure only what's needed from instructions
-    const { goal, flirtyValue, lengthValue, endWithQuestion, linguisticStyle, strictGoalOverride, forceNewTopic, myName, theirName, emojiStrategy, conversationBreakDetected } = instructions;
+    const { goal, flirtyValue, lengthValue, endWithQuestion, linguisticStyle, strictGoalOverride, forceNewTopic, myName, theirName, emojiStrategy, conversationBreakDetected, assistantPromptTemplate } = instructions;
 
     // FIX: Use the explicit conversationAnalysis parameter, providing a fallback.
-    const { suppressGreeting, memory, lastMessageAnalysis } = conversationAnalysis || {};
+    const { suppressGreeting, memory, lastMessageAnalysis, conversationState } = conversationAnalysis || {};
 
     const { conversationHistory } = data;
 
@@ -89,10 +89,10 @@ ${emojiInstruction ? `- **EMOJI USAGE:** ${emojiInstruction}` : ''}
 ${userGoal}
 `.trim();
 
-    const finalCommand = `
---- FINAL COMMAND ---
-Write the next message for **${myName || 'USER'}** - the male, replying to **${theirName || 'MATCH'}** - the female. Only return the message text. No labels, no quotes, no extra formatting.
-`.trim();
+    const finalCommand = (assistantPromptTemplate || `Write the next message for **{myName}** - the male, replying to **{theirName}** - the female. Only return the message text. No labels, no quotes, no extra formatting.`)
+        .replace('{myName}', myName || 'USER')
+        .replace('{theirName}', theirName || 'MATCH')
+        .trim();
 
     return [
         memorySection,

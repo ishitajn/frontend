@@ -25,6 +25,8 @@ export const DEFAULTS = {
     local_model_name: 'llama3:latest',
     local_llama_api_key: '',
     apiConsent: false,
+    chatMessageTemplate: '<|im_start|>{role}\\n{content}<|im_end|>\\n',
+    assistantPromptTemplate: '<|im_start|>assistant\\n',
 };
 
 export const MATCH_SPECIFIC_SETTINGS_KEYS = [
