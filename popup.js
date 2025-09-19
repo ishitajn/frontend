@@ -29,7 +29,7 @@ function syncUIWithState(generationState) {
     } else {
         stopHeartbeat();
         stopTimer();
-        resetTimerDisplay();
+        // Do not reset the timer display here, so the final time persists.
         if (generationState.response) {
             updateUIAfterGeneration({ reply: generationState.response });
             autoType(generationState.response);

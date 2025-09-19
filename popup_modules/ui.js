@@ -133,6 +133,7 @@ export function updateUIAfterGeneration(result) {
 // --- Timers ---
 
 export function startTimer(startTime) {
+    resetTimerDisplay(); // Reset the display before starting a new timer.
     stopTimer();
     if (!startTime) return;
     setTimerStartTime(startTime);
