@@ -45,9 +45,10 @@ body {
 .btn-secondary:hover:not(:disabled) { background-color: #4d4d4d; }
 .btn-danger { background-color: var(--danger-color); color: white; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.btn:not(:disabled):active { transform: scale(0.97); transition: transform 0.05s ease; }
 .btn.hidden, .icon-btn.hidden { display: none; }
 
-.icon-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.icon-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background-color var(--transition-speed) ease, transform var(--transition-speed) ease; }
 .icon-btn:hover { background-color: var(--bg-tertiary); color: var(--text-primary); }
 .icon-btn svg { width: 20px; height: 20px; }
 

@@ -40,6 +40,10 @@ async function handleGenerateClick() {
         return;
     }
 
+    // Start UI feedback immediately on click
+    setUIGeneratingState(true);
+    startTimer(Date.now());
+
     const dataForBackground = await gatherCoreDataForGeneration();
     if (document.getElementById(SELECTORS.debugModeToggle).checked) {
         const { showNlpModal, hideDebugModal } = await import('../debug-modal.js');
