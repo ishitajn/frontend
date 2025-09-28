@@ -454,7 +454,7 @@ chrome.runtime.onConnect.addListener((port) => {
                     throw new WingmanError('NOT_FOUND', `Could not find a profile for this match.`, { uuid });
                 }
                 // Get chat template settings
-                const templateSettings = await chrome.storage.local.get(['chatMessageTemplate', 'assistantPromptTemplate']);
+                const templateSettings = await chrome.storage.local.get(['chatMessageTemplate', 'assistantPromptTemplate', 'systemPromptTemplate']);
 
                 const generationData = {
                     myName: taskInstructions.myName,

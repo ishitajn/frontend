@@ -45,7 +45,7 @@ export function generatePrompts(data) {
     // Pass chat template down to context prompt
     contextData.chatMessageTemplate = taskInstructions.chatMessageTemplate;
 
-    const systemMessage = getSystemPrompt(conversationAnalysis, timeContext);
+    const systemMessage = getSystemPrompt(conversationAnalysis, timeContext, taskInstructions.systemPromptTemplate);
     const contextMessage = buildContextPrompt(contextData, conversationAnalysis);
     // FIX: Pass conversationAnalysis explicitly to buildTaskPrompt
     const taskMessage = buildTaskPrompt(finalTaskInstructions, contextData, conversationAnalysis);

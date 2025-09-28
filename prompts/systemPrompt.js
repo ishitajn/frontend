@@ -4,9 +4,10 @@
  * Builds the system prompt with scenario-based logic.
  * @param {import('../conversationHelpers.js').ConversationAnalysis} conversationAnalysis - The full analysis of the conversation.
  * @param {string | null} timeContext - A string describing the current time context (e.g., "It's the weekend").
+ * @param {string} [systemPromptTemplate] - An optional template to override the default prompt structure.
  * @returns {string} The system prompt.
  */
-export function getSystemPrompt(conversationAnalysis, timeContext) {
+export function getSystemPrompt(conversationAnalysis, timeContext, systemPromptTemplate) {
     const { state, lastMessageAnalysis, memory } = conversationAnalysis;
 
     const basePersonaAndRules = `
@@ -123,6 +124,15 @@ The conversation has momentum. Your goal is to deepen the connection using callb
 2.  **CONVERSATION HISTORY:** Your primary source material now.
 `;
         break;
+    }
+
+    if (systemPromptTemplate) {
+        return systemPromptTemplate
+            .replace('{persona}', basePersonaAndRules.trim())
+            .replace('{focus}', focusSection.trim())
+            .replace('{hierarchy}', hierarchySection.trim())
+            .replace('{guidelines}', baseGuidelines.trim())
+            .replace('{timeContext}', timeContext || '');
     }
 
     return `${basePersonaAndRules}${focusSection}${hierarchySection}${baseGuidelines}`;
