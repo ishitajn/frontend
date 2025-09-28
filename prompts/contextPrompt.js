@@ -104,10 +104,105 @@ export function buildContextPrompt(data, conversationAnalysis) {
         break;
     }
 
-    // --- 4. Final Assembly ---
+    // --- 4. Build Strategic & Memory Sections ---
+    const { memory, suppressGreeting } = conversationAnalysis;
+
+    const memoryNotes = [];
+    if (memory?.dateArcPhase === 'planning')
+        memoryNotes.push('**STRATEGIC CONTEXT: PLANNING PHASE.** Focus on confidently solidifying a date.');
+    else if (memory?.dateArcPhase === 'escalation')
+        memoryNotes.push('**STRATEGIC CONTEXT: ESCALATION PHASE.** Build sexual tension and transition towards planning a date.');
+    if (memory?.insideJokes?.length > 0)
+        memoryNotes.push(`**STRATEGIC CALLBACK:** You can reference this inside joke: "${memory.insideJokes.slice(-1)[0]}"`);
+    const goodTopics = Object.entries(memory?.topics || {}).filter(([, data]) => data.score > 0.5).sort((a, b) => b[1].score - a[1].score).map(([topic]) => topic);
+    if (goodTopics.length > 0)
+        memoryNotes.push(`**GOOD TOPICS:** The match responds well to: ${goodTopics.slice(0, 2).join(', ')}.`);
+    if (memory?.questionHistory?.length > 0)
+        memoryNotes.push(`**AVOID REPEATING:** You already asked about: "${memory.questionHistory.slice(-1)[0]}".`);
+
+    const memorySection = memoryNotes.length > 0 ? `--- MEMORY & STRATEGY (Creative Fuel) ---\n${memoryNotes.join('\n')}` : '';
+
+    const strategicNotes = [];
+    if (suppressGreeting)
+        strategicNotes.push('**CRITICAL PROTOCOL: NO GREETING.** A greeting was already exchanged today.');
+    if (conversationState.startsWith('REENGAGING'))
+        strategicNotes.push('**CRITICAL PROTOCOL: RE-ENGAGEMENT DETECTED.** The conversation stalled. Revive it with a new, high-value message from their profile.');
+    if (memory?.avoidedTopics?.length > 0)
+        strategicNotes.push(`**CRITICAL PROTOCOL: AVOID THESE TOPICS.** The match has reacted negatively to: ${memory.avoidedTopics.join(', ')}.`);
+
+    if (lastMessageAnalysis) {
+        if (lastMessageAnalysis.isSarcastic)
+            strategicNotes.push('**CRITICAL PROTOCOL: SARCASM DETECTED.** Do not take their last statement literally. Respond to the underlying sentiment.');
+        if (lastMessageAnalysis.intents?.includes('flirting_or_sexual'))
+            strategicNotes.push('**STRATEGIC NOTE: SEXUAL TENSION DETECTED.** Match their energy confidently. This is a green light for sexual escalation.');
+        if (lastMessageAnalysis.intents?.includes('questioning'))
+            strategicNotes.push(`**CRITICAL PROTOCOL: ANSWER THE QUESTION.** The match asked a question. You MUST answer it.`);
+        if (lastMessageAnalysis.isAmbiguous)
+            strategicNotes.push('**STRATEGIC NOTE: AMBIGUITY DETECTED.** Convert their vague positive response into a concrete plan.');
+        if (lastMessageAnalysis.intents?.includes('planning'))
+            strategicNotes.push('**STRATEGIC NOTE: LOGISTICS SIGNAL DETECTED.** Move towards solidifying plans.');
+        if (lastMessageAnalysis.isVulnerable)
+            strategicNotes.push('**CRITICAL PROTOCOL: VULNERABILITY DETECTED.** Respond with warmth, validation, and support.');
+        if (lastMessageAnalysis.valence < -0.5)
+            strategicNotes.push('**CRITICAL PROTOCOL: NEGATIVE TONE DETECTED.** Adjust your tone to be more supportive and empathetic.');
+        if (lastMessageAnalysis.isLowEffort)
+            strategicNotes.push('**STRATEGIC NOTE: LOW-EFFORT REPLY DETECTED.** Their last message was short. Your reply needs to be more engaging to carry the conversation.');
+    }
+    const strategicSection = strategicNotes.length > 0 ? `--- CRITICAL OVERRIDES & NOTES ---\n${strategicNotes.join('\n')}` : '';
+
+
+    const { timeContext } = data;
+    const timeContextInstruction = (timeContext && !['ACTIVE_CONVO', 'EARLY_CONVO'].includes(state)) ? `\n*   **Time Hint:** ${timeContext}` : '';
+
+    const dynamicGuidelines = [];
+    if (lastMessageAnalysis?.isVulnerable) {
+        dynamicGuidelines.push('*   **BE SUPPORTIVE:** The match shared something personal or vulnerable. Respond with warmth and validation before doing anything else.');
+    }
+    if (lastMessageAnalysis?.valence < -0.5) {
+        dynamicGuidelines.push('*   **EMPATHIZE:** The match seems upset or negative. Acknowledge their feelings with empathy.');
+    }
+    if (memory?.dateArcPhase === 'planning') {
+        dynamicGuidelines.push('*   **SOLIDIFY PLANS:** The conversation is in the planning phase. Be direct and confident about logistics to get the date scheduled.');
+    }
+    if (memory?.dateArcPhase === 'escalation') {
+        dynamicGuidelines.push('*   **BUILD TENSION:** The conversation is in the escalation phase. Focus on building rapport and sexual tension.');
+    }
+    const guidelinesSection = dynamicGuidelines.length > 0 ? `--- DYNAMIC GUIDELINES ---\n${dynamicGuidelines.join('\n')}`: '';
+
+    let hierarchySection = '';
+    const reengagingHierarchy = `
+**--- INFORMATION PRIORITY ---**
+1.  **Their Profile:** Use this to find a new topic.
+2.  **Conversation History:** Use this ONLY to see what you've already talked about.
+`.trim();
+
+    switch (state) {
+        case 'OPENER':
+            hierarchySection = `**--- INFORMATION PRIORITY ---**\n1.  **Their Profile:** Your source material for the message.`;
+            break;
+        case 'EARLY_CONVO':
+            hierarchySection = `**--- INFORMATION PRIORITY ---**\n1.  **Their Last Message:** Reply to this first.\n2.  **Conversation History:** Use for context and callbacks.`;
+            break;
+        case 'REENGAGING_DAY':
+        case 'REENGAGING_WEEK':
+        case 'REENGAGING_MONTH':
+            hierarchySection = reengagingHierarchy;
+            break;
+        case 'ACTIVE_CONVO':
+        default:
+            hierarchySection = `**--- INFORMATION PRIORITY ---**\n1.  **THEIR LAST MESSAGE:** Reply to this first.\n2.  **CONVERSATION HISTORY:** Your primary source material now.`;
+            break;
+    }
+
+
+    // --- 5. Final Assembly ---
     return [
         metadataSection,
         historySection,
-        profileSection
-    ].filter(Boolean).join('\n');
+        profileSection,
+        memorySection,
+        strategicSection,
+        guidelinesSection,
+        hierarchySection,
+    ].filter(Boolean).join('\n\n');
 }

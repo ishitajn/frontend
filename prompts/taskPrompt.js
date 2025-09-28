@@ -2,8 +2,8 @@
 
 import { getToneDescription, getLengthDescription, getStyleDescription, getEmojiInstruction } from '../conversationHelpers.js';
 
-// FIX: Accept conversationAnalysis as the third parameter
-export function buildTaskPrompt(instructions, data, conversationAnalysis) {
+// FIX: Accept conversationAnalysis and timeContext as parameters
+export function buildTaskPrompt(instructions, data, conversationAnalysis, timeContext) {
     // FIX: Destructure only what's needed from instructions
     const { goal, flirtyValue, lengthValue, endWithQuestion, linguisticStyle, strictGoalOverride, forceNewTopic, myName, theirName, emojiStrategy, conversationBreakDetected, assistantPromptTemplate } = instructions;
 
@@ -32,51 +32,6 @@ ${emojiInstruction ? `- **EMOJI USAGE:** ${emojiInstruction}` : ''}
         return [finalPrompt, finalCommand].join('\n\n');
     }
 
-    const memoryNotes = [];
-    // Use optional chaining ('?.') for maximum resilience against undefined data.
-    if (memory?.dateArcPhase === 'planning')
-        memoryNotes.push('**STRATEGIC CONTEXT: PLANNING PHASE.** Focus on confidently solidifying a date.');
-    else if (memory?.dateArcPhase === 'escalation')
-        memoryNotes.push('**STRATEGIC CONTEXT: ESCALATION PHASE.** Build sexual tension and transition towards planning a date.');
-    if (memory?.insideJokes?.length > 0)
-        memoryNotes.push(`**STRATEGIC CALLBACK:** You can reference this inside joke: "${memory.insideJokes.slice(-1)[0]}"`);
-    const goodTopics = Object.entries(memory?.topics || {}).filter(([, data]) => data.score > 0.5).sort((a, b) => b[1].score - a[1].score).map(([topic]) => topic);
-    if (goodTopics.length > 0)
-        memoryNotes.push(`**GOOD TOPICS:** The match responds well to: ${goodTopics.slice(0, 2).join(', ')}.`);
-    if (memory?.questionHistory?.length > 0)
-        memoryNotes.push(`**AVOID REPEATING:** You already asked about: "${memory.questionHistory.slice(-1)[0]}".`);
-
-    const memorySection = memoryNotes.length > 0 ? `--- MEMORY & STRATEGY (Creative Fuel) ---\n${memoryNotes.join('\n')}` : '';
-
-    const strategicNotes = [];
-    if (suppressGreeting)
-        strategicNotes.push('**CRITICAL PROTOCOL: NO GREETING.** A greeting was already exchanged today.');
-    if (forceNewTopic && !conversationBreakDetected)
-        strategicNotes.push('**CRITICAL PROTOCOL: FORCE NEW TOPIC.** Ignore the match\'s last message and start a fresh conversation thread.');
-    if (conversationBreakDetected)
-        strategicNotes.push('**CRITICAL PROTOCOL: RE-ENGAGEMENT DETECTED.** The conversation stalled. Revive it with a new, high-value message from their profile.');
-    if (memory?.avoidedTopics?.length > 0)
-        strategicNotes.push(`**CRITICAL PROTOCOL: AVOID THESE TOPICS.** The match has reacted negatively to: ${memory.avoidedTopics.join(', ')}.`);
-
-    if (lastMessageAnalysis) {
-        if (lastMessageAnalysis.isSarcastic)
-            strategicNotes.push('**CRITICAL PROTOCOL: SARCASM DETECTED.** Do not take their last statement literally. Respond to the underlying sentiment.');
-        if (lastMessageAnalysis.intents?.includes('flirting_or_sexual'))
-            strategicNotes.push('**STRATEGIC NOTE: SEXUAL TENSION DETECTED.** Match their energy confidently. This is a green light for sexual escalation.');
-        if (lastMessageAnalysis.intents?.includes('questioning'))
-            strategicNotes.push(`**CRITICAL PROTOCOL: ANSWER THE QUESTION.** The match asked a question: "${lastMessageFromMatch}". You MUST answer it.`);
-        if (lastMessageAnalysis.isAmbiguous)
-            strategicNotes.push('**STRATEGIC NOTE: AMBIGUITY DETECTED.** Convert their vague positive response into a concrete plan.');
-        if (lastMessageAnalysis.intents?.includes('planning'))
-            strategicNotes.push('**STRATEGIC NOTE: LOGISTICS SIGNAL DETECTED.** Move towards solidifying plans.');
-        if (lastMessageAnalysis.isVulnerable)
-            strategicNotes.push('**CRITICAL PROTOCOL: VULNERABILITY DETECTED.** Respond with warmth, validation, and support.');
-        if (lastMessageAnalysis.valence < -0.5)
-            strategicNotes.push('**CRITICAL PROTOCOL: NEGATIVE TONE DETECTED.** Adjust your tone to be more supportive and empathetic.');
-        if (lastMessageAnalysis.isLowEffort)
-            strategicNotes.push('**STRATEGIC NOTE: LOW-EFFORT REPLY DETECTED.** Their last message was short. Your reply needs to be more engaging to carry the conversation.');
-    }
-
     const userGoal = goal?.trim() ? `- **ABSOLUTE PRIORITY – USER'S GOAL:** ${goal}` : '';
 
     const directives = `
@@ -94,10 +49,57 @@ ${userGoal}
         .replace('{theirName}', theirName || 'MATCH')
         .trim();
 
+    let focusSection = '';
+    const timeContextInstruction = (timeContext && !['ACTIVE_CONVO', 'EARLY_CONVO'].includes(conversationState)) ? `\n*   **Time Hint:** ${timeContext}` : '';
+    switch (conversationState) {
+    case 'OPENER':
+        focusSection = `
+**--- FOCUS: THE OPENER ---**
+Your goal is to write a compelling opening message based on a specific detail from the match's profile.
+You MUST start the message with a greeting that includes the match's name (e.g., "Hey [Name]," or "[Name]! ..."). This is non-negotiable.${timeContextInstruction}
+`;
+        break;
+    case 'EARLY_CONVO':
+        focusSection = `
+**--- FOCUS: EARLY CONVERSATION ---**
+The conversation is new. Your goal is to build rapport. Keep the tone light. After replying to their message, you can broaden the topic.
+`;
+        break;
+    case 'REENGAGING_DAY':
+        focusSection = `
+**--- FOCUS: SOFT RE-ENGAGEMENT (1-7 Day Gap) ---**
+The chat stalled. Your goal is to revive it casually. Be friendly and low-pressure.${timeContextInstruction}
+**--- MANDATORY MESSAGE STRUCTURE ---**
+1.  **GREETING WITH NAME:** You MUST start with a friendly greeting that uses their name to re-establish a personal connection (e.g., "Hey [Name],").
+2.  **RULE:** Do NOT talk about the old topic unless you are answering a direct question they asked.
+3.  **NEW TOPIC:** Pivot to a new, lighthearted question or comment from their profile.
+`;
+        break;
+    case 'REENGAGING_WEEK':
+        focusSection = `
+**--- FOCUS: COLD RE-ENGAGEMENT (1-4 Week Gap) ---**
+The chat is likely dead. Your goal is a confident message to restart it. Be direct and charming.${timeContextInstruction}
+`;
+        break;
+    case 'REENGAGING_MONTH':
+        focusSection = `
+**--- FOCUS: RESURRECTION (1+ Month Gap) ---**
+This is a "hail mary" attempt. Be bold and lighthearted. Acknowledge the time gap with humor.${timeContextInstruction}
+`;
+        break;
+    case 'ACTIVE_CONVO':
+    default:
+        focusSection = `
+**--- FOCUS: DEEPEN CONNECTION ---**
+The conversation has momentum. Your goal is to deepen the connection using callbacks and inside jokes from the history. The profile is now secondary.
+`;
+        break;
+    }
+
+
     return [
-        memorySection,
+        focusSection,
         directives,
-        strategicNotes.length > 0 ? `--- CRITICAL OVERRIDES & NOTES ---\n${strategicNotes.join('\n')}` : '',
         finalCommand
     ].filter(Boolean).join('\n\n');
 }

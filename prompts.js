@@ -42,13 +42,14 @@ export function generatePrompts(data) {
         conversationBreakDetected: state.startsWith('REENGAGING'),
     };
 
-    // Pass chat template down to context prompt
+    // Pass chat template and time context down to context prompt
     contextData.chatMessageTemplate = taskInstructions.chatMessageTemplate;
+    contextData.timeContext = timeContext;
 
     const systemMessage = getSystemPrompt(conversationAnalysis, timeContext, taskInstructions.systemPromptTemplate);
     const contextMessage = buildContextPrompt(contextData, conversationAnalysis);
-    // FIX: Pass conversationAnalysis explicitly to buildTaskPrompt
-    const taskMessage = buildTaskPrompt(finalTaskInstructions, contextData, conversationAnalysis);
+    // FIX: Pass conversationAnalysis explicitly to buildTaskPrompt, and also timeContext for the focus section
+    const taskMessage = buildTaskPrompt(finalTaskInstructions, contextData, conversationAnalysis, timeContext);
 
     const userMessage = `${contextMessage}\n${taskMessage}`;
 
