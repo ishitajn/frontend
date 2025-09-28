@@ -9,7 +9,7 @@ import { setupEventListeners } from './popup_modules/events.js';
 import {
     showView, showError, updateLoadingMessage, setUIRefreshingState, showErrorInResponseArea,
     displayConversationState, updateGeoContextDisplay, populateSelect, setUIGeneratingState,
-    startTimer, stopTimer, resetTimerDisplay, updateUIAfterGeneration
+    startTimer, stopTimer, updateUIAfterGeneration
 } from './popup_modules/ui.js';
 
 // --- Main Application Logic ---
@@ -76,9 +76,9 @@ async function initializePopup() {
     setupEventListeners(refreshDataAndUI);
 
     // 3. Populate UI elements that require data
-    populateSelect(SELECTORS.linguisticStyleSelect, LINGUISTIC_STYLES.map(s => ({ value: s, text: s.charAt(0).toUpperCase() + s.slice(1) })));
-    populateSelect(SELECTORS.emojiStrategySelect, Object.entries(EMOJI_STRATEGIES).map(([value, text]) => ({ value, text })));
-    populateSelect(SELECTORS.userLocationSelect, Object.entries(USER_LOCATIONS).map(([key, loc]) => ({ value: key, text: loc.name })));
+    populateSelect(document.getElementById(SELECTORS.linguisticStyleSelect), LINGUISTIC_STYLES.map(s => ({ value: s, text: s.charAt(0).toUpperCase() + s.slice(1) })));
+    populateSelect(document.getElementById(SELECTORS.emojiStrategySelect), Object.entries(EMOJI_STRATEGIES).map(([value, text]) => ({ value, text })));
+    populateSelect(document.getElementById(SELECTORS.userLocationSelect), Object.entries(USER_LOCATIONS).map(([key, loc]) => ({ value: key, text: loc.name })));
 
     // 4. Load settings from storage and apply them to the UI
     await loadAndApplySettings();
