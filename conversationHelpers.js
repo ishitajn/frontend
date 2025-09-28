@@ -1,4 +1,5 @@
 import nlp from './lib/compromise.js';
+// The dictionaries path was incorrect, it should be relative to the root.
 import { positiveWords, negativeWords, arousalWords, vulnerableWords, sexualWords, genericNouns } from './dictionaries/wordLists.js';
 
 const DEBUG = {

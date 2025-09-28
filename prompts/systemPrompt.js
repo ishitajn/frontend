@@ -27,10 +27,27 @@ You are DateWing, an AI ghostwrites for dating app messages.
 `.trim();
 
     if (systemPromptTemplate) {
+        const { state, suppressGreeting, lastMessageAnalysis, memory } = conversationAnalysis || {};
+        const { intents, isVulnerable, isDirectQuestion, isLowEffort, suggestedResponseStyle } = lastMessageAnalysis || {};
+        const { dateArcPhase, insideJokes, avoidedTopics, topics } = memory || {};
+
+        const goodTopics = topics ? Object.entries(topics).filter(([, data]) => data.score > 0.5).map(([topic]) => topic) : [];
+
         return systemPromptTemplate
             .replace('{persona}', persona)
             .replace('{guidelines}', guidelines)
-            .replace('{timeContext}', timeContext || 'No specific time context.');
+            .replace('{timeContext}', timeContext || 'N/A')
+            .replace('{state}', state || 'N/A')
+            .replace('{suppressGreeting}', suppressGreeting || 'false')
+            .replace('{dateArcPhase}', dateArcPhase || 'N/A')
+            .replace('{lastMessageIntents}', intents?.join(', ') || 'N/A')
+            .replace('{isVulnerable}', isVulnerable || 'false')
+            .replace('{isDirectQuestion}', isDirectQuestion || 'false')
+            .replace('{isLowEffort}', isLowEffort || 'false')
+            .replace('{suggestedResponseStyle}', suggestedResponseStyle || 'N/A')
+            .replace('{insideJokes}', insideJokes?.join(', ') || 'None')
+            .replace('{avoidedTopics}', avoidedTopics?.join(', ') || 'None')
+            .replace('{goodTopics}', goodTopics.join(', ') || 'None');
     }
 
     return `${persona}\n\n${guidelines}`;
