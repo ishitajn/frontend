@@ -47,16 +47,20 @@ async function handleGenerateClick() {
     const dataForBackground = await gatherCoreDataForGeneration();
     if (document.getElementById(SELECTORS.debugModeToggle).checked) {
         const { showNlpModal, hideDebugModal } = await import('../debug-modal.js');
+
+        // Robustly construct the data payload for the debug modal
         const fullGenerationData = {
-            ...state.sessionScrapedData,
-            ...state.sessionMatchProfile.metadata,
+            myName: state.sessionScrapedData?.myName || 'Me',
+            theirName: state.sessionMatchProfile?.metadata?.theirName || 'Match',
             myProfile: dataForBackground.myProfile,
-            conversationHistory: state.sessionMatchProfile.conversationHistory,
-            conversationAnalysis: state.sessionMatchProfile.analysis,
-            geoContextData: state.sessionMatchProfile.memory.geoContextData,
+            theirProfile: state.sessionMatchProfile?.metadata?.theirProfile || '',
+            conversationHistory: state.sessionMatchProfile?.conversationHistory || [],
+            conversationAnalysis: state.sessionMatchProfile?.analysis || {},
+            geoContextData: state.sessionMatchProfile?.memory?.geoContextData || null,
             forceIncludeGeoContext: dataForBackground.forceIncludeGeoContext,
             taskInstructions: dataForBackground.taskInstructions,
         };
+
         const debugCallbacks = {
             sendFinalPayloadToAI: (payload) => {
                 sendMessage({
