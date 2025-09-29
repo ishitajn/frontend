@@ -24,7 +24,7 @@ export function generatePrompts(data) {
     const lastMessageFromMatch = conversationHistory?.filter(msg => msg.role === 'assistant').pop()?.content || '';
     let includeGeoContext = false;
     if (geoContextData) {
-        if (forceIncludeGeoContext || (geoContextData.distance.miles > 100 && (state === 'OPENER' || state.startsWith('REENGAGING') || (taskInstructions.goal && isMessageGeoRelated(taskInstructions.goal)) || (state !== 'OPENER' && isMessageGeoRelated(lastMessageFromMatch))))) {
+        if (forceIncludeGeoContext || (geoContextData.distance.miles > 100 && (state === 'OPENER' || (state && state.startsWith('REENGAGING')) || (taskInstructions.goal && isMessageGeoRelated(taskInstructions.goal)) || (state !== 'OPENER' && isMessageGeoRelated(lastMessageFromMatch))))) {
             includeGeoContext = true;
         }
     }
@@ -39,7 +39,7 @@ export function generatePrompts(data) {
     // We just need to add the conversationBreakDetected flag.
     const finalTaskInstructions = {
         ...taskInstructions,
-        conversationBreakDetected: state.startsWith('REENGAGING'),
+        conversationBreakDetected: (state && state.startsWith('REENGAGING')),
     };
 
     // Pass chat template and time context down to context prompt

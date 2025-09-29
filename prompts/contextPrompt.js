@@ -124,7 +124,7 @@ export function buildContextPrompt(data, conversationAnalysis) {
     const strategicNotes = [];
     if (suppressGreeting)
         strategicNotes.push('**CRITICAL PROTOCOL: NO GREETING.** A greeting was already exchanged today.');
-    if (state.startsWith('REENGAGING'))
+    if (state && state.startsWith('REENGAGING'))
         strategicNotes.push('**CRITICAL PROTOCOL: RE-ENGAGEMENT DETECTED.** The conversation stalled. Revive it with a new, high-value message from their profile.');
     if (memory?.avoidedTopics?.length > 0)
         strategicNotes.push(`**CRITICAL PROTOCOL: AVOID THESE TOPICS.** The match has reacted negatively to: ${memory.avoidedTopics.join(', ')}.`);

@@ -252,7 +252,7 @@ export function runFullConversationAnalysis(conversationHistory, storedMemory) {
     const state = _determineConversationState(conversationHistory);
 
     // 5. Check for recent greetings
-    const suppressGreeting = _hasRecentGreeting(conversationHistory) && !state.startsWith('REENGAGING');
+    const suppressGreeting = _hasRecentGreeting(conversationHistory) && !(state && state.startsWith('REENGAGING'));
 
     // 6. Assemble the final analysis object
     const finalAnalysis = {
