@@ -97,6 +97,63 @@ function handleCopyClick() {
     // We can call showToast from ui.js here if we import it.
 }
 
+function handleDateIdeaClick() {
+    if (!state.sessionMatchProfile || !state.currentMatchUUID) {
+        showErrorInResponseArea("Error: Match profile data not loaded. Please refresh.");
+        return;
+    }
+    setUIGeneratingState(true);
+    startTimer(Date.now());
+    sendMessage({ action: 'getAIDateIdea', data: { uuid: state.currentMatchUUID, generationId: Date.now() } });
+}
+
+function handleRefinementClick(event) {
+    const btn = event.target.closest('.btn-refine');
+    if (!btn) return;
+
+    const refinementType = btn.dataset.refineType;
+    const responseArea = document.getElementById(SELECTORS.responseArea);
+    const originalResponse = responseArea.textContent;
+
+    if (!refinementType || !originalResponse) return;
+
+    setUIGeneratingState(true);
+    startTimer(Date.now());
+    sendMessage({ action: 'refineAIResponse', data: { uuid: state.currentMatchUUID, originalResponse, refinementType, generationId: Date.now() } });
+}
+
+function handleAdvancedSettingsToggle(event) {
+    const advancedSettings = document.getElementById('advanced-settings');
+    if (advancedSettings) {
+        advancedSettings.classList.toggle('hidden', !event.target.checked);
+    }
+}
+
+async function handleSettingChange(event) {
+    const el = event.target;
+    if (el.id === SELECTORS.customInstruction) {
+        updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearInstructionBtn));
+    } else if (el.id === SELECTORS.responseArea) {
+        updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearResponseBtn));
+        document.getElementById(SELECTORS.refinementActions).classList.add('hidden');
+    }
+
+    const dataPath = el.dataset.path;
+    if (dataPath && state.sessionMatchProfile) {
+        let value;
+        if (el.type === 'checkbox') value = el.checked;
+        else if (el.type === 'range' || el.type === 'number') value = parseFloat(el.value);
+        else if (el.multiple) value = Array.from(el.selectedOptions).map(opt => opt.value);
+        else value = el.value;
+        if (dataPath.endsWith('insideJokes') || dataPath.endsWith('avoidedTopics') || dataPath.endsWith('questionHistory')) {
+            value = el.value.split('\n').filter(Boolean);
+        }
+        setNestedValue(state.sessionMatchProfile, dataPath, value);
+    }
+
+    await handlePersistentSetting(el);
+}
+
 /**
  * Gathers all necessary data from the UI to send to the background script for generation.
  * @returns {Promise<object>} A promise that resolves to the data object.
