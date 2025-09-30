@@ -12,6 +12,7 @@ import { setNestedValue } from '../ui-components.js';
  * Throttles a function so it only runs at most once every `limit` milliseconds.
  * @param {Function} func The function to throttle.
  * @param {number} limit The timeout limit in milliseconds.
+ * @returns {Function} The throttled function.
  */
 function throttle(func, limit) {
     let inThrottle;
@@ -26,13 +27,11 @@ function throttle(func, limit) {
     }
 }
 
-function handleAdvancedSettingsToggle(event) {
-    const advancedSettings = document.getElementById('advanced-settings');
-    if (advancedSettings) {
-        advancedSettings.classList.toggle('hidden', !event.target.checked);
-    }
-}
-
+/**
+ * Handles the click event for the 'Generate' button.
+ * Gathers all UI settings and sends them to the background script to get a response.
+ * If debug mode is enabled, it shows the debug modal instead.
+ */
 async function handleGenerateClick() {
     if (!state.sessionMatchProfile || !state.currentMatchUUID || !state.sessionMatchProfile.analysis) {
         showErrorInResponseArea("Error: Conversation analysis is not complete. Please wait a moment and try again.");
@@ -79,12 +78,18 @@ async function handleGenerateClick() {
     }
 }
 
+/**
+ * Handles the click event for the 'Cancel' button.
+ */
 function handleCancelClick() {
     if (state.currentMatchUUID) {
         sendMessage({ action: "cancelGeneration", data: { uuid: state.currentMatchUUID } });
     }
 }
 
+/**
+ * Handles the click event for the 'Copy' button.
+ */
 function handleCopyClick() {
     const responseArea = document.getElementById(SELECTORS.responseArea);
     if (!responseArea || !responseArea.textContent) return;
@@ -92,58 +97,10 @@ function handleCopyClick() {
     // We can call showToast from ui.js here if we import it.
 }
 
-function handleDateIdeaClick() {
-    if (!state.sessionMatchProfile || !state.currentMatchUUID) {
-        showErrorInResponseArea("Error: Match profile data not loaded. Please refresh.");
-        return;
-    }
-    setUIGeneratingState(true);
-    startTimer(Date.now());
-    sendMessage({ action: 'getAIDateIdea', data: { uuid: state.currentMatchUUID, generationId: Date.now() } });
-}
-
-function handleRefinementClick(event) {
-    const btn = event.target.closest('.btn-refine');
-    if (!btn) return;
-
-    const refinementType = btn.dataset.refineType;
-    const responseArea = document.getElementById(SELECTORS.responseArea);
-    const originalResponse = responseArea.textContent;
-
-    if (!refinementType || !originalResponse) return;
-
-    setUIGeneratingState(true);
-    startTimer(Date.now());
-    sendMessage({ action: 'refineAIResponse', data: { uuid: state.currentMatchUUID, originalResponse, refinementType, generationId: Date.now() } });
-}
-
-function handleMemoryOverride(el) {
-    const dataPath = el.dataset.path;
-    if (!dataPath) return;
-    let value;
-    if (el.type === 'checkbox') value = el.checked;
-    else if (el.type === 'range' || el.type === 'number') value = parseFloat(el.value);
-    else if (el.multiple) value = Array.from(el.selectedOptions).map(opt => opt.value);
-    else value = el.value;
-    if (dataPath.endsWith('insideJokes') || dataPath.endsWith('avoidedTopics') || dataPath.endsWith('questionHistory')) {
-        value = el.value.split('\n').filter(Boolean);
-    }
-    if (state.sessionMatchProfile) {
-        setNestedValue(state.sessionMatchProfile, dataPath, value);
-    }
-}
-
-async function handleSettingChange(event) {
-    const el = event.target;
-    if (el.id === SELECTORS.customInstruction) updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearInstructionBtn));
-    else if (el.id === SELECTORS.responseArea) {
-        updateClearButtonVisibility(el, document.getElementById(SELECTORS.clearResponseBtn));
-        document.getElementById(SELECTORS.refinementActions).classList.add('hidden');
-    }
-    handleMemoryOverride(el);
-    await handlePersistentSetting(el);
-}
-
+/**
+ * Gathers all necessary data from the UI to send to the background script for generation.
+ * @returns {Promise<object>} A promise that resolves to the data object.
+ */
 async function gatherCoreDataForGeneration() {
     const settings = await chrome.storage.local.get('myProfile');
     const myProfile = settings.myProfile || DEFAULTS.myProfile;
@@ -172,6 +129,9 @@ async function gatherCoreDataForGeneration() {
     };
 }
 
+/**
+ * Sets up the event listeners for the main tab navigation (Tune, Analysis, etc.).
+ */
 function setupTabs() {
     const tabContainer = document.querySelector('.tab-bar');
     if (!tabContainer) return;
@@ -187,6 +147,11 @@ function setupTabs() {
     });
 }
 
+/**
+ * Attaches all event listeners to the DOM elements in the popup.
+ * This is the single entry point for all event setup.
+ * @param {Function} refreshDataAndUI - A callback function to refresh data, passed from the main orchestrator.
+ */
 export function setupEventListeners(refreshDataAndUI) {
     setupTabs();
     window.addEventListener('focus', refreshDataAndUI);

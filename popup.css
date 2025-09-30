@@ -19,6 +19,18 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
 body {
   font-family: var(--font-family);
   background-color: var(--bg-primary);
@@ -46,7 +58,6 @@ body {
 .btn-danger { background-color: var(--danger-color); color: white; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 .btn:not(:disabled):active { transform: scale(0.97); transition: transform 0.05s ease; }
-.btn.hidden, .icon-btn.hidden { display: none; }
 
 .icon-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background-color var(--transition-speed) ease, transform var(--transition-speed) ease; }
 .icon-btn:hover { background-color: var(--bg-tertiary); color: var(--text-primary); }
@@ -85,14 +96,12 @@ details[open] > .card-header::after { transform: rotate(180deg); }
   transition: opacity var(--transition-speed) ease;
 }
 .clear-btn:hover { opacity: 1; color: var(--text-primary); }
-.clear-btn.hidden { display: none; }
 
 .generate-actions { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .action-bar { display: flex; gap: 8px; flex-grow: 1; align-items: center; }
 .debug-toggle-container { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); padding-left: 8px; border-left: 1px solid var(--border-color); }
 .debug-checkbox { width: 16px; height: 16px; accent-color: var(--accent-primary); }
 .response-timer { font-size: 12px; color: var(--text-secondary); font-family: 'Courier New', Courier, monospace; margin-left: auto; padding: 0 8px; flex-shrink: 0; }
-.response-timer.hidden { display: none; }
 
 textarea, input[type="text"], select { background-color: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px; color: var(--text-primary); font-family: var(--font-family); font-size: 13px; width: 100%; }
 textarea.invalid, input[type="text"].invalid { border-color: var(--danger-color); }
@@ -217,44 +226,14 @@ footer { padding: 8px 12px; font-size: 10px; color: var(--text-muted); text-alig
   margin-top: -8px;
   margin-bottom: 8px;
 }
-.refinement-actions.hidden {
-  display: none;
-}
+/* .btn-refine inherits from .btn and .btn-secondary, so we only override what's different. */
 .btn-refine {
   flex-grow: 1;
   padding: 4px 8px;
   font-size: 11px;
-  background-color: var(--bg-tertiary);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
+  font-weight: normal; /* Override .btn's bold weight */
   border-radius: 4px;
-  cursor: pointer;
-  transition: all var(--transition-speed) ease;
-}
-.btn-refine:hover:not(:disabled) {
-  background-color: #4d4d4d;
-  color: var(--text-primary);
-}
-.btn-refine:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* NEW: Date Idea Button Container */
-.date-idea-container {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    /*margin-bottom: 12px; /* Added margin for spacing */
-}
-.date-idea-container .btn {
-    flex-grow: 1;
-	margin-bottom: 12px;
-}
-.date-idea-container .response-timer {
-    flex-shrink: 0;
-    margin-left: 0; /* Override default margin-left: auto */
+  color: var(--text-secondary);
 }
 
 /* --- Tabbed Interface --- */

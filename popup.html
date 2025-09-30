@@ -10,8 +10,8 @@
     <div class="app-container">
         <!-- ===== HEADER ===== -->
         <header class="app-header">
-            <span class="logo"></span>
-            <span class="app-title">Wingman AI</span>
+            <img src="icons/icon48.png" alt="Wingman AI Logo" class="logo">
+            <h1 class="app-title">Wingman AI</h1>
             <button id="reset-match-btn" class="icon-btn" aria-label="Reset Match Preferences" title="Reset Match Preferences">
                 <svg fill="currentColor" viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"></path></svg>
             </button>
@@ -38,18 +38,19 @@
                 <div class="card-content">
                     <div class="input-container">
                         <div id="response-area" aria-live="polite" contenteditable="true"></div>
-                        <button id="clear-response-btn" class="clear-btn hidden" title="Clear Response">&times;</button>
+                        <button id="clear-response-btn" class="clear-btn hidden" title="Clear Response" aria-label="Clear Response Text">&times;</button>
                     </div>
                     
                     <div id="refinement-actions" class="refinement-actions hidden">
-                        <button class="btn-refine" data-refine-type="funnier">Make it Funnier</button>
-                        <button class="btn-refine" data-refine-type="more direct">Be More Direct</button>
-                        <button class="btn-refine" data-refine-type="shorter">Make it Shorter</button>
+                        <button class="btn btn-secondary btn-refine" data-refine-type="funnier">Make it Funnier</button>
+                        <button class="btn btn-secondary btn-refine" data-refine-type="more direct">Be More Direct</button>
+                        <button class="btn btn-secondary btn-refine" data-refine-type="shorter">Make it Shorter</button>
                     </div>
 
                     <div class="input-container">
+                        <label for="custom-instruction" class="sr-only">Custom Instructions</label>
                         <textarea id="custom-instruction" data-storage-key="customInstruction" placeholder="Add custom instructions... (e.g., ask about their dog)"></textarea>
-                        <button id="clear-instruction-btn" class="clear-btn hidden" title="Clear Instruction">&times;</button>
+                        <button id="clear-instruction-btn" class="clear-btn hidden" title="Clear Instruction" aria-label="Clear Custom Instruction">&times;</button>
                     </div>
                     
                     <div class="quick-toggles">
@@ -80,15 +81,15 @@
                 </div>
             </section>
 
-            <div class="analysis-tabs card">
-                <div class="tab-bar">
+            <section class="analysis-tabs card">
+                <nav class="tab-bar">
                     <button class="tab-link active" data-tab="tune">Tune</button>
                     <button class="tab-link" data-tab="analysis">Analysis</button>
                     <button class="tab-link" data-tab="memory">Memory</button>
                     <button class="tab-link" data-tab="geo">Geo</button>
-                </div>
+                </nav>
                 <div class="tab-content">
-                    <div id="tune" class="tab-panel active">
+                    <section id="tune" class="tab-panel active">
                         <div class="info-display" id="conversation-status-display">Status: Analyzing...</div>
                         <div class="control-group">
                             <label class="label-with-info"><span>Linguistic Style</span><span class="info-icon" data-tooltip-id="style-info">i</span></label>

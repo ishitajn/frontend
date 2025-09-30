@@ -9,6 +9,10 @@ let messageHandlers = {};
  * Sends a message to the background script via the active port.
  * @param {object} message - The message object to send.
  */
+/**
+ * Sends a message to the background script via the active port.
+ * @param {object} message - The message object to send.
+ */
 export function sendMessage(message) {
     if (!port) {
         DEBUG.log('PORT', "Port was disconnected. Reconnecting.");
@@ -30,7 +34,8 @@ export function sendMessage(message) {
 
 
 /**
- * Starts a 15-second interval to send a heartbeat message to the background.
+ * Starts a 15-second interval to send a heartbeat message to the background,
+ * keeping the service worker active.
  */
 export function startHeartbeat() {
     stopHeartbeat(); // Ensure no multiple heartbeats
@@ -54,7 +59,8 @@ export function stopHeartbeat() {
 
 /**
  * Sets up the long-lived connection to the background script.
- * Listens for messages and disconnect events.
+ * This function handles listening for incoming messages and disconnect events.
+ * It is called internally by `initializeApi`.
  */
 function setupPort() {
     const newPort = chrome.runtime.connect({ name: "wingman-popup" });
@@ -80,9 +86,9 @@ function setupPort() {
 }
 
 /**
- * Initializes the API module, setting up the port and message handlers.
- * This should only be called once.
- * @param {object} handlers - An object mapping message actions to handler functions.
+ * Initializes the API module by establishing a port to the background script
+ * and setting up the message handlers. This should only be called once.
+ * @param {object} handlers - An object mapping message action strings to handler functions.
  */
 export function initializeApi(handlers) {
     if (isInitialized) {

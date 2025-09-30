@@ -12,6 +12,12 @@ const DEBUG = {
 };
 
 // --- REFACTOR: Structured Error Handling ---
+/**
+ * Custom error class for consistent error handling.
+ * @param {string} code - A unique error code (e.g., 'BAD_REQUEST', 'API_ERROR').
+ * @param {string} message - A user-friendly error message.
+ * @param {any} [details] - Optional additional details for logging.
+ */
 class WingmanError extends Error {
     constructor(code, message, details = '') {
         super(message);
@@ -42,12 +48,19 @@ const DEFAULTS = {
 const abortControllers = new Map();
 const analysisAbortControllers = new Map();
 
+/**
+ * Logs performance data to chrome.storage.local for analysis.
+ */
 class PerformanceLogger {
     constructor(logKey = 'performanceLogs', maxEntries = 100) {
         this.LOG_KEY = logKey;
         this.MAX_LOG_ENTRIES = maxEntries;
     }
 
+    /**
+     * Appends a new performance log entry.
+     * @param {object} logData - The data to log.
+     */
     async log(logData) {
         try {
             const { [this.LOG_KEY]: logs = [] } = await chrome.storage.local.get(this.LOG_KEY);
@@ -71,6 +84,11 @@ const performanceLogger = new PerformanceLogger();
 
 const getGenerationStateKey = (uuid) => `generationState_${uuid}`;
 
+/**
+ * Retrieves the current AI generation state for a given match UUID.
+ * @param {string} uuid - The match's unique identifier.
+ * @returns {Promise<object>} The generation state object.
+ */
 async function getGenerationState(uuid) {
     if (!uuid) return { isGenerating: false, response: null, error: null, generationId: null, generationStartTime: null };
     const key = getGenerationStateKey(uuid);
@@ -78,6 +96,12 @@ async function getGenerationState(uuid) {
     return result[key] || { isGenerating: false, response: null, error: null, generationId: null, generationStartTime: null };
 }
 
+/**
+ * Updates the AI generation state for a given match and notifies the popup.
+ * @param {string} uuid - The match's unique identifier.
+ * @param {object} newState - The new state properties to merge.
+ * @param {chrome.runtime.Port} port - The port to the popup for sending updates.
+ */
 async function setGenerationState(uuid, newState, port) {
     if (!uuid) return;
     const key = getGenerationStateKey(uuid);
@@ -94,7 +118,18 @@ async function setGenerationState(uuid, newState, port) {
     }
 }
 
+/**
+ * Manages storage and retrieval of match-specific data, including profiles,
+ * conversation history, and analysis memory.
+ */
 export class MatchMemory {
+    /**
+     * Generates a deterministic UUID for a match based on their name and profile data.
+     * This ensures the same match is always identified with the same UUID.
+     * @param {string} name - The match's name.
+     * @param {string | object} profile - The match's profile text or data.
+     * @returns {Promise<string>} A SHA-1 hash representing the match's unique ID.
+     */
     async _getMatchUUID(name, profile) {
         const safeName = (name || 'unknown_name').trim();
 
@@ -124,15 +159,33 @@ export class MatchMemory {
         const hashArray = Array.from(new Uint8Array(hashBuffer));
         return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     }
+
+    /**
+     * Retrieves a full match profile from storage by UUID.
+     * @param {string} uuid - The match's unique identifier.
+     * @returns {Promise<object|null>} The match profile object or null if not found.
+     */
     async getMatchProfile(uuid) {
         const key = `match_${uuid}`;
         const result = await chrome.storage.local.get(key);
         return result[key] || null;
     }
+
+    /**
+     * Saves a match profile to storage.
+     * @param {string} uuid - The match's unique identifier.
+     * @param {object} profileData - The full profile object to save.
+     */
     async saveMatchProfile(uuid, profileData) {
         const key = `match_${uuid}`;
         await chrome.storage.local.set({ [key]: profileData });
     }
+
+    /**
+     * Creates a new, initial profile structure from scraped data.
+     * @param {object} scrapedData - Data scraped from the dating app page.
+     * @returns {object} A new match profile object.
+     */
     createInitialProfile(scrapedData) {
         return {
             uuid: null,
@@ -158,6 +211,12 @@ export class MatchMemory {
 }
 const memoryManager = new MatchMemory();
 
+/**
+ * Fetches timezone and country information from latitude and longitude.
+ * @param {number} lat - Latitude.
+ * @param {number} lon - Longitude.
+ * @returns {Promise<{timeZone: string, country: string}|null>} Timezone and country data or null.
+ */
 async function fetchTimezoneFromCoords(lat, lon) {
     const url = `https://timeapi.io/api/time/current/coordinate?latitude=${lat}&longitude=${lon}`;
     try {
@@ -171,6 +230,11 @@ async function fetchTimezoneFromCoords(lat, lon) {
     }
 }
 
+/**
+ * Geocodes a location string to get coordinates and other geographic data.
+ * @param {string} locationString - The location to geocode (e.g., "London, UK").
+ * @returns {Promise<object|null>} Geocoded data object or null.
+ */
 async function geocodeLocation(locationString) {
     if (!locationString || locationString.toLowerCase() === 'not specified') return null;
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationString)}&format=json&limit=1&extratags=1&addressdetails=1`;
@@ -196,6 +260,17 @@ async function geocodeLocation(locationString) {
     }
 }
 
+/**
+ * Generic handler for an AI generation task. Manages state, abort signals,
+ * and calls the appropriate AI service.
+ * @param {string} uuid - The match's unique identifier.
+ * @param {number} generationId - A unique ID for this specific generation request.
+ * @param {object} payload - The data payload to send to the AI.
+ * @param {chrome.runtime.Port} port - The port to the popup.
+ * @param {object} [options] - Optional callbacks and logging data.
+ * @param {function} [options.onSuccess] - Optional function to process the AI response.
+ * @param {object} [options.logData] - Optional data for performance logging.
+ */
 async function handleAITask(uuid, generationId, payload, port, options = {}) {
     if (abortControllers.has(uuid)) {
         abortControllers.get(uuid).abort("A new generation request was started.");
@@ -393,10 +468,15 @@ chrome.runtime.onConnect.addListener((port) => {
     DEBUG.log('PORT', 'Popup connected');
 
     const messageHandlers = {
-        "getNlpAnalysis": async (request) => {
-            let uuid;
-            const controller = new AbortController();
-            try {
+            /**
+             * Handles the initial request from the popup to analyze a conversation.
+             * It orchestrates getting/creating a match profile, running local and/or
+             * remote analysis, merging the results, and sending the final profile back.
+             */
+            "getNlpAnalysis": async (request) => {
+                let uuid;
+                const controller = new AbortController();
+                try {
                 DEBUG.log('DIAGNOSTIC', '`getNlpAnalysis` handler started.');
                 const { scrapedData } = request.data;
                 if (!scrapedData) {
@@ -443,6 +523,10 @@ chrome.runtime.onConnect.addListener((port) => {
                 }
             }
         },
+        /**
+         * Gathers all necessary data and constructs the final prompt payload
+         * to be sent to the AI.
+         */
         "getFinalPayload": async (request) => {
             try {
                 const { uuid, taskInstructions, myProfile, forceIncludeGeoContext } = request.data;
@@ -478,43 +562,64 @@ chrome.runtime.onConnect.addListener((port) => {
                 port.postMessage({ action: 'finalPayloadResponse', error: structuredError });
             }
         },
-        "getAIResponse": (request) => {
-            const { payload, generationId, uuid, logData } = request.data;
-            handleTextGeneration(uuid, generationId, payload, port, logData);
-        },
-        "cancelGeneration": async (request) => {
-            const { uuid } = request.data;
-            DEBUG.log('CANCEL', `Received cancel request for ${uuid}`);
-            if (abortControllers.has(uuid)) {
-                abortControllers.get(uuid).abort("Cancelled by user.");
-                abortControllers.delete(uuid);
-            }
-            const error = new WingmanError('CANCELLED', 'Generation cancelled by user.');
-            await setGenerationState(uuid, { isGenerating: false, error: error.toJSON(), generationId: null, generationStartTime: null }, port);
-        },
-        "getGenerationState": async (request) => {
-            const { uuid } = request.data;
-            const state = await getGenerationState(uuid);
-            port.postMessage({ action: 'generationStateResponse', state });
-        },
-        "heartbeat": () => DEBUG.log('HEARTBEAT', 'Received heartbeat.'),
-        "getAIDateIdea": (request) => {
-            const { uuid, generationId } = request.data;
-            handleDateIdeaGeneration(uuid, generationId, port);
-        },
-        "updateUserGeo": async (request) => {
-            const { latitude, longitude } = request.data;
-            if (latitude && longitude) {
-                const geoData = await fetchTimezoneFromCoords(latitude, longitude);
-                if (geoData) {
-                    await chrome.storage.local.set({ userGeoData: geoData });
+            /**
+             * Initiates a request to the AI service with the final payload.
+             */
+            "getAIResponse": (request) => {
+                const { payload, generationId, uuid, logData } = request.data;
+                handleTextGeneration(uuid, generationId, payload, port, logData);
+            },
+            /**
+             * Cancels an in-progress AI generation request.
+             */
+            "cancelGeneration": async (request) => {
+                const { uuid } = request.data;
+                DEBUG.log('CANCEL', `Received cancel request for ${uuid}`);
+                if (abortControllers.has(uuid)) {
+                    abortControllers.get(uuid).abort("Cancelled by user.");
+                    abortControllers.delete(uuid);
                 }
+                const error = new WingmanError('CANCELLED', 'Generation cancelled by user.');
+                await setGenerationState(uuid, { isGenerating: false, error: error.toJSON(), generationId: null, generationStartTime: null }, port);
+            },
+            /**
+             * Retrieves the current generation state for a given match.
+             */
+            "getGenerationState": async (request) => {
+                const { uuid } = request.data;
+                const state = await getGenerationState(uuid);
+                port.postMessage({ action: 'generationStateResponse', state });
+            },
+            /**
+             * A simple heartbeat message to keep the service worker active if needed.
+             */
+            "heartbeat": () => DEBUG.log('HEARTBEAT', 'Received heartbeat.'),
+            /**
+             * Handles a request to generate a date idea based on the match profile.
+             */
+            "getAIDateIdea": (request) => {
+                const { uuid, generationId } = request.data;
+                handleDateIdeaGeneration(uuid, generationId, port);
+            },
+            /**
+             * Updates the user's geo-location data in storage.
+             */
+            "updateUserGeo": async (request) => {
+                const { latitude, longitude } = request.data;
+                if (latitude && longitude) {
+                    const geoData = await fetchTimezoneFromCoords(latitude, longitude);
+                    if (geoData) {
+                        await chrome.storage.local.set({ userGeoData: geoData });
+                    }
+                }
+            },
+            /**
+             * Handles a request to refine a previously generated AI response.
+             */
+            "refineAIResponse": (request) => {
+                const { originalResponse, refinementType, uuid, generationId } = request.data;
+                handleRefineResponse(uuid, generationId, originalResponse, refinementType, port);
             }
-        },
-        "refineAIResponse": (request) => {
-            const { originalResponse, refinementType, uuid, generationId } = request.data;
-            handleRefineResponse(uuid, generationId, originalResponse, refinementType, port);
-        }
     };
     port.onMessage.addListener((request) => {
         DEBUG.log('PORT', 'Message received from popup', request);

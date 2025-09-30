@@ -4,6 +4,11 @@ import { showToast, updateSliderLabels, updateSliderValueLabel, updateClearButto
 
 const getMatchSettingsKey = (uuid) => `matchSettings_${uuid}`;
 
+/**
+ * Validates if a given string is a valid URL.
+ * @param {string} string - The string to validate.
+ * @returns {boolean} True if the string is a valid URL, false otherwise.
+ */
 function isValidUrl(string) {
     try {
         new URL(string);
@@ -14,7 +19,8 @@ function isValidUrl(string) {
 }
 
 /**
- * Updates the UI to indicate which settings are overridden for the current match.
+ * Updates the UI to add a visual indicator to settings that have been
+ * overridden for the current match.
  * @param {object} matchSettings - The settings object specific to the current match.
  */
 export function updateOverrideIndicators(matchSettings) {
@@ -36,7 +42,8 @@ export function updateOverrideIndicators(matchSettings) {
 }
 
 /**
- * Loads global and match-specific settings and applies them to the UI controls.
+ * Loads global settings and any match-specific settings from storage,
+ * merges them, and applies the final values to the UI controls.
  */
 export async function loadAndApplySettings() {
     const globalKeys = Object.keys(DEFAULTS);
@@ -81,8 +88,9 @@ export async function loadAndApplySettings() {
 
 
 /**
- * Saves a setting to chrome.storage. Can be global or match-specific.
- * @param {HTMLElement} el - The element whose setting has changed.
+ * Saves the value of a UI control to chrome.storage.
+ * The setting can be saved globally or as a match-specific override.
+ * @param {HTMLElement} el - The DOM element whose setting has changed.
  */
 export async function handlePersistentSetting(el) {
     const storageKey = el.dataset.storageKey;
@@ -118,7 +126,8 @@ export async function handlePersistentSetting(el) {
 }
 
 /**
- * Resets all settings for the current match to global defaults.
+ * Handles the 'Reset Match Preferences' button click. Removes all match-specific
+ * settings overrides from storage and reloads the settings.
  */
 export async function handleMatchReset() {
     if (!state.currentMatchUUID) return;
@@ -137,7 +146,8 @@ export async function handleMatchReset() {
 }
 
 /**
- * Resets all global settings to their default values.
+ * Handles the 'Reset All Global Defaults' button click. Removes all global
+ * settings from storage, reverting them to their default values.
  */
 export async function handleMasterReset() {
     const btn = document.getElementById(SELECTORS.masterResetBtn);

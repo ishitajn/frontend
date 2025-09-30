@@ -14,7 +14,11 @@ import {
 
 // --- Main Application Logic ---
 
-// This function is now defined in the main popup.js file as it orchestrates multiple modules.
+/**
+ * Synchronizes the entire UI based on the generation state received from the background script.
+ * This function acts as a central controller for the UI's generating/idle state.
+ * @param {object} generationState - The current generation state for the match.
+ */
 function syncUIWithState(generationState) {
     if (!generationState) return;
 
@@ -39,6 +43,10 @@ function syncUIWithState(generationState) {
     }
 }
 
+/**
+ * Injects and executes a function to paste text into the dating app's input field.
+ * @param {string} text - The text to paste.
+ */
 async function autoType(text) {
     if (!state.pasterFn) return;
     try {
@@ -56,8 +64,9 @@ async function autoType(text) {
 }
 
 /**
- * Initializes the entire popup application.
- * This function is the main entry point.
+ * Initializes the entire popup application. This is the main entry point.
+ * It sets up API listeners, event listeners, populates UI, loads settings,
+ * and triggers the initial data refresh.
  */
 async function initializePopup() {
     // 1. Setup API listeners to handle responses from the background script
@@ -98,7 +107,9 @@ async function initializePopup() {
 }
 
 /**
- * Fetches the latest data from the page and triggers the analysis pipeline.
+ * Fetches the latest data from the page, sends it to the background script
+ * for analysis, and updates the UI accordingly. This function is the main
+ * trigger for the application's core workflow.
  */
 async function refreshDataAndUI() {
     if (state.isRefreshing) {
@@ -183,6 +194,10 @@ async function refreshDataAndUI() {
 
 // --- Message Handlers (called by api.js) ---
 
+/**
+ * Handles the response from the background script after NLP analysis is complete.
+ * @param {object} message - The response message from the background script.
+ */
 async function handleNlpAnalysisResponse(message) {
     DEBUG.log('NLP_RESPONSE', 'Received NLP analysis response', message);
     if (message.error) {
@@ -205,6 +220,10 @@ async function handleNlpAnalysisResponse(message) {
     showView(SELECTORS.mainView);
 }
 
+/**
+ * Handles the response from the background script after the final payload has been built.
+ * @param {object} message - The response message from the background script.
+ */
 function handleFinalPayloadResponse(message) {
     if (message.error) {
         showErrorInResponseArea(message.error);
