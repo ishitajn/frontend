@@ -73,7 +73,7 @@ function runTests() {
         assertEquals(state, 'REENGAGING_MONTH');
     });
 
-    test('should return ACTIVE_CONVO if assistant sent the last message recently', () => {
+    test('should return EARLY_CONVO if assistant sent the last message recently in a short conversation', () => {
         const now = new Date();
         const oneHourAgo = new Date(now.getTime() - (60 * 60 * 1000));
         const history = [
@@ -81,7 +81,7 @@ function runTests() {
             { role: 'assistant', content: 'Hey there!', date: now.toISOString() },
         ];
         const state = _determineConversationState(history);
-        assertEquals(state, 'ACTIVE_CONVO');
+        assertEquals(state, 'EARLY_CONVO');
     });
 
     test('should return REENGAGING_DAY if there was a 3-day gap before the last message', () => {

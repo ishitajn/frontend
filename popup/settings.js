@@ -1,4 +1,4 @@
-import { DEFAULTS, MATCH_SPECIFIC_SETTINGS_KEYS, SELECTORS } from './constants.js';
+import { DEFAULTS, MATCH_SPECIFIC_SETTINGS_KEYS, SELECTORS } from '../shared/constants.js';
 import { state } from './state.js';
 import { showToast, updateSliderLabels, updateSliderValueLabel, updateClearButtonVisibility } from './ui.js';
 

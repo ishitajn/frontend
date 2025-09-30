@@ -1,4 +1,4 @@
-import { DEBUG } from './constants.js';
+import { DEBUG } from '../shared/constants.js';
 import { port, setPort, heartbeatInterval, setHeartbeatInterval } from './state.js';
 import { showError } from './ui.js';
 

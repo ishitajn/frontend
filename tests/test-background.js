@@ -20,10 +20,10 @@ globalThis.chrome = {
 // This is a simplified approach for a browser-based test runner.
 (async () => {
     try {
-        const { deepMerge } = await import('../background.js');
+        const { deepMerge } = await import('../lib/api-helpers.js');
         runTests(deepMerge);
     } catch (e) {
-        console.error("Failed to import background.js for testing.", e);
+        console.error("Failed to import api-helpers.js for testing.", e);
     }
 })();
 

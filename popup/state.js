@@ -1,4 +1,4 @@
-import { SELECTORS } from './constants.js';
+import { SELECTORS } from '../shared/constants.js';
 
 // This object holds the core session state.
 export const state = {

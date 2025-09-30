@@ -53,7 +53,7 @@
 
         console.log("--- Testing popup.js initialization ---");
         try {
-            await import('../popup.js');
+            await import('../popup/popup.js');
             console.log("popup.js loaded and initialized without errors.");
         } catch (e) {
             console.error("Failed to load or initialize popup.js", e);

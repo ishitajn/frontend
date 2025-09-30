@@ -1,4 +1,4 @@
-import { SELECTORS, DEFAULTS, USER_LOCATIONS, EMOJI_STRATEGIES, CONVERSATION_STATES, INTENT_OPTIONS } from './constants.js';
+import { SELECTORS, DEFAULTS, USER_LOCATIONS, EMOJI_STRATEGIES, CONVERSATION_STATES, INTENT_OPTIONS } from '../shared/constants.js';
 import { getToneDescription, getLengthDescription, getEmojiInstruction, getStyleDescription, DATE_ARC_PHASES, LINGUISTIC_STYLES } from '../conversationHelpers.js';
 import { state, tooltipTimeout, setTooltipTimeout, timerInterval, setTimerInterval, timerStartTime, setTimerStartTime } from './state.js';
 import { createAnalysisView, formatTime } from '../ui-components.js';
